@@ -2,9 +2,10 @@
 *.bak
 *.xml
 .idea/
+.venv/
 build/
 build_temp/
 dist/
 main.build/
 main.dist/
-__pychache__/
+__pycache__/
