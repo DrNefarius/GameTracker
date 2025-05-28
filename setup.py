@@ -7,7 +7,7 @@ build_options = {'packages': [], 'excludes': [], 'include_files': ['gameslistico
 base = 'gui'
 
 executables = [
-    Executable('new_main.py', base=base, target_name = 'GameTracker', icon='gameslisticon.ico')
+    Executable('main.py', base=base, target_name = 'GameTracker', icon='gameslisticon.ico')
 ]
 
 setup(name='GameTracker',
