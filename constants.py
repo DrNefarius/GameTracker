@@ -2,6 +2,9 @@
 Constants used throughout the GamesList application
 """
 
+# Application version - update this single location to change version across the entire app
+VERSION = "1.5.1"
+
 _DEBUG = False
 
 # Special key constants for different platforms

@@ -8,7 +8,7 @@ import re
 import PySimpleGUI as sg
 from datetime import datetime, timedelta
 
-from constants import QT_ENTER_KEY1, QT_ENTER_KEY2, STAR_FILLED, STAR_EMPTY
+from constants import QT_ENTER_KEY1, QT_ENTER_KEY2, STAR_FILLED, STAR_EMPTY, VERSION
 from config import load_config, save_config
 from data_management import load_from_gmd, save_to_gmd, convert_excel_to_gmd, save_data
 from ui_components import (
@@ -582,26 +582,15 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
         elif action_type == 'Submit':
             # Process the submitted values
             new_release = popup_values['-NEW-RELEASE-']
-            if new_release == '-':
-                new_release_date = new_release
+            if new_release == '-' or not new_release.strip():
+                new_release_date = '-'  # Use '-' for empty or unknown dates
             else:
-                try:
-                    new_release_date = datetime.strptime(new_release, '%Y-%m-%d')
-                except ValueError:
-                    sg.popup('Invalid date format. Please select a date using the calendar picker or enter "-" for unknown date.', title='Error')
-                    return None
-                    
-            time_value = popup_values['-NEW-TIME-']
-            if time_value:
-                time_pattern = re.compile(r'^\d{2,4}:\d{2}:\d{2}$')
-                if not time_pattern.match(time_value):
-                    sg.popup('Invalid time format. Please enter time in hh:mm:ss, hhh:mm:ss, or hhhh:mm:ss format.', title='Error')
-                    return None
-            else:
-                time_value = None  # Allow time to be None
+                # Safe to parse since validation already passed
+                new_release_date = datetime.strptime(new_release, '%Y-%m-%d').strftime('%Y-%m-%d')
                 
-            if new_release_date != '-':
-                new_release_date = new_release_date.strftime('%Y-%m-%d')
+            time_value = popup_values['-NEW-TIME-']
+            if not time_value or time_value in ['00:00:00', '00:00']:
+                time_value = None
             
             # Check if status has changed and record if it has
             old_status = existing_entry[4]
@@ -807,32 +796,18 @@ def handle_add_entry(data_with_indices, window, fn=None, data_storage=None):
     popup_values, action, rating = create_entry_popup()
     
     if action == 'Submit':
-        errors = validate_entry_form(popup_values)
-        if errors:
-            sg.popup('\n'.join(errors), title='Error')
-            return None
-            
+        # All validation is now handled in create_entry_popup() 
+        # so we can safely process the values here
         new_release = popup_values['-NEW-RELEASE-']
-        if new_release == '-':
-            new_release_date = new_release
+        if new_release == '-' or not new_release.strip():
+            new_release_date = '-'  # Use '-' for empty or unknown dates
         else:
-            try:
-                new_release_date = datetime.strptime(new_release, '%Y-%m-%d')
-            except ValueError:
-                sg.popup('Invalid date format. Please select a date using the calendar picker or enter "-" for unknown date.', title='Error')
-                return None
+            # Safe to parse since validation already passed
+            new_release_date = datetime.strptime(new_release, '%Y-%m-%d').strftime('%Y-%m-%d')
                 
         time_value = popup_values['-NEW-TIME-']
-        if time_value:
-            time_pattern = re.compile(r'^\d{2,4}:\d{2}:\d{2}$')
-            if not time_pattern.match(time_value):
-                sg.popup('Invalid time format. Please enter time in hh:mm:ss, hhh:mm:ss, or hhhh:mm:ss format.', title='Error')
-                return None
-        else:
+        if not time_value or time_value in ['00:00:00', '00:00']:
             time_value = None
-            
-        if new_release_date != '-':
-            new_release_date = new_release_date.strftime('%Y-%m-%d')
         
         # Create the new entry
         new_entry = [
@@ -1195,7 +1170,7 @@ def show_release_notes():
         [sg.Text("RELEASE NOTES", font=('Arial', 14, 'bold'), justification='center', expand_x=True)],
         [sg.HorizontalSeparator()],
         [sg.Column([
-            [sg.Text("=== VERSION 1.5 (Current) ===", font=('Arial', 12, 'bold'))],
+            [sg.Text(f"=== VERSION {VERSION} (Current) ===", font=('Arial', 12, 'bold'))],
             [emoji_image(get_emoji('star'), size=16), sg.Text(" NEW FEATURES:", font=('Arial', 11, 'bold'))],
             [sg.Text("• GitHub-style contributions heatmap visualization")],
             [sg.Text("• Year navigation for contributions view (previous/next year)")],
@@ -1302,7 +1277,7 @@ def show_bug_report_info():
             [sg.Text("")],
             [emoji_image(get_emoji('book'), size=16), sg.Text(" SYSTEM INFORMATION:", font=('Arial', 11, 'bold'))],
             [sg.Text("• Operating System (Windows 10/11, macOS, Linux distribution)")],
-            [sg.Text("• Application version (currently 1.5)")],
+            [sg.Text(f"• Application version (currently {VERSION})")],
             [sg.Text("• Python version (if running from source)")],
             [sg.Text("• Screen resolution and scaling settings")],
             [sg.Text("")],
@@ -1408,7 +1383,7 @@ def show_about_dialog():
     
     about_layout = [
         [sg.Text("Games List Manager", font=('Arial', 16, 'bold'), justification='center', expand_x=True)],
-        [sg.Text("Version 1.5", font=('Arial', 12), justification='center', expand_x=True)],
+        [sg.Text(f"Version {VERSION}", font=('Arial', 12), justification='center', expand_x=True)],
         [sg.HorizontalSeparator()],
         [emoji_image(get_emoji('game'), size=20), sg.Text(" Manage your game collection with style", justification='center', expand_x=True)],
         [sg.Text("Track playtime • Rate games • Analyze sessions", justification='center', expand_x=True)],

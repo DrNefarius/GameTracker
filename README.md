@@ -75,7 +75,23 @@ GamesList Manager is a comprehensive desktop application for managing your video
 
 **Note**: This application has been primarily developed and tested on Windows. macOS and Linux compatibility has not been thoroughly tested and may require additional configuration or adjustments.
 
-## Installation & Setup
+## Installation
+
+### 📦 **Quick Installation (Recommended)**
+
+For most users, the easiest way to get started is to download the pre-built application:
+
+1. **Download**: Go to the [Releases section](https://github.com/DrNefarius/GameTracker/releases/) of this GitHub repository
+2. **Extract**: Download the latest release zip file and extract it to a folder of your choice
+3. **Run**: Launch the application by running the included `GameTracker.exe` file (Windows)
+
+**That's it!** No additional setup, Python installation, or dependency management required.
+
+### 🔧 **Advanced Installation (Build from Source)**
+
+If you prefer to build from source or are using macOS/Linux, see the [Build From Source](#build-from-source) section below for detailed instructions.
+
+## Build From Source
 
 ### Important Note: PySimpleGUI Availability
 ⚠️ **Critical Information**: The required PySimpleGUI version (4.60.5) is **no longer officially available** from the original developers. PySimpleGUI moved to a licensed model for versions 5+ and removed all free older versions from official distribution channels.
@@ -168,7 +184,7 @@ build/exe.[platform]-[python_version]/
 The `setup.py` file configures:
 - **Entry Point**: `main.py`
 - **Executable Name**: `GameTracker.exe` (Windows) or `GameTracker` (Unix)
-- **Version**: 1.5
+- **Version**: Automatically set from `constants.py`
 - **Icon**: `gameslisticon.ico`
 - **Dependencies**: Automatically detected
 - **Included Files**: Application icon

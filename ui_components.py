@@ -75,12 +75,13 @@ def validate_entry_form(values):
         except ValueError:
             errors.append("Release date must be in YYYY-MM-DD format or '-' for unknown")
     
-    # Validate time format
+    # Validate time format with stricter validation
     time_value = values['-NEW-TIME-']
     if time_value and time_value not in ['00:00:00', '00:00']:
-        time_pattern = re.compile(r'^\d{1,4}:\d{1,2}:\d{1,2}$')
+        # Use the stricter pattern from handle_add_entry for consistency
+        time_pattern = re.compile(r'^\d{2,4}:\d{2}:\d{2}$')
         if not time_pattern.match(time_value):
-            errors.append("Time must be in HH:MM:SS format")
+            errors.append("Time must be in hh:mm:ss, hhh:mm:ss, or hhhh:mm:ss format")
         else:
             # Validate time parts are valid numbers
             try:
