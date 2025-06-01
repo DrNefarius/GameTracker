@@ -68,7 +68,6 @@ def update_statistics_tab(window, data, selected_game=None, update_game_list=Tru
     
     # Update heatmap period display
     if heatmap_end_date:
-        from datetime import timedelta
         start_date = heatmap_end_date - timedelta(days=heatmap_window_months * 30)
         period_text = f"{start_date.strftime('%b %Y')} - {heatmap_end_date.strftime('%b %Y')}"
     else:
