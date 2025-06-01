@@ -2101,6 +2101,7 @@ def create_github_contributions_canvas(sessions, game_name=None, canvas_key='-CO
         
         # Draw squares
         square_data.clear()
+        today = datetime.now().date()  # Get today's date
         for week in range(weeks_to_show):
             for day in range(7):
                 activity = activity_matrix[day, week]
@@ -2125,6 +2126,10 @@ def create_github_contributions_canvas(sessions, game_name=None, canvas_key='-CO
                 
                 # Draw the square
                 square_id = canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline=color, width=0)
+                
+                # Add red outline for current day
+                if current_date == today:
+                    canvas.create_rectangle(x1, y1, x2, y2, fill='', outline='red', width=2)
                 
                 # Store square data for tooltip including game details
                 day_data = daily_activity.get(current_date, {}) if start_date <= current_date <= end_date else {}

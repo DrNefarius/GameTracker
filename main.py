@@ -561,6 +561,7 @@ def main():
         # Handle view all notes button
         elif event == '-VIEW-ALL-NOTES-':
             try:
+                from session_management import get_game_sessions
                 if selected_game_for_stats:
                     game_sessions = get_game_sessions(data_with_indices, selected_game_for_stats)
                     display_all_game_notes(selected_game_for_stats, game_sessions, data_with_indices)
