@@ -45,7 +45,8 @@ def record_status_change(game_data, old_status, new_status):
     game_data[8].append(status_change)
     return status_change
 
-def update_statistics_tab(window, data, selected_game=None, update_game_list=True, contributions_year=None):
+def update_statistics_tab(window, data, selected_game=None, update_game_list=True, contributions_year=None, 
+                          heatmap_window_months=6, heatmap_end_date=None):
     """Update all elements in the Statistics tab"""
     # Extract all sessions
     all_sessions = extract_all_sessions(data)
@@ -64,6 +65,18 @@ def update_statistics_tab(window, data, selected_game=None, update_game_list=Tru
         window['-MOST-ACTIVE-DAY-'].update(f"Most Active Day: {most_active['day'].strftime('%Y-%m-%d')} ({most_active['count']} sessions)")
     else:
         window['-MOST-ACTIVE-DAY-'].update("Most Active Day: None")
+    
+    # Update heatmap period display
+    if heatmap_end_date:
+        from datetime import timedelta
+        start_date = heatmap_end_date - timedelta(days=heatmap_window_months * 30)
+        period_text = f"{start_date.strftime('%b %Y')} - {heatmap_end_date.strftime('%b %Y')}"
+    else:
+        # Default display for most recent period
+        window_names = {1: '1 Month', 3: '3 Months', 6: '6 Months', 12: '1 Year'}
+        period_text = f"Recent {window_names.get(heatmap_window_months, f'{heatmap_window_months} Months')}"
+    
+    window['-HEATMAP-PERIOD-DISPLAY-'].update(period_text)
     
     # Only update game list when explicitly requested (not during selection)
     if update_game_list:
@@ -230,7 +243,7 @@ def update_statistics_tab(window, data, selected_game=None, update_game_list=Tru
         # Create other charts
         timeline_data = create_session_timeline_chart(game_sessions, selected_game)
         distribution_data = create_session_distribution_chart(game_sessions, selected_game)
-        heatmap_data = create_session_heatmap(game_sessions, selected_game)
+        heatmap_data = create_session_heatmap(game_sessions, selected_game, heatmap_window_months, heatmap_end_date)
         status_timeline_data = create_status_timeline_chart(status_history, selected_game)
         
         # Use temporary files for other charts
@@ -302,7 +315,7 @@ def update_statistics_tab(window, data, selected_game=None, update_game_list=Tru
         # Create other charts
         timeline_data = create_session_timeline_chart(all_sessions)
         distribution_data = create_session_distribution_chart(all_sessions)
-        heatmap_data = create_session_heatmap(all_sessions)
+        heatmap_data = create_session_heatmap(all_sessions, None, heatmap_window_months, heatmap_end_date)
         
         # For status timeline in overview mode, show placeholder
         import matplotlib.pyplot as plt

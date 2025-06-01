@@ -719,8 +719,8 @@ def create_session_distribution_chart(sessions, game_name=None):
     
     return buf
 
-def create_session_heatmap(sessions, game_name=None):
-    """Create a heatmap visualization showing gaming intensity and pauses"""
+def create_session_heatmap(sessions, game_name=None, window_months=6, end_date=None):
+    """Create a heatmap visualization showing gaming intensity and pauses with time-based windowing"""
     # Isolate matplotlib from the main application
     isolate_matplotlib_env()
     
@@ -738,10 +738,56 @@ def create_session_heatmap(sessions, game_name=None):
         plt.close(fig)
         return buf
     
+    # Determine date range for windowing
+    if end_date is None:
+        # Find the latest session date, or use current date if no sessions
+        latest_session_date = None
+        for session in sessions:
+            try:
+                session_date = datetime.fromisoformat(session['start']).date()
+                if latest_session_date is None or session_date > latest_session_date:
+                    latest_session_date = session_date
+            except:
+                continue
+        end_date = latest_session_date if latest_session_date else datetime.now().date()
+    
+    # Calculate start date based on window size (approximate months to days)
+    days_in_window = window_months * 30
+    start_date = end_date - timedelta(days=days_in_window)
+    
+    # Filter sessions to the current window
+    windowed_sessions = []
+    for session in sessions:
+        try:
+            if 'start' in session:
+                session_date = datetime.fromisoformat(session['start']).date()
+                if start_date <= session_date <= end_date:
+                    windowed_sessions.append(session)
+        except Exception as e:
+            print(f"Error filtering session for heatmap window: {str(e)}")
+            continue
+    
+    # If no sessions in the current window, show appropriate message
+    if not windowed_sessions:
+        fig, ax = plt.subplots(figsize=(9, 2.5))
+        period_str = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+        ax.text(0.5, 0.5, f"No session data available for period:\n{period_str}", 
+                ha='center', va='center', fontsize=10)
+        title = f"Gaming Heatmap for {game_name}" if game_name else "Gaming Sessions Heatmap"
+        title += f"\n({period_str})"
+        ax.set_title(title, fontsize=12)
+        
+        # Save to a buffer
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight')
+        buf.seek(0)
+        plt.close(fig)
+        return buf
+    
     # Process session data to extract gaming intensity and pauses
     session_data = []
     
-    for session in sessions:
+    for session in windowed_sessions:
         try:
             if 'start' in session and 'end' in session and 'pauses' in session:
                 start_time = datetime.fromisoformat(session['start'])
@@ -864,10 +910,18 @@ def create_session_heatmap(sessions, game_name=None):
         # Grid
         ax.grid(True, which='major', axis='x', linestyle='-', alpha=0.3)
         
-        # Title and labels
+        # Title and labels with period information
+        period_str = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
         title = f"Gaming Heatmap for {game_name}" if game_name else "Gaming Sessions Heatmap"
+        title += f"\n({period_str})"
         ax.set_title(title, fontsize=12)
         ax.set_xlabel("Time of Day", fontsize=10)
+        
+        # Add session count information
+        total_sessions = sum(len(sessions) for sessions in date_sessions.values())
+        ax.text(1.05, 0.15, f"Sessions: {total_sessions}", transform=ax.transAxes, 
+                fontsize=10, horizontalalignment='left', verticalalignment='top',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8))
         
         # Add legend
         legend_elements = [
@@ -884,9 +938,12 @@ def create_session_heatmap(sessions, game_name=None):
         ]
         ax.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8, framealpha=0.7)
     else:
-        ax.text(0.5, 0.5, "No session data available with pause information", 
+        period_str = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+        ax.text(0.5, 0.5, f"No session data available with pause information for period:\n{period_str}", 
                 ha='center', va='center', fontsize=10)
-        ax.set_title("Session Activity Heatmap", fontsize=12)
+        title = f"Gaming Heatmap for {game_name}" if game_name else "Gaming Sessions Heatmap"
+        title += f"\n({period_str})"
+        ax.set_title(title, fontsize=12)
     
     plt.tight_layout()
     
@@ -2128,3 +2185,56 @@ def setup_contributions_tooltip_callback(window, canvas_key='-CONTRIBUTIONS-CANV
             pass
     
     return tooltip_callback
+
+def find_most_active_period(sessions, window_months=6):
+    """Find the most active gaming period in the session data"""
+    if not sessions:
+        return datetime.now().date()
+    
+    # Convert window to days
+    window_days = window_months * 30
+    
+    # Get all session dates
+    session_dates = []
+    for session in sessions:
+        try:
+            if 'start' in session:
+                session_date = datetime.fromisoformat(session['start']).date()
+                session_dates.append(session_date)
+        except:
+            continue
+    
+    if not session_dates:
+        return datetime.now().date()
+    
+    session_dates.sort()
+    
+    # If we have less data than window size, return the latest date
+    if len(session_dates) == 0:
+        return datetime.now().date()
+    
+    # Find the period with the most sessions
+    max_sessions = 0
+    best_end_date = session_dates[-1]  # Default to latest
+    
+    # Try different end dates (sliding window approach)
+    earliest_date = session_dates[0]
+    latest_date = session_dates[-1]
+    
+    # Sample different end dates to find most active period
+    current_date = latest_date
+    while current_date >= earliest_date:
+        start_date = current_date - timedelta(days=window_days)
+        
+        # Count sessions in this window
+        sessions_in_window = sum(1 for date in session_dates 
+                               if start_date <= date <= current_date)
+        
+        if sessions_in_window > max_sessions:
+            max_sessions = sessions_in_window
+            best_end_date = current_date
+        
+        # Move back by 30 days for next sample
+        current_date -= timedelta(days=30)
+    
+    return best_end_date

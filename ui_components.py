@@ -443,6 +443,18 @@ def create_main_layout(data_with_indices):
                     [sg.Image(key='-SESSIONS-DISTRIBUTION-', size=(650, 220))]
                 ]),
                  sg.Tab('Gaming Heatmap', [
+                    [sg.Text("Time-based gaming session intensity with pause visualization", font=('Helvetica', 9, 'italic'), justification='center', expand_x=True)],
+                    [sg.Column([
+                        [sg.Text("Window Size:", font=('Arial', 9)),
+                         sg.Combo(['1 Month', '3 Months', '6 Months', '1 Year'], 
+                                  default_value='6 Months', key='-HEATMAP-WINDOW-SIZE-', size=(10, 1), enable_events=True)],
+                        [sg.Button("◀", key='-HEATMAP-PREV-', size=(2, 1)),
+                         sg.Text("Recent 6 Months", key='-HEATMAP-PERIOD-DISPLAY-', 
+                                 font=('Arial', 10, 'bold'), size=(20, 1), justification='center'),
+                         sg.Button("▶", key='-HEATMAP-NEXT-', size=(2, 1))],
+                        [sg.Button("Latest", key='-HEATMAP-LATEST-', size=(8, 1)),
+                         sg.Button("Most Active", key='-HEATMAP-MOST-ACTIVE-', size=(8, 1))]
+                    ], element_justification='center', pad=(0, (5, 10)))],
                     [sg.Image(key='-SESSIONS-HEATMAP-', size=(650, 300))]
                 ]),
                  sg.Tab('Status Timeline', [

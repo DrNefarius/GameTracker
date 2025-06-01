@@ -1,5 +1,26 @@
 # GamesList Manager
 
+![Python](https://badgen.net/badge/python/3.7%2B/blue?icon=python)
+![Version](https://badgen.net/badge/version/v1.5.2/orange?icon=github)
+![License](https://badgen.net/badge/license/GPL-3.0/green?icon=github)
+
+## Table of Contents
+- [Overview](#overview)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [System Requirements](#system-requirements)
+- [Installation](#installation)
+- [Build From Source](#build-from-source)
+- [Running the Application](#running-the-application)
+- [Building Executable with cx_Freeze](#building-executable-with-cx_freeze)
+- [File Formats](#file-formats)
+- [Project Structure](#project-structure)
+- [Quick Start Guide](#quick-start-guide)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
+- [Version History](#version-history)
+
 ## Overview
 
 GamesList Manager is a comprehensive desktop application for managing your video game collection and tracking your gaming sessions. Built with Python and PySimpleGUI, it provides powerful features for organizing games, tracking playtime, rating experiences, and analyzing your gaming habits.

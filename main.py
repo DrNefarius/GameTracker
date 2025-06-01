@@ -117,6 +117,9 @@ def main():
     # Variables for data management
     data_storage = None  # For storing complete dataset when filtering
     selected_game_for_stats = None
+    
+    # Heatmap navigation state
+    main.heatmap_end_date = None  # Track current heatmap end date for navigation
 
     # Event loop
     while True:
@@ -149,7 +152,7 @@ def main():
                             window['-RATING-CHART-'].update(filename=charts['rating_chart'])
                             force_scrollable_refresh(window)
                     elif values['-TABGROUP-'] == 'Statistics':
-                        update_statistics_tab(window, data_with_indices, update_game_list=True)
+                        update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
                         force_scrollable_refresh(window)
                 elif result.get('action') == 'file_saved':
                     fn = result['filename']
@@ -169,7 +172,7 @@ def main():
                             window['-RATING-CHART-'].update(filename=charts['rating_chart'])
                             force_scrollable_refresh(window)
                     elif values['-TABGROUP-'] == 'Statistics':
-                        update_statistics_tab(window, data_with_indices, update_game_list=True)
+                        update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
                         force_scrollable_refresh(window)
                         
         # Handle tab changes
@@ -248,7 +251,183 @@ def main():
             except Exception as e:
                 print(f"Error changing year: {str(e)}")
 
-
+        # Handle heatmap window size change
+        elif event == '-HEATMAP-WINDOW-SIZE-':
+            try:
+                from event_handlers import update_statistics_tab
+                from datetime import datetime
+                
+                # Convert window size to months
+                window_text = values['-HEATMAP-WINDOW-SIZE-']
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                
+                # Get current selected game
+                selected_game = None
+                if values['-GAME-LIST-']:
+                    selected_game = values['-GAME-LIST-'][0]
+                
+                # Get current contributions year
+                contributions_year = None
+                try:
+                    contributions_year = int(window['-CONTRIB-YEAR-DISPLAY-'].get())
+                except:
+                    contributions_year = datetime.now().year
+                
+                # Update heatmap with new window size
+                update_statistics_tab(window, data_with_indices, selected_game, 
+                                    update_game_list=False, contributions_year=contributions_year,
+                                    heatmap_window_months=window_months)
+            except Exception as e:
+                print(f"Error changing heatmap window size: {str(e)}")
+                
+        # Handle heatmap navigation
+        elif event == '-HEATMAP-PREV-':
+            try:
+                from event_handlers import update_statistics_tab
+                from session_management import extract_all_sessions
+                from datetime import datetime, timedelta
+                
+                # Get current window size
+                window_text = values['-HEATMAP-WINDOW-SIZE-']
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                
+                # Get current end date from the display or use current date
+                current_period = window['-HEATMAP-PERIOD-DISPLAY-'].get()
+                
+                # Calculate new end date (move back by window size)
+                if hasattr(main, 'heatmap_end_date') and main.heatmap_end_date:
+                    new_end_date = main.heatmap_end_date - timedelta(days=window_months * 30)
+                else:
+                    # First time navigating, start from current date
+                    new_end_date = datetime.now().date() - timedelta(days=window_months * 30)
+                
+                # Store the new end date
+                main.heatmap_end_date = new_end_date
+                
+                # Get current selected game and contributions year
+                selected_game = None
+                if values['-GAME-LIST-']:
+                    selected_game = values['-GAME-LIST-'][0]
+                
+                contributions_year = None
+                try:
+                    contributions_year = int(window['-CONTRIB-YEAR-DISPLAY-'].get())
+                except:
+                    contributions_year = datetime.now().year
+                
+                # Update heatmap with new date range
+                update_statistics_tab(window, data_with_indices, selected_game,
+                                    update_game_list=False, contributions_year=contributions_year,
+                                    heatmap_window_months=window_months, heatmap_end_date=new_end_date)
+            except Exception as e:
+                print(f"Error navigating heatmap backwards: {str(e)}")
+                
+        elif event == '-HEATMAP-NEXT-':
+            try:
+                from event_handlers import update_statistics_tab
+                from datetime import datetime, timedelta
+                
+                # Get current window size
+                window_text = values['-HEATMAP-WINDOW-SIZE-']
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                
+                # Calculate new end date (move forward by window size)
+                if hasattr(main, 'heatmap_end_date') and main.heatmap_end_date:
+                    new_end_date = main.heatmap_end_date + timedelta(days=window_months * 30)
+                else:
+                    # First time navigating, start from current date
+                    new_end_date = datetime.now().date()
+                
+                # Don't go beyond current date
+                if new_end_date > datetime.now().date():
+                    new_end_date = datetime.now().date()
+                
+                # Store the new end date
+                main.heatmap_end_date = new_end_date
+                
+                # Get current selected game and contributions year
+                selected_game = None
+                if values['-GAME-LIST-']:
+                    selected_game = values['-GAME-LIST-'][0]
+                
+                contributions_year = None
+                try:
+                    contributions_year = int(window['-CONTRIB-YEAR-DISPLAY-'].get())
+                except:
+                    contributions_year = datetime.now().year
+                
+                # Update heatmap with new date range
+                update_statistics_tab(window, data_with_indices, selected_game,
+                                    update_game_list=False, contributions_year=contributions_year,
+                                    heatmap_window_months=window_months, heatmap_end_date=new_end_date)
+            except Exception as e:
+                print(f"Error navigating heatmap forwards: {str(e)}")
+                
+        elif event == '-HEATMAP-LATEST-':
+            try:
+                from event_handlers import update_statistics_tab
+                from datetime import datetime
+                
+                # Reset to latest data (current date)
+                main.heatmap_end_date = None  # Reset to use latest data
+                
+                # Get current window size
+                window_text = values['-HEATMAP-WINDOW-SIZE-']
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                
+                # Get current selected game and contributions year
+                selected_game = None
+                if values['-GAME-LIST-']:
+                    selected_game = values['-GAME-LIST-'][0]
+                
+                contributions_year = None
+                try:
+                    contributions_year = int(window['-CONTRIB-YEAR-DISPLAY-'].get())
+                except:
+                    contributions_year = datetime.now().year
+                
+                # Update heatmap to latest period
+                update_statistics_tab(window, data_with_indices, selected_game,
+                                    update_game_list=False, contributions_year=contributions_year,
+                                    heatmap_window_months=window_months, heatmap_end_date=None)
+            except Exception as e:
+                print(f"Error jumping to latest heatmap period: {str(e)}")
+                
+        elif event == '-HEATMAP-MOST-ACTIVE-':
+            try:
+                from event_handlers import update_statistics_tab
+                from session_management import extract_all_sessions, get_game_sessions, find_most_active_period
+                from datetime import datetime
+                
+                # Get current window size
+                window_text = values['-HEATMAP-WINDOW-SIZE-']
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                
+                # Get sessions to analyze
+                selected_game = None
+                if values['-GAME-LIST-']:
+                    selected_game = values['-GAME-LIST-'][0]
+                    sessions = get_game_sessions(data_with_indices, selected_game)
+                else:
+                    sessions = extract_all_sessions(data_with_indices)
+                
+                # Find most active period
+                most_active_end_date = find_most_active_period(sessions, window_months)
+                main.heatmap_end_date = most_active_end_date
+                
+                # Get current contributions year
+                contributions_year = None
+                try:
+                    contributions_year = int(window['-CONTRIB-YEAR-DISPLAY-'].get())
+                except:
+                    contributions_year = datetime.now().year
+                
+                # Update heatmap to most active period
+                update_statistics_tab(window, data_with_indices, selected_game,
+                                    update_game_list=False, contributions_year=contributions_year,
+                                    heatmap_window_months=window_months, heatmap_end_date=most_active_end_date)
+            except Exception as e:
+                print(f"Error jumping to most active heatmap period: {str(e)}")
 
         # Handle game list selection in Statistics tab
         elif event == '-GAME-LIST-':
@@ -266,7 +445,7 @@ def main():
             from event_handlers import update_statistics_tab
             selected_game_for_stats = None
             window['-GAME-LIST-'].update(set_to_index=[])  # Clear selection in listbox
-            update_statistics_tab(window, data_with_indices, update_game_list=True)
+            update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
             force_scrollable_refresh(window)
             
         # Handle session search
