@@ -279,6 +279,49 @@ def main():
                                     heatmap_window_months=window_months)
             except Exception as e:
                 print(f"Error changing heatmap window size: {str(e)}")
+
+        # Handle distribution chart type change
+        elif event == '-DISTRIBUTION-CHART-TYPE-':
+            try:
+                from event_handlers import update_statistics_tab
+                from datetime import datetime
+                
+                # Convert chart type text to parameter
+                chart_type_text = values['-DISTRIBUTION-CHART-TYPE-']
+                chart_type_map = {
+                    'Line Chart': 'line',
+                    'Scatter Plot': 'scatter', 
+                    'Box Plot': 'box',
+                    'Histogram': 'histogram'
+                }
+                chart_type = chart_type_map.get(chart_type_text, 'line')
+                
+                # Get current selected game
+                selected_game = None
+                if values['-GAME-LIST-']:
+                    selected_game = values['-GAME-LIST-'][0]
+                
+                # Get current contributions year and heatmap settings
+                contributions_year = None
+                try:
+                    contributions_year = int(window['-CONTRIB-YEAR-DISPLAY-'].get())
+                except:
+                    contributions_year = datetime.now().year
+                
+                window_text = values['-HEATMAP-WINDOW-SIZE-']
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                
+                heatmap_end_date = getattr(main, 'heatmap_end_date', None)
+                
+                # Update statistics with new chart type
+                update_statistics_tab(window, data_with_indices, selected_game, 
+                                    update_game_list=False, contributions_year=contributions_year,
+                                    heatmap_window_months=window_months, heatmap_end_date=heatmap_end_date,
+                                    distribution_chart_type=chart_type)
+            except Exception as e:
+                print(f"Error changing distribution chart type: {str(e)}")
+                import traceback
+                traceback.print_exc()
                 
         # Handle heatmap navigation
         elif event == '-HEATMAP-PREV-':
@@ -434,7 +477,34 @@ def main():
             try:
                 if values['-GAME-LIST-'] and len(values['-GAME-LIST-']) > 0:
                     selected_game_for_stats = values['-GAME-LIST-'][0]
-                    update_statistics_tab(window, data_with_indices, selected_game_for_stats, update_game_list=False)
+                    
+                    # Get current chart type selection
+                    chart_type_text = values.get('-DISTRIBUTION-CHART-TYPE-', 'Line Chart')
+                    chart_type_map = {
+                        'Line Chart': 'line',
+                        'Scatter Plot': 'scatter', 
+                        'Box Plot': 'box',
+                        'Histogram': 'histogram'
+                    }
+                    chart_type = chart_type_map.get(chart_type_text, 'line')
+                    
+                    # Get other current settings
+                    from datetime import datetime
+                    contributions_year = None
+                    try:
+                        contributions_year = int(window['-CONTRIB-YEAR-DISPLAY-'].get())
+                    except:
+                        contributions_year = datetime.now().year
+                    
+                    window_text = values.get('-HEATMAP-WINDOW-SIZE-', '6 Months')
+                    window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                    
+                    heatmap_end_date = getattr(main, 'heatmap_end_date', None)
+                    
+                    update_statistics_tab(window, data_with_indices, selected_game_for_stats, 
+                                        update_game_list=False, contributions_year=contributions_year,
+                                        heatmap_window_months=window_months, heatmap_end_date=heatmap_end_date,
+                                        distribution_chart_type=chart_type)
                     force_scrollable_refresh(window)
             except Exception as e:
                 print(f"Error handling game selection: {str(e)}")
@@ -443,9 +513,21 @@ def main():
         # Handle show all games button
         elif event == '-SHOW-ALL-GAMES-':
             from event_handlers import update_statistics_tab
+            
+            # Get current chart type selection
+            chart_type_text = values.get('-DISTRIBUTION-CHART-TYPE-', 'Line Chart')
+            chart_type_map = {
+                'Line Chart': 'line',
+                'Scatter Plot': 'scatter', 
+                'Box Plot': 'box',
+                'Histogram': 'histogram'
+            }
+            chart_type = chart_type_map.get(chart_type_text, 'line')
+            
             selected_game_for_stats = None
             window['-GAME-LIST-'].update(set_to_index=[])  # Clear selection in listbox
-            update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
+            update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True,
+                                distribution_chart_type=chart_type)
             force_scrollable_refresh(window)
             
         # Handle session search

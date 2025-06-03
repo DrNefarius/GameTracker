@@ -440,6 +440,13 @@ def create_main_layout(data_with_indices):
                     [sg.Image(key='-SESSIONS-TIMELINE-', size=(650, 220))]
                 ]), 
                  sg.Tab('Session Distribution', [
+                    [sg.Text("Session length data visualization", font=('Helvetica', 9, 'italic'), justification='center', expand_x=True)],
+                    [sg.Column([
+                        [sg.Text("Chart Type:", font=('Arial', 9)),
+                         sg.Combo(['Line Chart', 'Scatter Plot', 'Box Plot', 'Histogram'], 
+                                  default_value='Line Chart', key='-DISTRIBUTION-CHART-TYPE-', size=(12, 1), enable_events=True,
+                                  tooltip='Choose how to visualize session length data')]
+                    ], element_justification='center', pad=(0, (5, 10)))],
                     [sg.Image(key='-SESSIONS-DISTRIBUTION-', size=(650, 220))]
                 ]),
                  sg.Tab('Gaming Heatmap', [

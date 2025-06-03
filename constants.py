@@ -3,7 +3,7 @@ Constants used throughout the GamesList application
 """
 
 # Application version - update this single location to change version across the entire app
-VERSION = "1.5.3"
+VERSION = "1.6.0"
 
 _DEBUG = False
 

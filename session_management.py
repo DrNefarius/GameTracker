@@ -633,9 +633,26 @@ def create_session_timeline_chart(sessions, game_name=None):
         # Plot the data
         ax.bar(dates, durations, width=0.6, color='#5cb85c')
         
-        # Format the x-axis
-        ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%Y-%m-%d'))
-        plt.xticks(rotation=45, ha='right')
+        # Format the x-axis with better readability
+        # Determine the appropriate date format based on data range
+        date_range = max(dates) - min(dates)
+        
+        if date_range.days <= 7:  # Within a week - show day names
+            ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%a %m/%d'))
+        elif date_range.days <= 31:  # Within a month - show month/day
+            ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%m/%d'))
+        elif date_range.days <= 365:  # Within a year - show month/day
+            ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%m/%d'))
+            ax.xaxis.set_major_locator(plt.matplotlib.dates.WeekdayLocator(interval=1))
+        else:  # More than a year - show month/year
+            ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%m/%y'))
+            ax.xaxis.set_major_locator(plt.matplotlib.dates.MonthLocator(interval=1))
+        
+        # Rotate labels less aggressively and improve alignment
+        plt.xticks(rotation=30, ha='right')
+        
+        # Set reasonable limits for tick spacing
+        fig.autofmt_xdate()
         
         # Add labels and title
         title = f"Session Timeline for {game_name}" if game_name else "All Gaming Sessions Timeline"
@@ -657,17 +674,24 @@ def create_session_timeline_chart(sessions, game_name=None):
     
     return buf
 
-def create_session_distribution_chart(sessions, game_name=None):
-    """Create a chart showing distribution of session lengths"""
+def create_session_distribution_chart(sessions, game_name=None, chart_type='line'):
+    """Create a chart showing distribution of session lengths
+    
+    Args:
+        sessions: List of gaming sessions
+        game_name: Name of the game (optional)
+        chart_type: Type of chart to create ('line', 'scatter', 'box', 'histogram')
+    """
     # Isolate matplotlib from the main application
     isolate_matplotlib_env()
     
     # Prepare the data
     durations = []
+    session_dates = []
     
     for session in sessions:
         try:
-            if 'duration' in session:
+            if 'duration' in session and 'start' in session:
                 # Parse duration
                 duration_str = session['duration']
                 parts = duration_str.split(':')
@@ -675,6 +699,13 @@ def create_session_distribution_chart(sessions, game_name=None):
                     h, m, s = map(int, parts)
                     duration_minutes = h * 60 + m + s/60
                     durations.append(duration_minutes)
+                    
+                    # Parse session date for line/scatter plots
+                    try:
+                        session_date = datetime.fromisoformat(session['start'])
+                        session_dates.append(session_date)
+                    except:
+                        session_dates.append(None)
         except Exception as e:
             print(f"Error processing session for distribution: {str(e)}")
             continue
@@ -683,26 +714,154 @@ def create_session_distribution_chart(sessions, game_name=None):
     fig, ax = plt.subplots(figsize=(7, 2.5))
     
     if durations:
-        # Create bins for histogram (in minutes)
+        # Determine if we should use minutes or hours
         if max(durations) <= 60:  # All sessions under an hour
-            bins = range(0, int(max(durations)) + 10, 5)  # 5-minute bins
-            xlabel = 'Session Length (minutes)'
+            y_label = 'Session Length (minutes)'
+            duration_values = durations
         else:
             # Convert to hours for better visualization
-            durations = [d/60 for d in durations]
-            max_duration = max(durations)
-            bin_size = max(0.5, max_duration / 10)  # Dynamic bin size
-            bins = np.arange(0, max_duration + bin_size, bin_size)
-            xlabel = 'Session Length (hours)'
+            y_label = 'Session Length (hours)'
+            duration_values = [d/60 for d in durations]
         
-        # Plot histogram
-        ax.hist(durations, bins=bins, color='#6f42c1', edgecolor='black', alpha=0.7)
+        if chart_type == 'line':
+            # Create a line chart showing session lengths over time
+            if session_dates and all(d is not None for d in session_dates):
+                # Sort by date
+                sorted_data = sorted(zip(session_dates, duration_values))
+                dates, values = zip(*sorted_data)
+                
+                # Plot line chart
+                ax.plot(dates, values, marker='o', markersize=4, linewidth=1.5, 
+                       color='#5cb85c', markerfacecolor='#3e8e41', alpha=0.8)
+                
+                # Add trend line
+                from datetime import timedelta
+                import numpy as np
+                if len(dates) > 1:
+                    # Convert dates to numbers for trend calculation
+                    date_nums = [(d - dates[0]).total_seconds() / (24 * 3600) for d in dates]
+                    z = np.polyfit(date_nums, values, 1)
+                    p = np.poly1d(z)
+                    trend_values = [p(x) for x in date_nums]
+                    ax.plot(dates, trend_values, '--', color='red', alpha=0.6, linewidth=2, 
+                           label=f'Trend: {"↗" if z[0] > 0 else "↘"} {abs(z[0]):.2f} {y_label.split("(")[1].split(")")[0]}/day')
+                    ax.legend(fontsize=8)
+                
+                # Format x-axis with better readability
+                date_range = max(session_dates) - min(session_dates)
+                
+                if date_range.days <= 7:  # Within a week - show day names
+                    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%a %m/%d'))
+                elif date_range.days <= 31:  # Within a month - show month/day
+                    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%m/%d'))
+                elif date_range.days <= 365:  # Within a year - show month/day
+                    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%m/%d'))
+                    ax.xaxis.set_major_locator(plt.matplotlib.dates.WeekdayLocator(interval=1))
+                else:  # More than a year - show month/year
+                    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%m/%y'))
+                    ax.xaxis.set_major_locator(plt.matplotlib.dates.MonthLocator(interval=1))
+                
+                plt.xticks(rotation=30, ha='right')
+                fig.autofmt_xdate()
+            else:
+                # Fallback to simple line if no dates
+                ax.plot(range(len(duration_values)), duration_values, marker='o', 
+                       markersize=4, linewidth=1.5, color='#5cb85c')
+                ax.set_xlabel('Session Number', fontsize=10)
         
-        # Add labels and title
-        title = f"Session Length Distribution for {game_name}" if game_name else "All Games Session Length Distribution"
+        elif chart_type == 'scatter':
+            # Create a scatter plot showing individual sessions more clearly
+            if session_dates and all(d is not None for d in session_dates):
+                # Color-code by session length
+                scatter = ax.scatter(session_dates, duration_values, c=duration_values, 
+                                   cmap='viridis', alpha=0.7, s=50, edgecolor='black', linewidth=0.5)
+                
+                # Add colorbar
+                cbar = plt.colorbar(scatter, ax=ax)
+                cbar.set_label(y_label, fontsize=8)
+                
+                # Format x-axis with better readability
+                date_range = max(session_dates) - min(session_dates)
+                
+                if date_range.days <= 7:  # Within a week - show day names
+                    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%a %m/%d'))
+                elif date_range.days <= 31:  # Within a month - show month/day
+                    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%m/%d'))
+                elif date_range.days <= 365:  # Within a year - show month/day
+                    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%m/%d'))
+                    ax.xaxis.set_major_locator(plt.matplotlib.dates.WeekdayLocator(interval=1))
+                else:  # More than a year - show month/year
+                    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%m/%y'))
+                    ax.xaxis.set_major_locator(plt.matplotlib.dates.MonthLocator(interval=1))
+                
+                plt.xticks(rotation=30, ha='right')
+                fig.autofmt_xdate()
+            else:
+                # Fallback scatter without dates
+                ax.scatter(range(len(duration_values)), duration_values, alpha=0.7, 
+                          c=duration_values, cmap='viridis', s=50, edgecolor='black', linewidth=0.5)
+                ax.set_xlabel('Session Number', fontsize=10)
+        
+        elif chart_type == 'box':
+            # Create a box plot showing statistical distribution
+            box_plot = ax.boxplot(duration_values, vert=True, patch_artist=True, 
+                                 boxprops=dict(facecolor='#6f42c1', alpha=0.7),
+                                 medianprops=dict(color='red', linewidth=2))
+            
+            # Add some statistics as text
+            import numpy as np
+            stats_text = f"Mean: {np.mean(duration_values):.1f}\n"
+            stats_text += f"Median: {np.median(duration_values):.1f}\n"
+            stats_text += f"Std: {np.std(duration_values):.1f}"
+            
+            ax.text(1.15, np.median(duration_values), stats_text, 
+                   verticalalignment='center', fontsize=9,
+                   bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8))
+            
+            ax.set_xticklabels(['All Sessions'])
+            ax.set_xlabel('Distribution', fontsize=10)
+        
+        else:  # histogram (original behavior)
+            # Create bins for histogram (in minutes)
+            if max(durations) <= 60:  # All sessions under an hour
+                bins = range(0, int(max(durations)) + 10, 5)  # 5-minute bins
+            else:
+                # Convert to hours for better visualization
+                import numpy as np  # Local import to ensure availability after matplotlib isolation
+                max_duration = max(duration_values)
+                bin_size = max(0.5, max_duration / 10)  # Dynamic bin size
+                bins = np.arange(0, max_duration + bin_size, bin_size)
+            
+            # Plot histogram
+            ax.hist(duration_values, bins=bins, color='#6f42c1', edgecolor='black', alpha=0.7)
+            ax.set_xlabel(y_label, fontsize=10)
+            ax.set_ylabel('Number of Sessions', fontsize=10)
+        
+        # Common settings for all chart types
+        if chart_type != 'histogram':
+            ax.set_ylabel(y_label, fontsize=10)
+        
+        # Add title with chart type information
+        chart_type_names = {
+            'line': 'Timeline', 
+            'scatter': 'Scatter Plot', 
+            'box': 'Box Plot', 
+            'histogram': 'Distribution'
+        }
+        
+        title = f"Session Length {chart_type_names.get(chart_type, 'Distribution')}"
+        if game_name:
+            title += f" for {game_name}"
+        else:
+            title += " for All Games"
+        
         ax.set_title(title, fontsize=12)
-        ax.set_xlabel(xlabel, fontsize=10)
-        ax.set_ylabel('Number of Sessions', fontsize=10)
+        
+        # Add session count to title
+        session_count_text = f"({len(durations)} sessions)"
+        ax.text(0.99, 0.95, session_count_text, transform=ax.transAxes, 
+               fontsize=9, horizontalalignment='right', verticalalignment='top',
+               bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
         
         # Adjust for better appearance
         plt.tight_layout()

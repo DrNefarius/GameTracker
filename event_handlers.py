@@ -46,7 +46,7 @@ def record_status_change(game_data, old_status, new_status):
     return status_change
 
 def update_statistics_tab(window, data, selected_game=None, update_game_list=True, contributions_year=None, 
-                          heatmap_window_months=6, heatmap_end_date=None):
+                          heatmap_window_months=6, heatmap_end_date=None, distribution_chart_type='line'):
     """Update all elements in the Statistics tab"""
     # Extract all sessions
     all_sessions = extract_all_sessions(data)
@@ -241,17 +241,20 @@ def update_statistics_tab(window, data, selected_game=None, update_game_list=Tru
         
         # Create other charts
         timeline_data = create_session_timeline_chart(game_sessions, selected_game)
-        distribution_data = create_session_distribution_chart(game_sessions, selected_game)
+        distribution_data = create_session_distribution_chart(game_sessions, selected_game, distribution_chart_type)
         heatmap_data = create_session_heatmap(game_sessions, selected_game, heatmap_window_months, heatmap_end_date)
         status_timeline_data = create_status_timeline_chart(status_history, selected_game)
         
-        # Use temporary files for other charts
+        # Use temporary files for other charts with unique names to force refresh
         import tempfile
+        import time
         temp_dir = tempfile.gettempdir()
-        timeline_file = os.path.join(temp_dir, 'timeline_temp.png')
-        distribution_file = os.path.join(temp_dir, 'distribution_temp.png')
-        heatmap_file = os.path.join(temp_dir, 'heatmap_temp.png')
-        status_timeline_file = os.path.join(temp_dir, 'status_timeline_temp.png')
+        timestamp = str(int(time.time() * 1000))  # Millisecond timestamp for uniqueness
+        
+        timeline_file = os.path.join(temp_dir, f'timeline_temp_{timestamp}.png')
+        distribution_file = os.path.join(temp_dir, f'distribution_temp_{timestamp}.png')
+        heatmap_file = os.path.join(temp_dir, f'heatmap_temp_{timestamp}.png')
+        status_timeline_file = os.path.join(temp_dir, f'status_timeline_temp_{timestamp}.png')
         
         with open(timeline_file, 'wb') as f:
             f.write(timeline_data.getvalue())
@@ -264,6 +267,8 @@ def update_statistics_tab(window, data, selected_game=None, update_game_list=Tru
             
         with open(status_timeline_file, 'wb') as f:
             f.write(status_timeline_data.getvalue())
+        
+        print(f"Updated distribution chart file: {distribution_file}")
         
         window['-SESSIONS-TIMELINE-'].update(filename=timeline_file)
         window['-SESSIONS-DISTRIBUTION-'].update(filename=distribution_file)
@@ -313,7 +318,7 @@ def update_statistics_tab(window, data, selected_game=None, update_game_list=Tru
         
         # Create other charts
         timeline_data = create_session_timeline_chart(all_sessions)
-        distribution_data = create_session_distribution_chart(all_sessions)
+        distribution_data = create_session_distribution_chart(all_sessions, None, distribution_chart_type)
         heatmap_data = create_session_heatmap(all_sessions, None, heatmap_window_months, heatmap_end_date)
         
         # For status timeline in overview mode, show placeholder
@@ -330,13 +335,16 @@ def update_statistics_tab(window, data, selected_game=None, update_game_list=Tru
         status_timeline_buf.seek(0)
         plt.close(fig)
         
-        # Use temporary files for other charts
+        # Use temporary files for other charts with unique names to force refresh
         import tempfile
+        import time
         temp_dir = tempfile.gettempdir()
-        timeline_file = os.path.join(temp_dir, 'timeline_temp.png')
-        distribution_file = os.path.join(temp_dir, 'distribution_temp.png')
-        heatmap_file = os.path.join(temp_dir, 'heatmap_temp.png')
-        status_timeline_file = os.path.join(temp_dir, 'status_timeline_temp.png')
+        timestamp = str(int(time.time() * 1000))  # Millisecond timestamp for uniqueness
+        
+        timeline_file = os.path.join(temp_dir, f'timeline_temp_{timestamp}.png')
+        distribution_file = os.path.join(temp_dir, f'distribution_temp_{timestamp}.png')
+        heatmap_file = os.path.join(temp_dir, f'heatmap_temp_{timestamp}.png')
+        status_timeline_file = os.path.join(temp_dir, f'status_timeline_temp_{timestamp}.png')
         
         with open(timeline_file, 'wb') as f:
             f.write(timeline_data.getvalue())
@@ -587,7 +595,7 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
                 # Auto-save after deletion
                 if fn:
                     save_data(data_with_indices, fn, data_storage)
-                
+
                 sg.popup(f"'{existing_entry[0]}' has been deleted.", title="Deletion Complete")
                 return {'action': 'game_deleted', 'data': data_with_indices}
         

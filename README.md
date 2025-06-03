@@ -14,12 +14,10 @@
 - [Running the Application](#running-the-application)
 - [Building Executable with cx_Freeze](#building-executable-with-cx_freeze)
 - [File Formats](#file-formats)
-- [Project Structure](#project-structure)
 - [Quick Start Guide](#quick-start-guide)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
-- [Version History](#version-history)
 
 ## Overview
 
@@ -245,29 +243,6 @@ python setup.py build
 - Expected columns: Name, Release Date, Platform, Time, Status, Owned, Last Played
 - Automatically converts to .gmd format after import
 
-## Project Structure
-
-### Core Modules
-- **`main.py`** - Main entry point and event loop
-- **`constants.py`** - Application constants and configuration
-- **`config.py`** - Configuration management
-- **`data_management.py`** - File I/O operations (GMD, Excel import/export)
-- **`utilities.py`** - Helper functions and data formatting
-- **`ratings.py`** - Game and session rating functionality
-- **`game_statistics.py`** - Statistical calculations and summaries
-
-### UI and Interaction Modules  
-- **`ui_components.py`** - UI layout creation and component management
-- **`event_handlers.py`** - Event processing and user interaction handling
-- **`session_management.py`** - Session tracking, time management, and notes
-- **`visualizations.py`** - Chart generation and matplotlib integration
-- **`emoji_utils.py`** - Emoji rendering and image handling
-
-### Additional Files
-- **`setup.py`** - cx_Freeze build configuration
-- **`requirements.txt`** - Python dependencies
-- **`gameslisticon.ico`** - Application icon
-
 ## Quick Start Guide
 
 1. **Add Your First Game**: Click "Add Entry" and fill in game details
@@ -311,18 +286,6 @@ We welcome contributions! Please:
 ## License
 
 This project is licensed under the terms included with the distribution.
-
-## Version History
-
-### v1.5 (Current)
-- ✅ **Enhanced Rating System**: Dual ratings with tags and comments
-- ✅ **Advanced Analytics**: Gaming heatmaps and session analysis
-- ✅ **Unified Feedback**: Combined notes and ratings system
-- ✅ **Improved Visualizations**: Interactive charts and statistics
-- ✅ **Better Data Management**: Automatic migration and backup features
-
-### Previous Versions
-- v1.1: Core functionality with basic game tracking and time management
 
 ---
 
