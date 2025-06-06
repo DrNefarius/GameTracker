@@ -943,22 +943,14 @@ def create_session_heatmap(sessions, game_name=None, window_months=6, end_date=N
         plt.close(fig)
         return buf
     
-    # Process session data to extract gaming intensity and pauses
-    session_data = []
+    # Process session data to extract gaming intensity and pauses, handling midnight-spanning sessions
+    session_segments = []
     
     for session in windowed_sessions:
         try:
             if 'start' in session and 'end' in session and 'pauses' in session:
                 start_time = datetime.fromisoformat(session['start'])
                 end_time = datetime.fromisoformat(session['end'])
-                
-                # Basic session info
-                session_info = {
-                    'start': start_time,
-                    'end': end_time,
-                    'date': start_time.date(),
-                    'pauses': []
-                }
                 
                 # Process pauses - now they're already in integrated format
                 pause_periods = []
@@ -976,22 +968,62 @@ def create_session_heatmap(sessions, game_name=None, window_months=6, end_date=N
                             })
                         # Skip incomplete pauses (session ended while paused)
                 
-                session_info['pauses'] = pause_periods
-                session_data.append(session_info)
+                # Handle sessions that span midnight by splitting them into daily segments
+                current_time = start_time
+                original_session_id = id(session)  # Use object id to identify segments from same session
+                
+                while current_time < end_time:
+                    # Calculate the end of current day (next midnight)
+                    current_date = current_time.date()
+                    next_midnight = datetime.combine(current_date + timedelta(days=1), datetime.min.time())
+                    
+                    # Determine segment end time (either session end or next midnight, whichever is earlier)
+                    segment_end = min(end_time, next_midnight)
+                    
+                    # Create session segment for this day
+                    segment_info = {
+                        'start': current_time,
+                        'end': segment_end,
+                        'date': current_date,
+                        'pauses': [],
+                        'is_continuation': current_time != start_time,  # Mark if this is continuation from previous day
+                        'continues_next_day': segment_end == next_midnight and segment_end < end_time,  # Mark if continues to next day
+                        'original_session_id': original_session_id
+                    }
+                    
+                    # Filter pauses to only include those within this segment
+                    for pause in pause_periods:
+                        # Check if pause overlaps with this segment
+                        if (pause['start'] < segment_end and pause['end'] > current_time):
+                            # Clip pause to segment boundaries
+                            segment_pause = {
+                                'start': max(pause['start'], current_time),
+                                'end': min(pause['end'], segment_end),
+                                'duration': 0  # Will be recalculated
+                            }
+                            # Recalculate duration for clipped pause
+                            segment_pause['duration'] = (segment_pause['end'] - segment_pause['start']).total_seconds() / 60
+                            segment_info['pauses'].append(segment_pause)
+                    
+                    session_segments.append(segment_info)
+                    
+                    # Move to next day
+                    current_time = next_midnight
+                    
         except Exception as e:
             print(f"Error processing session for heatmap: {str(e)}")
             continue
     
-    # Sort sessions by date
-    session_data.sort(key=lambda x: x['start'])
+    # Sort segments by date then by start time
+    session_segments.sort(key=lambda x: (x['start']))
     
-    # Group sessions by date
+    # Group segments by date
     date_sessions = {}
-    for s in session_data:
-        date_str = s['date'].strftime('%Y-%m-%d')
+    for segment in session_segments:
+        date_str = segment['date'].strftime('%Y-%m-%d')
         if date_str not in date_sessions:
             date_sessions[date_str] = []
-        date_sessions[date_str].append(s)
+        date_sessions[date_str].append(segment)
     
     # Create the heatmap visualization
     fig, ax = plt.subplots(figsize=(9, 3.5))
@@ -1015,30 +1047,56 @@ def create_session_heatmap(sessions, game_name=None, window_months=6, end_date=N
         ax.set_xticks(range(0, 25, 3))
         ax.set_xticklabels([f"{i:02d}:00" for i in range(0, 25, 3)], fontsize=8)
         
-        # For each date, draw sessions as blocks
+        # For each date, draw session segments as blocks
         for i, date in enumerate(dates):
             # Draw date label
             ax.text(-0.5, i + 0.5, date, ha='right', va='center', fontsize=8)
             
             # Draw sessions for this date
-            for session in date_sessions[date]:
-                start_hour = session['start'].hour + session['start'].minute / 60
-                end_hour = session['end'].hour + session['end'].minute / 60
+            for segment in date_sessions[date]:
+                start_hour = segment['start'].hour + segment['start'].minute / 60
+                end_hour = segment['end'].hour + segment['end'].minute / 60
                 
-                # Handle sessions that span midnight
-                if end_hour < start_hour:
+                # Handle edge case where segment ends exactly at midnight (24:00)
+                if end_hour == 0 and segment['end'].time() == datetime.min.time():
                     end_hour = 24
+                
+                # Choose color and styling based on segment type
+                if segment['is_continuation'] and segment['continues_next_day']:
+                    # Middle segment of a multi-day session
+                    facecolor = '#4a9a4a'  # Darker green
+                    edgecolor = '#2d5a2d'
+                    linestyle = ':'
+                elif segment['is_continuation']:
+                    # Final segment of a multi-day session
+                    facecolor = '#5cb85c'  # Normal green
+                    edgecolor = '#2d5a2d'
+                    linestyle = '-'
+                elif segment['continues_next_day']:
+                    # First segment of a multi-day session
+                    facecolor = '#5cb85c'  # Normal green  
+                    edgecolor = '#2d5a2d'
+                    linestyle = '-'
+                else:
+                    # Single-day session
+                    facecolor = '#5cb85c'  # Normal green
+                    edgecolor = None
+                    linestyle = '-'
                 
                 # Draw the base session block
                 rect = plt.Rectangle((start_hour, i), end_hour - start_hour, 0.8, 
-                                   alpha=0.7, edgecolor='none',
-                                   facecolor='#5cb85c')  # Green for gaming time
+                                   alpha=0.7, edgecolor=edgecolor, linewidth=1 if edgecolor else 0,
+                                   linestyle=linestyle, facecolor=facecolor)
                 ax.add_patch(rect)
                 
                 # Draw pauses as overlays
-                for pause in session['pauses']:
+                for pause in segment['pauses']:
                     pause_start = pause['start'].hour + pause['start'].minute / 60
                     pause_end = pause['end'].hour + pause['end'].minute / 60
+                    
+                    # Handle pause that might end at midnight
+                    if pause_end == 0 and pause['end'].time() == datetime.min.time():
+                        pause_end = 24
                     
                     # Make sure pause is within session bounds
                     if pause_start >= start_hour and pause_end <= end_hour:
@@ -1048,20 +1106,33 @@ def create_session_heatmap(sessions, game_name=None, window_months=6, end_date=N
                                                  facecolor='#ff9933')  # Orange for pauses
                         ax.add_patch(pause_rect)
                 
-                # Add emoji indicators for fun
+                # Add visual indicators
                 mid_point = (start_hour + end_hour) / 2
-                if len(session['pauses']) == 0:
-                    # No pauses - hardcore gamer!
-                    ax.text(mid_point, i + 0.4, "★", ha='center', va='center', fontsize=12, fontweight='bold')
-                elif len(session['pauses']) == 1:
-                    # One pause - normal
-                    ax.text(mid_point, i + 0.4, "◉", ha='center', va='center', fontsize=12)
-                elif len(session['pauses']) < 4:
-                    # A few pauses
-                    ax.text(mid_point, i + 0.4, "◯", ha='center', va='center', fontsize=12)
+                
+                # For continuation segments, add special markers
+                if segment['is_continuation'] and segment['continues_next_day']:
+                    # Middle segment - use double arrow
+                    ax.text(mid_point, i + 0.4, "↔", ha='center', va='center', fontsize=12, fontweight='bold')
+                elif segment['is_continuation']:
+                    # End segment - use left arrow
+                    ax.text(mid_point, i + 0.4, "←", ha='center', va='center', fontsize=12, fontweight='bold')
+                elif segment['continues_next_day']:
+                    # Start segment - use right arrow
+                    ax.text(mid_point, i + 0.4, "→", ha='center', va='center', fontsize=12, fontweight='bold')
                 else:
-                    # Many pauses! Distracted gamer
-                    ax.text(mid_point, i + 0.4, "×", ha='center', va='center', fontsize=12)
+                    # Regular single-day session indicators
+                    if len(segment['pauses']) == 0:
+                        # No pauses - hardcore gamer!
+                        ax.text(mid_point, i + 0.4, "★", ha='center', va='center', fontsize=12, fontweight='bold')
+                    elif len(segment['pauses']) == 1:
+                        # One pause - normal
+                        ax.text(mid_point, i + 0.4, "◉", ha='center', va='center', fontsize=12)
+                    elif len(segment['pauses']) < 4:
+                        # A few pauses
+                        ax.text(mid_point, i + 0.4, "◯", ha='center', va='center', fontsize=12)
+                    else:
+                        # Many pauses! Distracted gamer
+                        ax.text(mid_point, i + 0.4, "×", ha='center', va='center', fontsize=12)
         
         # Remove y-axis ticks
         ax.set_yticks([])
@@ -1076,9 +1147,9 @@ def create_session_heatmap(sessions, game_name=None, window_months=6, end_date=N
         ax.set_title(title, fontsize=12)
         ax.set_xlabel("Time of Day", fontsize=10)
         
-        # Add session count information
-        total_sessions = sum(len(sessions) for sessions in date_sessions.values())
-        ax.text(1.05, 0.15, f"Sessions: {total_sessions}", transform=ax.transAxes, 
+        # Add session count information (count original sessions, not segments)
+        unique_sessions = len(set(segment['original_session_id'] for segment in session_segments))
+        ax.text(1.05, 0.15, f"Sessions: {unique_sessions}", transform=ax.transAxes, 
                 fontsize=10, horizontalalignment='left', verticalalignment='top',
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8))
         
@@ -1086,6 +1157,12 @@ def create_session_heatmap(sessions, game_name=None, window_months=6, end_date=N
         legend_elements = [
             plt.Rectangle((0, 0), 1, 1, facecolor='#5cb85c', alpha=0.7, label='Active Gaming'),
             plt.Rectangle((0, 0), 1, 1, facecolor='#ff9933', alpha=0.8, label='Pauses'),
+            plt.Line2D([0], [0], marker='$→$', color='black', label='Session Continues Next Day', linestyle='',
+                      markerfacecolor='k', markersize=10),
+            plt.Line2D([0], [0], marker='$←$', color='black', label='Session From Previous Day', linestyle='', 
+                      markerfacecolor='k', markersize=10),
+            plt.Line2D([0], [0], marker='$↔$', color='black', label='Multi-Day Session Middle', linestyle='', 
+                      markerfacecolor='k', markersize=10),
             plt.Line2D([0], [0], marker='$★$', color='black', label='Focused Session (No Pauses)', linestyle='',
                       markerfacecolor='k', markersize=7),
             plt.Line2D([0], [0], marker='$◉$', color='black', label='Brief Pause (1 Pause)', linestyle='', 
