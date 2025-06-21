@@ -690,6 +690,27 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
             sg.popup(f"Rating saved for {game_data[0]}", title="Rating Added")
             return {'action': 'game_rated', 'data': data_with_indices}
     
+    elif action == "Add Session":
+        # Get game data
+        game_data = data_with_indices[row_index][1]
+        game_name = game_data[0]
+        
+        # Show manual session popup
+        from session_management import show_manual_session_popup, add_manual_session_to_game
+        session = show_manual_session_popup(game_name)
+        if session:
+            # Add session to game
+            success = add_manual_session_to_game(game_name, session, data_with_indices, data_storage)
+            if success:
+                # Save data after adding session
+                if fn:
+                    save_data(data_with_indices, fn, data_storage)
+                
+                sg.popup(f"Manual session added to {game_name}!", title="Session Added")
+                return {'action': 'session_added', 'data': data_with_indices}
+            else:
+                sg.popup_error(f"Failed to add session to {game_name}", title="Error")
+    
     return None
 
 def handle_session_table_click(values, selected_game, data_with_indices, window, fn=None, data_storage=None):

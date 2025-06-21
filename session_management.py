@@ -10,7 +10,7 @@ import tempfile
 import PySimpleGUI as sg
 import matplotlib.pyplot as plt
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date, time
 from collections import defaultdict, Counter
 
 from constants import STAR_FILLED, STAR_EMPTY, RATING_TAGS, NEGATIVE_TAGS, NEUTRAL_TAGS, POSITIVE_TAGS
@@ -19,11 +19,23 @@ from ratings import show_rating_popup
 from data_management import save_data
 from visualizations import isolate_matplotlib_env
 
+
+def get_latest_session_end_time(sessions):
+    """Helper function to find the latest session end time from a list of sessions"""
+    latest_end_time = None
+    for session in sessions:
+        if 'end' in session:
+            try:
+                session_end = datetime.fromisoformat(session['end'])
+                if latest_end_time is None or session_end > latest_end_time:
+                    latest_end_time = session_end
+            except (ValueError, TypeError):
+                continue
+    return latest_end_time
+
+
 def update_time_and_date(row_index, added_time, session, data_with_indices, data_storage=None):
     """Helper function to update time and last tracked date"""
-    # Update the last tracked date
-    last_tracked_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    data_with_indices[row_index][1][6] = last_tracked_date  # Update last-tracked column
 
     # Update the time
     current_time_str = data_with_indices[row_index][1][3]
@@ -64,6 +76,18 @@ def update_time_and_date(row_index, added_time, session, data_with_indices, data
         
         # Add the new session
         data_with_indices[row_index][1][7].append(session)
+
+    # Update the last played date to the latest session end time
+    if len(data_with_indices[row_index][1]) > 7 and data_with_indices[row_index][1][7]:
+        latest_end_time = get_latest_session_end_time(data_with_indices[row_index][1][7])
+        if latest_end_time:
+            data_with_indices[row_index][1][6] = latest_end_time.strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            # Fallback to current time if no valid session end times found
+            data_with_indices[row_index][1][6] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        # No sessions available, use current time
+        data_with_indices[row_index][1][6] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # Update the full dataset when modifying filtered data
     if data_storage:
@@ -2479,3 +2503,343 @@ def find_most_active_period(sessions, window_months=1):
         current_date -= timedelta(days=30)
     
     return best_end_date
+
+def show_manual_session_popup(game_name):
+    """Show a popup for manually adding a gaming session with start/end times and feedback"""
+    # Default values for new session
+    today = date.today()
+    default_start_date = today.strftime('%Y-%m-%d')
+    default_start_time = '19:00'
+    default_end_date = today.strftime('%Y-%m-%d')
+    default_end_time = '21:00'
+    
+    layout = [
+        [sg.Text(f"Add Manual Session for {game_name}", font=('Arial', 14, 'bold'))],
+        [sg.HorizontalSeparator()],
+        
+        # Session timing section - two input methods side by side
+        [sg.Column([
+            [sg.Frame('Method 1: Start + End Times', [
+                [sg.Text("Start Date:", size=(12, 1)), sg.Input(default_text=default_start_date, size=(12, 1), key='-START-DATE-'),
+                 sg.CalendarButton('📅', target='-START-DATE-', format='%Y-%m-%d', size=(3, 1))],
+                [sg.Text("Start Time:", size=(12, 1)), sg.Input(default_text=default_start_time, size=(8, 1), key='-START-TIME-'),
+                 sg.Text("(HH:MM format)")],
+                [sg.Text("End Date:", size=(12, 1)), sg.Input(default_text=default_end_date, size=(12, 1), key='-END-DATE-'),
+                 sg.CalendarButton('📅', target='-END-DATE-', format='%Y-%m-%d', size=(3, 1))],
+                [sg.Text("End Time:", size=(12, 1)), sg.Input(default_text=default_end_time, size=(8, 1), key='-END-TIME-'),
+                 sg.Text("(HH:MM format)")]
+            ], font=('Arial', 10), pad=((0, 0), (10, 15)))],
+        ], element_justification='left'),
+        sg.Column([
+            [sg.Frame('Method 2: Duration + End Time', [
+                [sg.Text("Duration:", size=(12, 1)), sg.Input(size=(8, 1), key='-DURATION-', enable_events=True),
+                 sg.Text("(HH:MM format)")],
+                [sg.Text("End Date:", size=(12, 1)), sg.Input(size=(12, 1), key='-END-DATE-ALT-', enable_events=True),
+                 sg.CalendarButton('📅', target='-END-DATE-ALT-', format='%Y-%m-%d', size=(3, 1))],
+                [sg.Text("End Time:", size=(12, 1)), sg.Input(size=(8, 1), key='-END-TIME-ALT-', enable_events=True),
+                 sg.Text("(HH:MM format)")],
+                [sg.Text("Calculated start:", size=(12, 1), font=('Arial', 9, 'italic')), 
+                 sg.Text("", size=(20, 1), key='-CALC-START-', font=('Arial', 9, 'italic'))]
+            ], font=('Arial', 10), pad=((0, 0), (10, 15)))],
+        ], element_justification='left')],
+        
+        # Optional feedback section  
+        [sg.Checkbox('Add session feedback (notes, rating, tags)', default=False, key='-ENABLE-FEEDBACK-', enable_events=True, pad=((0, 0), (5, 5)))],
+        
+        # Consistent container for feedback content to prevent layout shifts
+        [sg.Column([
+            [sg.Frame('Session Feedback (Optional)', [
+                [sg.Text("Session thoughts/notes:")],
+                [sg.Multiline(size=(45, 3), key='-FEEDBACK-TEXT-')],
+                [sg.Checkbox('Rate this session', default=False, key='-ENABLE-RATING-', enable_events=True, pad=((0, 0), (5, 5)))],
+                [sg.Column([
+                    [sg.Frame('Rating', [
+                        [sg.Text('Stars (1-5):'), sg.Text(STAR_FILLED * 3 + STAR_EMPTY * 2, 
+                                                         key='-STARS-DISPLAY-', font=('Arial', 14))],
+                        [sg.Slider(range=(1, 5), default_value=3, 
+                                  orientation='h', size=(30, 15), key='-RATING-STARS-', enable_events=True)],
+                        [sg.Text("Tags (optional):")],
+                        [sg.Column([
+                            [sg.Frame("Negative", [
+                                [sg.Column([[
+                                    sg.Checkbox(tag, key=f'-TAG-{RATING_TAGS.index(tag)}-', size=(11, 1), font=('Arial', 8)) 
+                                    for tag in NEGATIVE_TAGS[:5]
+                                ]], element_justification='left')],
+                                [sg.Column([[
+                                    sg.Checkbox(tag, key=f'-TAG-{RATING_TAGS.index(tag)}-', size=(11, 1), font=('Arial', 8)) 
+                                    for tag in NEGATIVE_TAGS[5:]
+                                ]], element_justification='left')]
+                            ], font=('Arial', 8), relief=sg.RELIEF_SUNKEN, pad=((2, 2), (2, 2)))],
+                            [sg.Frame("Neutral", [
+                                [sg.Column([[
+                                    sg.Checkbox(tag, key=f'-TAG-{RATING_TAGS.index(tag)}-', size=(11, 1), font=('Arial', 8)) 
+                                    for tag in NEUTRAL_TAGS[:5]
+                                ]], element_justification='left')],
+                                [sg.Column([[
+                                    sg.Checkbox(tag, key=f'-TAG-{RATING_TAGS.index(tag)}-', size=(11, 1), font=('Arial', 8)) 
+                                    for tag in NEUTRAL_TAGS[5:]
+                                ]], element_justification='left')]
+                            ], font=('Arial', 8), relief=sg.RELIEF_SUNKEN, pad=((2, 2), (2, 2)))],
+                            [sg.Frame("Positive", [
+                                [sg.Column([[
+                                    sg.Checkbox(tag, key=f'-TAG-{RATING_TAGS.index(tag)}-', size=(11, 1), font=('Arial', 8)) 
+                                    for tag in POSITIVE_TAGS[:5]
+                                ]], element_justification='left')],
+                                [sg.Column([[
+                                    sg.Checkbox(tag, key=f'-TAG-{RATING_TAGS.index(tag)}-', size=(11, 1), font=('Arial', 8)) 
+                                    for tag in POSITIVE_TAGS[5:10]
+                                ]], element_justification='left')],
+                                [sg.Column([[
+                                    sg.Checkbox(tag, key=f'-TAG-{RATING_TAGS.index(tag)}-', size=(11, 1), font=('Arial', 8)) 
+                                    for tag in POSITIVE_TAGS[10:15]
+                                ]], element_justification='left')],
+                                [sg.Column([[
+                                    sg.Checkbox(tag, key=f'-TAG-{RATING_TAGS.index(tag)}-', size=(11, 1), font=('Arial', 8)) 
+                                    for tag in POSITIVE_TAGS[15:20]
+                                ]], element_justification='left')],
+                                [sg.Column([[
+                                    sg.Checkbox(tag, key=f'-TAG-{RATING_TAGS.index(tag)}-', size=(11, 1), font=('Arial', 8)) 
+                                    for tag in POSITIVE_TAGS[20:]
+                                ]], element_justification='left')]
+                            ], font=('Arial', 8), relief=sg.RELIEF_SUNKEN, pad=((2, 2), (2, 2)))]
+                                                 ], scrollable=True, vertical_scroll_only=True, size=(520, 200), pad=((0, 0), (2, 5)))]
+                    ], pad=((0, 0), (2, 5)))]
+                ], key='-RATING-FRAME-', visible=False, pad=((0, 0), (2, 5)))]
+            ], pad=((0, 0), (5, 10)))]
+        ], key='-FEEDBACK-FRAME-', visible=False, expand_x=True, pad=((0, 0), (0, 10)))],
+        
+        [sg.Button('Add Session'), sg.Button('Cancel')]
+    ]
+    
+    popup = sg.Window("Add Manual Gaming Session", layout, modal=True, 
+                     icon='gameslisticon.ico', finalize=True, resizable=True, size=(750, 320))
+    
+    while True:
+        event, values = popup.read()
+        
+        if event in (sg.WIN_CLOSED, 'Cancel'):
+            popup.close()
+            return None
+            
+        elif event == '-ENABLE-FEEDBACK-':
+            # Show/hide feedback section
+            feedback_enabled = values['-ENABLE-FEEDBACK-']
+            popup['-FEEDBACK-FRAME-'].update(visible=feedback_enabled)
+            
+            # Dynamically resize window based on content
+            if feedback_enabled:
+                # Show feedback - increase window size
+                if values['-ENABLE-RATING-']:
+                    popup.size = (750, 830)  # Full size with both feedback and rating
+                else:
+                    popup.size = (750, 480)  # Medium size with just feedback - increased to show text input and buttons
+            else:
+                # Hide feedback - reduce to minimal size
+                popup.size = (750, 320)
+                # Also hide rating when feedback is disabled
+                popup['-ENABLE-RATING-'].update(False)
+                popup['-RATING-FRAME-'].update(visible=False)
+            
+        elif event == '-ENABLE-RATING-':
+            # Show/hide rating section
+            rating_enabled = values['-ENABLE-RATING-']
+            popup['-RATING-FRAME-'].update(visible=rating_enabled)
+            
+            # Dynamically resize window based on content
+            if rating_enabled and values['-ENABLE-FEEDBACK-']:
+                # Show both feedback and rating - largest size
+                popup.size = (750, 830)
+            elif values['-ENABLE-FEEDBACK-']:
+                # Show only feedback - medium size
+                popup.size = (750, 480)
+            else:
+                # Minimal size
+                popup.size = (750, 320)
+            
+        elif event == '-RATING-STARS-':
+            # Update stars display
+            stars = int(values['-RATING-STARS-'])
+            popup['-STARS-DISPLAY-'].update(STAR_FILLED * stars + STAR_EMPTY * (5 - stars))
+            
+        elif event in ['-DURATION-', '-END-DATE-ALT-', '-END-TIME-ALT-']:
+            # Auto-calculate start time from duration + end time
+            try:
+                duration_str = values['-DURATION-'].strip()
+                end_date_str = values['-END-DATE-ALT-'].strip()
+                end_time_str = values['-END-TIME-ALT-'].strip()
+                
+                if duration_str and end_date_str and end_time_str:
+                    # Parse duration (HH:MM format)
+                    if ':' in duration_str and len(duration_str.split(':')) == 2:
+                        hours, minutes = map(int, duration_str.split(':'))
+                        duration_td = timedelta(hours=hours, minutes=minutes)
+                        
+                        # Parse end datetime
+                        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                        end_time_obj = datetime.strptime(end_time_str, '%H:%M').time()
+                        end_datetime = datetime.combine(end_date, end_time_obj)
+                        
+                        # Calculate start time
+                        start_datetime = end_datetime - duration_td
+                        
+                        # Update display
+                        calc_text = f"{start_datetime.strftime('%Y-%m-%d %H:%M')}"
+                        popup['-CALC-START-'].update(calc_text)
+                        
+                        # Auto-fill Method 1 fields for consistency
+                        popup['-START-DATE-'].update(start_datetime.strftime('%Y-%m-%d'))
+                        popup['-START-TIME-'].update(start_datetime.strftime('%H:%M'))
+                        popup['-END-DATE-'].update(end_date_str)
+                        popup['-END-TIME-'].update(end_time_str)
+                    else:
+                        popup['-CALC-START-'].update("Invalid duration format")
+                else:
+                    popup['-CALC-START-'].update("")
+            except (ValueError, TypeError):
+                popup['-CALC-START-'].update("Invalid input")
+            
+        elif event == 'Add Session':
+            # Validate and create session
+            try:
+                # Parse start datetime
+                start_date_str = values['-START-DATE-'].strip()
+                start_time_str = values['-START-TIME-'].strip()
+                end_date_str = values['-END-DATE-'].strip()
+                end_time_str = values['-END-TIME-'].strip()
+                
+                # Validate required fields
+                if not all([start_date_str, start_time_str, end_date_str, end_time_str]):
+                    sg.popup_error("All date and time fields are required!", title="Validation Error")
+                    continue
+                
+                # Parse dates and times
+                try:
+                    start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+                    start_time_obj = datetime.strptime(start_time_str, '%H:%M').time()
+                    end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+                    end_time_obj = datetime.strptime(end_time_str, '%H:%M').time()
+                except ValueError as e:
+                    sg.popup_error(f"Invalid date/time format: {str(e)}\n\nPlease use YYYY-MM-DD for dates and HH:MM for times.", 
+                                  title="Format Error")
+                    continue
+                
+                # Combine date and time
+                start_datetime = datetime.combine(start_date, start_time_obj)
+                end_datetime = datetime.combine(end_date, end_time_obj)
+                
+                # Validate that end is after start
+                if end_datetime <= start_datetime:
+                    sg.popup_error("End time must be after start time!", title="Validation Error")
+                    continue
+                
+                # Calculate duration
+                duration_timedelta = end_datetime - start_datetime
+                duration_str = format_timedelta_with_seconds(duration_timedelta)
+                
+                # Build session object
+                session = {
+                    'start': start_datetime.isoformat(),
+                    'end': end_datetime.isoformat(),
+                    'duration': duration_str,
+                    'pauses': []  # Manual sessions have no pauses
+                }
+                
+                # Add feedback if enabled
+                if values['-ENABLE-FEEDBACK-']:
+                    feedback_text = values['-FEEDBACK-TEXT-'].strip()
+                    
+                    # Build feedback object
+                    feedback = {
+                        'text': feedback_text if feedback_text else '',
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    
+                    # Add rating if enabled
+                    if values['-ENABLE-RATING-']:
+                        stars = int(values['-RATING-STARS-'])
+                        tags = []
+                        for i, tag in enumerate(RATING_TAGS):
+                            if values[f'-TAG-{i}-']:
+                                tags.append(tag)
+                        
+                        feedback['rating'] = {
+                            'stars': stars,
+                            'tags': tags,
+                            'timestamp': datetime.now().isoformat()
+                        }
+                    
+                    # Only add feedback if there's actual content
+                    if feedback['text'] or 'rating' in feedback:
+                        session['feedback'] = feedback
+                
+                popup.close()
+                return session
+                
+            except Exception as e:
+                sg.popup_error(f"Error creating session: {str(e)}", title="Error")
+                continue
+    
+    return None
+
+
+def add_manual_session_to_game(game_name, session, data_with_indices, data_storage=None):
+    """Add a manually created session to a game's session list"""
+    # Find the game in the data
+    for idx, (original_idx, game_data) in enumerate(data_with_indices):
+        if game_data[0] == game_name:
+            # Initialize sessions array if it doesn't exist
+            if len(game_data) <= 7 or game_data[7] is None:
+                game_data.append([])
+            
+            # Add the new session
+            game_data[7].append(session)
+            
+            # Update the game's total time
+            try:
+                # Parse session duration
+                duration_str = session['duration']
+                parts = duration_str.split(':')
+                if len(parts) == 3:
+                    h, m, s = map(int, parts)
+                    session_duration = timedelta(hours=h, minutes=m, seconds=s)
+                    
+                    # Get current time
+                    current_time_str = game_data[3]
+                    if current_time_str:
+                        if isinstance(current_time_str, timedelta):
+                            current_time = current_time_str
+                        else:
+                            try:
+                                h2, m2, s2 = map(int, current_time_str.split(':'))
+                                current_time = timedelta(hours=h2, minutes=m2, seconds=s2)
+                            except ValueError:
+                                current_time = timedelta()
+                    else:
+                        current_time = timedelta()
+                    
+                    # Add session duration to total time
+                    new_total_time = current_time + session_duration
+                    game_data[3] = format_timedelta_with_seconds(new_total_time)
+                    
+                    # Update last played date to the latest session end time
+                    latest_end_time = get_latest_session_end_time(game_data[7])
+                    if latest_end_time:
+                        game_data[6] = latest_end_time.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        # Fallback to current time if no valid session end times found
+                        game_data[6] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    
+            except Exception as e:
+                print(f"Error updating game time for manual session: {str(e)}")
+            
+            # Update the full dataset when modifying filtered data
+            if data_storage:
+                # Find and update the correct entry in data_storage
+                for i, (storage_idx, _) in enumerate(data_storage):
+                    if storage_idx == original_idx:
+                        data_storage[i] = (original_idx, game_data)
+                        break
+            
+            return True
+    
+    return False

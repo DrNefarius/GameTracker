@@ -178,8 +178,9 @@ def show_game_actions_dialog(row_index, data_with_indices):
     # Create actions popup
     actions_popup = sg.Window(f"Actions for {game_name}", 
                             [[sg.Text(f"What would you like to do with '{game_name}'?")],
-                            [sg.Button("Track Time"), sg.Button("Edit Game"), 
-                             sg.Button("Rate Game"), sg.Button("Cancel")]],
+                            [sg.Button("Track Time"), sg.Button("Edit Game")], 
+                            [sg.Button("Rate Game"), sg.Button("Add Session")],
+                            [sg.Button("Cancel")]],
                             modal=True, icon='gameslisticon.ico')
     
     action, _ = actions_popup.read()
@@ -402,7 +403,8 @@ def create_main_layout(data_with_indices):
             [sg.Text("No game selected", font=('Helvetica', 12, 'bold'), key='-SELECTED-GAME-')],
             [sg.Text("Sessions: 0", key='-GAME-SESSIONS-', size=(20, 1)),
              sg.Text("Total Time: 00:00:00", key='-GAME-SESSION-TIME-', size=(20, 1))],
-            [sg.Button("View Activity Log", key='-VIEW-ALL-NOTES-', tooltip='Display the activity log for the selected game', size=(15, 1))],
+            [sg.Button("View Activity Log", key='-VIEW-ALL-NOTES-', tooltip='Display the activity log for the selected game', size=(15, 1)),
+             sg.Button("Add Session", key='-ADD-SESSION-', tooltip='Manually add a gaming session for the selected game', size=(12, 1))],
             [sg.TabGroup([
                 [sg.Tab('Sessions', [
                     [sg.Text("Click on a session with [FEEDBACK] to view or edit feedback", font=('Helvetica', 8, 'italic'))],
