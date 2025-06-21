@@ -7,6 +7,7 @@ import os
 import sys
 import platform
 import base64
+import re
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 import PySimpleGUI as sg
@@ -305,7 +306,6 @@ def get_emoji(name):
 
 def render_emoji_text(text, size=16):
     """Render text that may contain emoji names in {emoji_name} format"""
-    import re
     
     # Find all {emoji_name} patterns
     pattern = r'\{([^}]+)\}'

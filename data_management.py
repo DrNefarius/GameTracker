@@ -7,6 +7,8 @@ import json
 import os
 import openpyxl
 from datetime import datetime, timedelta
+from utilities import format_timedelta_with_seconds
+from config import load_config, save_config
 
 def save_to_gmd(data, filename):
     """Save game data to a .gmd file"""
@@ -20,7 +22,6 @@ def save_to_gmd(data, filename):
         # Handle timedelta objects in time_played
         time_played = row[3]
         if isinstance(time_played, timedelta):
-            from utilities import format_timedelta_with_seconds
             time_played = format_timedelta_with_seconds(time_played)
         
         # Get sessions for this game if available (element at index 7)
@@ -178,7 +179,6 @@ def save_data(data_with_idx, filename, data_storage=None):
         save_to_gmd(data_with_idx, filename)
     
     # Update config with the saved file path
-    from config import load_config, save_config
     config = load_config()
     config['last_file'] = filename
     save_config(config)

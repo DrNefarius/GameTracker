@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 from constants import STAR_FILLED, STAR_EMPTY, RATING_TAGS, COMPLETED_STYLE, IN_PROGRESS_STYLE, FUTURE_RELEASE_STYLE, DEFAULT_STYLE
 from ratings import format_rating, calculate_session_rating_average, show_rating_popup
-from utilities import calculate_pixel_width, get_game_table_row_colors
+from utilities import calculate_pixel_width, get_game_table_row_colors, format_timedelta_with_seconds, format_timedelta
 from game_statistics import count_total_completed, count_total_entries, calculate_completion_percentage, calculate_total_time
 
 def get_display_row_with_rating(row):
@@ -178,8 +178,7 @@ def show_game_actions_dialog(row_index, data_with_indices):
     # Create actions popup
     actions_popup = sg.Window(f"Actions for {game_name}", 
                             [[sg.Text(f"What would you like to do with '{game_name}'?")],
-                            [sg.Button("Track Time"), sg.Button("Edit Game")], 
-                            [sg.Button("Rate Game"), sg.Button("Add Session")],
+                            [sg.Button("Track Time"), sg.Button("Edit Game"), sg.Button("Rate Game"), sg.Button("Add Session")],
                             [sg.Button("Cancel")]],
                             modal=True, icon='gameslisticon.ico')
     
@@ -245,17 +244,14 @@ def create_main_layout(data_with_indices):
         if row[3] and isinstance(row[3], str):
             try:
                 h, m, s = map(int, row[3].split(':'))
-                from utilities import format_timedelta_with_seconds
                 row[3] = format_timedelta_with_seconds(timedelta(hours=h, minutes=m, seconds=s))
             except ValueError:
                 try:
                     h, m = map(int, row[3].split(':'))
-                    from utilities import format_timedelta
                     row[3] = format_timedelta(timedelta(hours=h, minutes=m))
                 except ValueError:
                     row[3] = '00:00:00'
         elif isinstance(row[3], timedelta):
-            from utilities import format_timedelta_with_seconds
             row[3] = format_timedelta_with_seconds(row[3])
         
         # Handle last played date formatting
