@@ -878,7 +878,7 @@ def create_session_distribution_chart(sessions, game_name=None, chart_type='line
     
     return buf
 
-def create_session_heatmap(sessions, game_name=None, window_months=6, end_date=None):
+def create_session_heatmap(sessions, game_name=None, window_months=1, end_date=None):
     """Create a heatmap visualization showing gaming intensity and pauses with time-based windowing"""
     # Isolate matplotlib from the main application
     isolate_matplotlib_env()
@@ -2427,7 +2427,7 @@ def setup_contributions_tooltip_callback(window, canvas_key='-CONTRIBUTIONS-CANV
     
     return tooltip_callback
 
-def find_most_active_period(sessions, window_months=6):
+def find_most_active_period(sessions, window_months=1):
     """Find the most active gaming period in the session data"""
     if not sessions:
         return datetime.now().date()

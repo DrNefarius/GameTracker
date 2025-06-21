@@ -454,9 +454,9 @@ def create_main_layout(data_with_indices):
                     [sg.Column([
                         [sg.Text("Window Size:", font=('Arial', 9)),
                          sg.Combo(['1 Month', '3 Months', '6 Months', '1 Year'], 
-                                  default_value='6 Months', key='-HEATMAP-WINDOW-SIZE-', size=(10, 1), enable_events=True)],
+                                  default_value='1 Month', key='-HEATMAP-WINDOW-SIZE-', size=(10, 1), enable_events=True)],
                         [sg.Button("◀", key='-HEATMAP-PREV-', size=(2, 1)),
-                         sg.Text("Recent 6 Months", key='-HEATMAP-PERIOD-DISPLAY-', 
+                         sg.Text("Recent 1 Month", key='-HEATMAP-PERIOD-DISPLAY-', 
                                  font=('Arial', 10, 'bold'), size=(20, 1), justification='center'),
                          sg.Button("▶", key='-HEATMAP-NEXT-', size=(2, 1))],
                         [sg.Button("Latest", key='-HEATMAP-LATEST-', size=(8, 1)),

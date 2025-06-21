@@ -46,7 +46,7 @@ def record_status_change(game_data, old_status, new_status):
     return status_change
 
 def update_statistics_tab(window, data, selected_game=None, update_game_list=True, contributions_year=None, 
-                          heatmap_window_months=6, heatmap_end_date=None, distribution_chart_type='line'):
+                          heatmap_window_months=1, heatmap_end_date=None, distribution_chart_type='line'):
     """Update all elements in the Statistics tab"""
     # Extract all sessions
     all_sessions = extract_all_sessions(data)

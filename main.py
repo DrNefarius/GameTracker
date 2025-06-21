@@ -259,7 +259,7 @@ def main():
                 
                 # Convert window size to months
                 window_text = values['-HEATMAP-WINDOW-SIZE-']
-                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 1)
                 
                 # Get current selected game
                 selected_game = None
@@ -308,8 +308,8 @@ def main():
                 except:
                     contributions_year = datetime.now().year
                 
-                window_text = values['-HEATMAP-WINDOW-SIZE-']
-                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                window_text = values.get('-HEATMAP-WINDOW-SIZE-', '1 Month')
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 1)
                 
                 heatmap_end_date = getattr(main, 'heatmap_end_date', None)
                 
@@ -332,7 +332,7 @@ def main():
                 
                 # Get current window size
                 window_text = values['-HEATMAP-WINDOW-SIZE-']
-                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 1)
                 
                 # Get current end date from the display or use current date
                 current_period = window['-HEATMAP-PERIOD-DISPLAY-'].get()
@@ -372,7 +372,7 @@ def main():
                 
                 # Get current window size
                 window_text = values['-HEATMAP-WINDOW-SIZE-']
-                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 1)
                 
                 # Calculate new end date (move forward by window size)
                 if hasattr(main, 'heatmap_end_date') and main.heatmap_end_date:
@@ -416,7 +416,7 @@ def main():
                 
                 # Get current window size
                 window_text = values['-HEATMAP-WINDOW-SIZE-']
-                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 1)
                 
                 # Get current selected game and contributions year
                 selected_game = None
@@ -444,7 +444,7 @@ def main():
                 
                 # Get current window size
                 window_text = values['-HEATMAP-WINDOW-SIZE-']
-                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 1)
                 
                 # Get sessions to analyze
                 selected_game = None
@@ -496,8 +496,8 @@ def main():
                     except:
                         contributions_year = datetime.now().year
                     
-                    window_text = values.get('-HEATMAP-WINDOW-SIZE-', '6 Months')
-                    window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 6)
+                    window_text = values.get('-HEATMAP-WINDOW-SIZE-', '1 Month')
+                    window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 1)
                     
                     heatmap_end_date = getattr(main, 'heatmap_end_date', None)
                     
