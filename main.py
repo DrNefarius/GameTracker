@@ -144,7 +144,7 @@ def main():
         elif (event in ['Notes::notes_toggle', 'Open', 'Save As', 'Import from Excel', 'User Guide', 
                        'Feature Tour', 'Data Format Info', 'Troubleshooting', 
                        'Release Notes', 'Report Bug', 'About'] or 
-              (event.startswith('Discord:') and event.endswith('::discord_toggle'))):
+              (isinstance(event, str) and event.startswith('Discord:') and event.endswith('::discord_toggle'))):
             result = handle_menu_events(event, window, data_with_indices, fn)
             if result:
                 if result.get('action') == 'file_loaded':
