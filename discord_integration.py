@@ -22,7 +22,7 @@ class DiscordIntegration:
     # Discord Application ID (you'll need to create one at https://discord.com/developers/applications)
     # SETUP REQUIRED: Replace this with your actual Discord Application ID
     # See DISCORD_SETUP.md for detailed setup instructions
-    CLIENT_ID = "1387760989843492947"  # Placeholder - needs to be replaced with actual Discord app ID
+    CLIENT_ID = "1234567890123456789"  # Placeholder - needs to be replaced with actual Discord app ID
     
     def __init__(self, enabled=True):
         self.rpc = None
@@ -143,7 +143,7 @@ class DiscordIntegration:
                 small_image="browsing",
                 small_text=f"In {current_tab}",
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/DrNefarius/GameTracker"}
+                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
                 ]
             )
             self.current_state = "browsing"
@@ -175,7 +175,7 @@ class DiscordIntegration:
                 small_text="In session",
                 start=self.session_start_time,  # Timer shows session duration
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/DrNefarius/GameTracker"}
+                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
                 ]
             )
             self.current_state = "playing"
@@ -201,7 +201,7 @@ class DiscordIntegration:
                 small_image="paused",
                 small_text="Paused",
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/DrNefarius/GameTracker"}
+                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
                 ]
             )
             self.current_state = "paused"
@@ -227,7 +227,7 @@ class DiscordIntegration:
                 small_image="editing",
                 small_text="Adding game",
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/DrNefarius/GameTracker"}
+                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
                 ]
             )
             self.current_state = "adding"
@@ -255,7 +255,7 @@ class DiscordIntegration:
                 small_image="editing",
                 small_text="Editing",
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/DrNefarius/GameTracker"}
+                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
                 ]
             )
             self.current_state = "editing"
@@ -294,7 +294,7 @@ class DiscordIntegration:
                 small_image="statistics",
                 small_text=small_text,
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/DrNefarius/GameTracker"}
+                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
                 ]
             )
             self.current_state = "viewing_stats"
@@ -325,7 +325,7 @@ class DiscordIntegration:
                 small_image="completed",
                 small_text="Session complete",
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/DrNefarius/GameTracker"}
+                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
                 ]
             )
             self.current_state = "session_complete"
