@@ -1,6 +1,6 @@
 # Terms of Service - GamesList Manager
 
-**Last Updated:** January 2, 2025
+**Last Updated:** June 26, 2025
 
 ## 1. Acceptance of Terms
 
