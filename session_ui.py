@@ -10,6 +10,7 @@ from constants import STAR_FILLED, STAR_EMPTY, RATING_TAGS, NEGATIVE_TAGS, NEUTR
 from utilities import format_timedelta_with_seconds
 from session_data import get_latest_session_end_time
 from data_management import save_data
+from discord_integration import get_discord_integration
 
 
 def show_popup(row_index, data_with_indices, window, data_storage=None, save_filename=None):
@@ -65,6 +66,9 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
     session_start_time = None
     session_pauses = []
     current_pause = None  # Track the current incomplete pause
+    
+    # Get Discord integration
+    discord = get_discord_integration()
 
     while True:
         event, _ = popup_window.read(timeout=100)
@@ -110,10 +114,16 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
                 if session_start_time is None:
                     # Record session start time
                     session_start_time = datetime.now().isoformat()
+                    # Update Discord presence to show playing
+                    discord.update_presence_playing(name, datetime.fromisoformat(session_start_time))
                 
                 start_time = time.time() - elapsed_time.total_seconds()
                 running = True
                 popup_window['-PLAY-'].update(disabled=True)
+                
+                # If resuming from pause, update Discord presence back to playing
+                if current_pause:
+                    discord.update_presence_playing(name, datetime.fromisoformat(session_start_time))
                 
                 # Complete current pause if resuming from pause
                 if current_pause:
@@ -140,6 +150,9 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
                 elapsed_time = timedelta(seconds=time.time() - start_time)
                 running = False
                 popup_window['-PLAY-'].update(disabled=False)
+                
+                # Update Discord presence to show paused
+                discord.update_presence_paused(name)
                 
                 # Start a new pause
                 current_pause = {
@@ -177,6 +190,9 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
                 
                 # Update the time and last tracked date
                 update_time_and_date(row_index, elapsed_time, session, data_with_indices, data_storage)
+                
+                # Update Discord presence to show session complete
+                discord.update_presence_session_complete(name, format_timedelta_with_seconds(elapsed_time))
                 
                 # Automatically save the data when tracking is stopped
                 if save_filename:

@@ -31,6 +31,7 @@ from game_statistics import update_summary
 from utilities import safe_sort_by_date, safe_sort_by_time
 from ratings import show_rating_popup, get_session_rating_summary, format_rating
 from help_dialogs import show_user_guide, show_data_format_info, show_troubleshooting_guide, show_feature_tour, show_release_notes, show_bug_report_info, show_about_dialog
+from discord_integration import get_discord_integration
 
 def record_status_change(game_data, old_status, new_status):
     """Record a status change with timestamp"""
@@ -102,6 +103,10 @@ def update_statistics_tab(window, data, selected_game=None, update_game_list=Tru
     
     # If a game is selected, update its specific statistics
     if selected_game:
+        # Update Discord presence for viewing stats
+        discord = get_discord_integration()
+        discord.update_presence_viewing_stats(selected_game)
+        
         # Get sessions for the selected game
         game_sessions = get_game_sessions(data, selected_game)
         
@@ -426,6 +431,32 @@ def handle_menu_events(event, window, data_with_indices, fn):
                 title="Session Feedback", icon='gameslisticon.ico')
         return None
         
+    elif event.startswith('Discord:') and event.endswith('::discord_toggle'):
+        # Toggle Discord Rich Presence integration
+        config = load_config()
+        current_enabled = config.get('discord_enabled', True)
+        new_enabled = not current_enabled
+        
+        # Update config
+        config['discord_enabled'] = new_enabled
+        save_config(config)
+        
+        # Update Discord integration
+        discord = get_discord_integration()
+        if discord:
+            if new_enabled:
+                discord.enable_discord()
+                status_msg = "Discord Rich Presence has been enabled!"
+            else:
+                discord.disable_discord()
+                status_msg = "Discord Rich Presence has been disabled."
+        else:
+            status_msg = "Discord integration is not available."
+        
+        sg.popup(status_msg + "\n\nNote: The menu will show the updated status on next restart.", 
+                title="Discord Integration", icon='gameslisticon.ico')
+        return None
+        
     elif event == 'Open':
         # Open file dialog to select .gmd file
         file_path = sg.popup_get_file('Select .gmd file to open', file_types=(("GMD Files", "*.gmd"),), initial_folder=os.path.dirname(fn))
@@ -576,7 +607,19 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
         
     elif action == "Edit Game":
         existing_entry = data_with_indices[row_index][1]
+        game_name = existing_entry[0]
+        
+        # Update Discord presence for editing game
+        discord = get_discord_integration()
+        discord.update_presence_editing_game(game_name)
+        
         popup_values, action_type, rating = create_entry_popup(existing_entry)
+        
+        # If action_type is None, the dialog was cancelled - reset Discord presence
+        if action_type is None:
+            discord = get_discord_integration()
+            discord.update_presence_browsing("Games List")
+            return None
         
         if action_type == 'Delete':
             # Confirm deletion
@@ -835,6 +878,10 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
 
 def handle_add_entry(data_with_indices, window, fn=None, data_storage=None):
     """Handle adding a new game entry"""
+    # Update Discord presence for adding game
+    discord = get_discord_integration()
+    discord.update_presence_adding_game()
+    
     # Call the popup with no existing entry
     popup_values, action, rating = create_entry_popup()
     
@@ -886,6 +933,11 @@ def handle_add_entry(data_with_indices, window, fn=None, data_storage=None):
         if fn:
             save_data(data_with_indices, fn, data_storage)
         
+        # Return to browsing state
+        discord.update_presence_browsing("Games List")
+        
         return {'action': 'entry_added', 'data': data_with_indices}
     
+    # Return to browsing state if cancelled
+    discord.update_presence_browsing("Games List")
     return None

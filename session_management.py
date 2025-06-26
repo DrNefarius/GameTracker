@@ -75,6 +75,7 @@ def migrate_pauses_to_integrated_structure(session_pauses):
             integrated_pauses.append(current_pause)
             current_pause = None
     
+    # Handle any incomplete pause at the end
     if current_pause:
         current_pause['incomplete'] = True
         integrated_pauses.append(current_pause)
@@ -158,7 +159,7 @@ def migrate_all_game_sessions(data_with_indices):
                             if (has_paused_at and not has_resumed_at) or (has_resumed_at and not has_paused_at):
                                 needs_pause_migration = True
                                 break
-                    
+    
                     if needs_pause_migration:
                         print(f"Migrating pause structure for session in {game_data[0] if game_data else 'unknown game'}")
                         migrated_session['pauses'] = migrate_pauses_to_integrated_structure(migrated_session['pauses'])
@@ -577,8 +578,8 @@ def create_github_style_contributions_heatmap(sessions, game_name=None):
                         if len(game_details) > 3:
                             tooltip_lines.extend(game_details[:3])
                             tooltip_lines.append(f"• ... and {len(game_details) - 3} more")
-                        else:
-                            tooltip_lines.extend(game_details)
+                    else:
+                        tooltip_lines.extend(game_details)
                     
                     tooltip_text = "\n".join(tooltip_lines)
                 else:
@@ -637,7 +638,7 @@ def create_github_style_contributions_heatmap(sessions, game_name=None):
                     current_month = week_start_date.month
                     x_pos = margin_left + week * (square_size + gap_size)
                     canvas.create_text(x_pos, margin_top - 18, text=week_start_date.strftime('%b'), 
-                                     font=('Arial', 8), fill='#586069', anchor='w')
+                                    font=('Arial', 8), fill='#586069', anchor='w')
         
         square_data.clear()
         today = datetime.now().date()

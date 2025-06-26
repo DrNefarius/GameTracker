@@ -12,6 +12,13 @@ from ratings import format_rating, calculate_session_rating_average, show_rating
 from utilities import calculate_pixel_width, get_game_table_row_colors, format_timedelta_with_seconds, format_timedelta
 from game_statistics import count_total_completed, count_total_entries, calculate_completion_percentage, calculate_total_time
 
+def get_discord_menu_text():
+    """Get the current Discord menu text based on enabled status"""
+    from config import load_config
+    config = load_config()
+    discord_enabled = config.get('discord_enabled', True)
+    return f"Discord: {'Enabled' if discord_enabled else 'Disabled'}::discord_toggle"
+
 def get_display_row_with_rating(row):
     """Process a data row to add rating display formatting and arrange for table display"""
     # The table expects 8 columns: Name, Release, Platform, Time, Status, Owned, Last Played, Rating
@@ -484,7 +491,7 @@ def create_main_layout(data_with_indices):
     # Main layout with tabs
     layout = [
         [sg.Menu([['File', ['Open', 'Save As', 'Import from Excel', 'Exit']], 
-                  ['Options', ['Notes::notes_toggle']], 
+                  ['Options', ['Notes::notes_toggle', get_discord_menu_text()]], 
                   ['Help', ['User Guide', 'Feature Tour', '---', 'Data Format Info', 
                            'Troubleshooting', '---', 'Release Notes', 'Report Bug', '---', 'About']]], key='-MENU-')],
         [sg.TabGroup([

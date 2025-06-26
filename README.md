@@ -60,6 +60,14 @@ GamesList Manager is a comprehensive desktop application for managing your video
 - Tag frequency analysis
 - Gaming habit insights
 
+### 🎪 **Discord Rich Presence Integration**
+- Real-time Discord status updates showing current activity
+- Dynamic status for playing games, browsing library, viewing stats
+- Session tracking with elapsed time display
+- Library statistics in Discord status
+- Customizable presence messages and branding
+- Easy setup with your own Discord application
+
 ## Screenshots
 
 ### Main Interface - Games List
@@ -180,6 +188,9 @@ python main.py
   - **Windows**: `%APPDATA%\GamesListManager\`
   - **macOS**: `~/Library/Application Support/GamesListManager/`
   - **Linux**: `~/.config/GamesListManager/`
+
+### Discord Rich Presence Setup (Optional)
+Want to show your gaming library management activity on Discord? See [DISCORD_SETUP.md](DISCORD_SETUP.md) for detailed instructions on setting up Discord Rich Presence integration.
 
 ## Building Executable with cx_Freeze
 

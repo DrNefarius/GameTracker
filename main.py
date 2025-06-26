@@ -22,6 +22,7 @@ from event_handlers import (
 )
 from visualizations import update_summary_charts
 from session_management import display_all_game_notes, get_game_sessions, migrate_all_game_sessions
+from discord_integration import initialize_discord, get_discord_integration, cleanup_discord
 
 def force_scrollable_refresh(window):
     """Force PySimpleGUI to recalculate scrollable areas by temporarily resizing the window"""
@@ -96,6 +97,15 @@ def main():
     if data_with_indices:
         data_with_indices = sorted(data_with_indices, key=lambda x: (x[1][1] == "-", x[1][1]))
 
+    # Initialize Discord Rich Presence with the loaded data
+    discord_enabled = config.get('discord_enabled', True)
+    discord = initialize_discord(enabled=discord_enabled)
+    total_games = count_total_entries(data_with_indices)
+    completed_games = count_total_completed(data_with_indices)
+    print(f"Initial Discord setup: {total_games} games, {completed_games} completed, enabled: {discord_enabled}")
+    discord.update_game_library_stats(total_games, completed_games)
+    discord.update_presence_browsing('Games List')  # Set initial presence
+
     # Create the main window layout
     layout = create_main_layout(data_with_indices)
     
@@ -126,22 +136,37 @@ def main():
         event, values = window.read()
         
         if event == sg.WIN_CLOSED or event == 'Exit':
+            # Cleanup Discord before exiting
+            cleanup_discord()
             break
             
         # Handle menu events
-        elif event in ['Notes::notes_toggle', 'Open', 'Save As', 'Import from Excel', 'User Guide', 
-                      'Feature Tour', 'Data Format Info', 'Troubleshooting', 
-                      'Release Notes', 'Report Bug', 'About']:
+        elif (event in ['Notes::notes_toggle', 'Open', 'Save As', 'Import from Excel', 'User Guide', 
+                       'Feature Tour', 'Data Format Info', 'Troubleshooting', 
+                       'Release Notes', 'Report Bug', 'About'] or 
+              (event.startswith('Discord:') and event.endswith('::discord_toggle'))):
             result = handle_menu_events(event, window, data_with_indices, fn)
             if result:
                 if result.get('action') == 'file_loaded':
                     data_with_indices = result['data']
                     fn = result['filename']
                     data_storage = None  # Reset data storage
+                    
+                    # Update Discord with new file stats
+                    total_games = count_total_entries(data_with_indices)
+                    completed_games = count_total_completed(data_with_indices)
+                    discord.update_game_library_stats(total_games, completed_games)
+                    
+                    # Map tab key to tab name for Discord
+                    current_tab_key = values['-TABGROUP-']
+                    tab_name_map = {'-TAB1-': 'Games List', '-TAB2-': 'Summary', '-TAB3-': 'Statistics'}
+                    current_tab = tab_name_map.get(current_tab_key, 'Games List')
+                    discord.update_presence_browsing(current_tab)
+                    
                     from ui_components import update_table_display
                     update_table_display(data_with_indices, window)
                     update_summary(data_with_indices, window)
-                    if values['-TABGROUP-'] == 'Summary':
+                    if values['-TABGROUP-'] == '-TAB2-':
                         update_summary_charts(data_with_indices)
                         # Update charts after loading data
                         charts = update_summary_charts(data_with_indices)
@@ -151,7 +176,7 @@ def main():
                             window['-PLAYTIME-CHART-'].update(filename=charts['playtime_chart'])
                             window['-RATING-CHART-'].update(filename=charts['rating_chart'])
                             force_scrollable_refresh(window)
-                    elif values['-TABGROUP-'] == 'Statistics':
+                    elif values['-TABGROUP-'] == '-TAB3-':
                         update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
                         force_scrollable_refresh(window)
                 elif result.get('action') == 'file_saved':
@@ -160,10 +185,22 @@ def main():
                     data_with_indices = result['data']
                     fn = result['filename']
                     data_storage = None  # Reset data storage
+                    
+                    # Update Discord with converted file stats
+                    total_games = count_total_entries(data_with_indices)
+                    completed_games = count_total_completed(data_with_indices)
+                    discord.update_game_library_stats(total_games, completed_games)
+                    
+                    # Map tab key to tab name for Discord
+                    current_tab_key = values['-TABGROUP-']
+                    tab_name_map = {'-TAB1-': 'Games List', '-TAB2-': 'Summary', '-TAB3-': 'Statistics'}
+                    current_tab = tab_name_map.get(current_tab_key, 'Games List')
+                    discord.update_presence_browsing(current_tab)
+                    
                     from ui_components import update_table_display
                     update_table_display(data_with_indices, window)
                     update_summary(data_with_indices, window)
-                    if values['-TABGROUP-'] == 'Summary':
+                    if values['-TABGROUP-'] == '-TAB2-':
                         charts = update_summary_charts(data_with_indices)
                         if charts:
                             window['-PIE-CHART-'].update(filename=charts['pie_chart'])
@@ -171,14 +208,33 @@ def main():
                             window['-PLAYTIME-CHART-'].update(filename=charts['playtime_chart'])
                             window['-RATING-CHART-'].update(filename=charts['rating_chart'])
                             force_scrollable_refresh(window)
-                    elif values['-TABGROUP-'] == 'Statistics':
+                    elif values['-TABGROUP-'] == '-TAB3-':
                         update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
                         force_scrollable_refresh(window)
                         
         # Handle tab changes
         elif event == '-TABGROUP-':  # Tab changed
-            current_tab = values['-TABGROUP-']
-            if current_tab == 'Summary' and not tabs_loaded[1]:
+            current_tab_key = values['-TABGROUP-']
+            
+            # Map tab keys to actual tab names
+            tab_name_map = {
+                '-TAB1-': 'Games List',
+                '-TAB2-': 'Summary', 
+                '-TAB3-': 'Statistics'
+            }
+            current_tab = tab_name_map.get(current_tab_key, current_tab_key)
+            
+            # Debug: print tab change information
+            print(f"Main: Tab changed to '{current_tab}' (key: '{current_tab_key}')")
+            
+            # Update Discord presence based on tab - also update game stats
+            total_games = count_total_entries(data_with_indices)
+            completed_games = count_total_completed(data_with_indices)
+            print(f"Main: Updating Discord with {total_games} games, {completed_games} completed")
+            discord.update_game_library_stats(total_games, completed_games)
+            discord.update_presence_browsing(current_tab)
+            
+            if current_tab_key == '-TAB2-' and not tabs_loaded[1]:
                 # First time loading the Summary tab - generate charts
                 charts = update_summary_charts(data_with_indices)
                 if charts:
@@ -188,7 +244,7 @@ def main():
                     window['-RATING-CHART-'].update(filename=charts['rating_chart'])
                     force_scrollable_refresh(window)
                 tabs_loaded[1] = True
-            elif current_tab == 'Statistics' and not tabs_loaded[2]:
+            elif current_tab_key == '-TAB3-' and not tabs_loaded[2]:
                 # First time loading the Statistics tab - update statistics
                 from event_handlers import update_statistics_tab
                 
@@ -526,6 +582,10 @@ def main():
             
             selected_game_for_stats = None
             window['-GAME-LIST-'].update(set_to_index=[])  # Clear selection in listbox
+            
+            # Clear selected game from Discord tracking and update to general stats
+            discord.update_presence_viewing_stats(None)
+            
             update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True,
                                 distribution_chart_type=chart_type)
             force_scrollable_refresh(window)
@@ -587,6 +647,13 @@ def main():
             result = handle_add_entry(data_with_indices, window, fn, data_storage)
             if result and result.get('action') == 'entry_added':
                 data_with_indices = result['data']
+                
+                # Update Discord stats after adding entry
+                total_games = count_total_entries(data_with_indices)
+                completed_games = count_total_completed(data_with_indices)
+                discord.update_game_library_stats(total_games, completed_games)
+                discord.update_presence_browsing(values['-TABGROUP-'])
+                
                 from ui_components import update_table_display
                 update_table_display(data_with_indices, window)
                 update_summary(data_with_indices, window)
@@ -605,11 +672,23 @@ def main():
                     if action_result:
                         if action_result.get('action') in ['game_edited', 'game_deleted', 'game_rated', 'time_tracked', 'session_added']:
                             data_with_indices = action_result['data']
+                            
+                            # Update Discord stats after game actions
+                            total_games = count_total_entries(data_with_indices)
+                            completed_games = count_total_completed(data_with_indices)
+                            discord.update_game_library_stats(total_games, completed_games)
+                            
+                            # Map tab key to tab name for Discord
+                            current_tab_key = values['-TABGROUP-']
+                            tab_name_map = {'-TAB1-': 'Games List', '-TAB2-': 'Summary', '-TAB3-': 'Statistics'}
+                            current_tab = tab_name_map.get(current_tab_key, 'Games List')
+                            discord.update_presence_browsing(current_tab)
+                            
                             from ui_components import update_table_display
                             update_table_display(data_with_indices, window)
                             update_summary(data_with_indices, window)
                             # Update charts if on summary tab
-                            if values['-TABGROUP-'] == 'Summary':
+                            if values['-TABGROUP-'] == '-TAB2-':
                                 charts = update_summary_charts(data_with_indices)
                                 if charts:
                                     window['-PIE-CHART-'].update(filename=charts['pie_chart'])
@@ -618,7 +697,7 @@ def main():
                                     window['-RATING-CHART-'].update(filename=charts['rating_chart'])
                                     force_scrollable_refresh(window)
                             # Update statistics tab if it's currently active
-                            elif values['-TABGROUP-'] == 'Statistics':
+                            elif values['-TABGROUP-'] == '-TAB3-':
                                 from event_handlers import update_statistics_tab
                                 from datetime import datetime
                                 
@@ -664,11 +743,23 @@ def main():
                 if action_result:
                     if action_result.get('action') in ['game_edited', 'game_deleted', 'game_rated', 'time_tracked', 'session_added']:
                         data_with_indices = action_result['data']
+                        
+                        # Update Discord stats after right-click actions
+                        total_games = count_total_entries(data_with_indices)
+                        completed_games = count_total_completed(data_with_indices)
+                        discord.update_game_library_stats(total_games, completed_games)
+                        
+                        # Map tab key to tab name for Discord
+                        current_tab_key = values['-TABGROUP-']
+                        tab_name_map = {'-TAB1-': 'Games List', '-TAB2-': 'Summary', '-TAB3-': 'Statistics'}
+                        current_tab = tab_name_map.get(current_tab_key, 'Games List')
+                        discord.update_presence_browsing(current_tab)
+                        
                         from ui_components import update_table_display
                         update_table_display(data_with_indices, window)
                         update_summary(data_with_indices, window)
                         # Update statistics tab if it's currently active
-                        if values['-TABGROUP-'] == 'Statistics':
+                        if values['-TABGROUP-'] == '-TAB3-':
                             from event_handlers import update_statistics_tab
                             from datetime import datetime
                             
@@ -736,6 +827,11 @@ def main():
                         if success:
                             # Save data after adding session
                             save_data(data_with_indices, fn, data_storage)
+                            
+                            # Update Discord stats after adding manual session
+                            total_games = count_total_entries(data_with_indices)
+                            completed_games = count_total_completed(data_with_indices)
+                            discord.update_game_library_stats(total_games, completed_games)
                             
                             # Update statistics tab to reflect the new session
                             from event_handlers import update_statistics_tab

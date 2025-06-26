@@ -12,6 +12,9 @@ openpyxl>=3.0.0
 # Image processing for emoji rendering
 Pillow>=9.0.0
 
+# Discord Rich Presence integration
+pypresence>=4.2.0
+
 # Standard library modules (included with Python)
 # - datetime
 # - json

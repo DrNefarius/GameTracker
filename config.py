@@ -30,7 +30,8 @@ def load_config():
     default_config = {
         'last_file': None,
         'default_save_dir': os.path.expanduser('~'),
-        'notes_enabled': False
+        'notes_enabled': False,
+        'discord_enabled': True
     }
     
     if os.path.exists(config_file):
