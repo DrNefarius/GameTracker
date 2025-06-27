@@ -231,6 +231,47 @@
             text-decoration: underline;
         }
 
+        .discord-features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .discord-feature-card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .discord-feature-card:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .discord-feature-icon {
+            font-size: 1.8em;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .discord-feature-title {
+            font-weight: bold;
+            color: white;
+            margin-bottom: 5px;
+            font-size: 1.1em;
+        }
+
+        .discord-feature-desc {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+
         .installation-tabs {
             background: var(--background-light);
             border-radius: 12px;
@@ -619,19 +660,43 @@
             <h2>🎪 Discord Rich Presence Integration</h2>
             <p>Show your gaming library management activity on Discord! Your status will dynamically update to show what you're doing:</p>
             
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 30px 0;">
-                <div>🎮 Playing games with elapsed time</div>
-                <div>⏸️ Paused gaming sessions</div>
-                <div>📝 Browsing your library</div>
-                <div>📊 Viewing statistics</div>
-                <div>➕ Adding new games</div>
-                <div>✏️ Editing game information</div>
+            <div class="discord-features-grid">
+                <div class="discord-feature-card">
+                    <span class="discord-feature-icon">🎮</span>
+                    <div class="discord-feature-title">Playing Games</div>
+                    <div class="discord-feature-desc">Shows current game with elapsed session time</div>
+                </div>
+                <div class="discord-feature-card">
+                    <span class="discord-feature-icon">⏸️</span>
+                    <div class="discord-feature-title">Paused Sessions</div>
+                    <div class="discord-feature-desc">Displays when gaming session is paused</div>
+                </div>
+                <div class="discord-feature-card">
+                    <span class="discord-feature-icon">📝</span>
+                    <div class="discord-feature-title">Browsing Library</div>
+                    <div class="discord-feature-desc">Shows when exploring your game collection</div>
+                </div>
+                <div class="discord-feature-card">
+                    <span class="discord-feature-icon">📊</span>
+                    <div class="discord-feature-title">Viewing Statistics</div>
+                    <div class="discord-feature-desc">Indicates when analyzing gaming data</div>
+                </div>
+                <div class="discord-feature-card">
+                    <span class="discord-feature-icon">➕</span>
+                    <div class="discord-feature-title">Adding Games</div>
+                    <div class="discord-feature-desc">Shows when adding new titles to library</div>
+                </div>
+                <div class="discord-feature-card">
+                    <span class="discord-feature-icon">✏️</span>
+                    <div class="discord-feature-title">Editing Information</div>
+                    <div class="discord-feature-desc">Displays when managing game details</div>
+                </div>
             </div>
 
             <h3>Setup Instructions</h3>
             <div class="step-list">
                 <div class="step-item">
-                    <strong>Create Discord Application:</strong> Go to the <a href="https://discord.com/developers/applications" style="color: #fff;">Discord Developer Portal</a> and create a new application
+                    <strong>Create Discord Application:</strong> Go to the <a href="https://discord.com/developers/applications">Discord Developer Portal</a> and create a new application
                 </div>
                 <div class="step-item">
                     <strong>Get Application ID:</strong> Copy the Application ID from the General Information tab
