@@ -346,13 +346,49 @@
              max-width: 80%;
          }
 
-         .screenshot-hint {
-             text-align: center;
-             color: var(--secondary-color);
-             font-size: 0.9em;
-             margin-top: 20px;
-             font-style: italic;
-         }
+                 .screenshot-hint {
+            text-align: center;
+            color: var(--secondary-color);
+            font-size: 0.9em;
+            margin-top: 20px;
+            font-style: italic;
+        }
+
+        .info-box {
+            background: rgba(255, 255, 255, 0.15);
+            border-left: 4px solid #00d4aa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+            backdrop-filter: blur(10px);
+        }
+
+        .info-box-title {
+            color: white;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .info-box-content {
+            color: rgba(255, 255, 255, 0.9);
+            line-height: 1.5;
+        }
+
+        .developer-section {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .developer-section h3 {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1.1em;
+            margin-bottom: 20px;
+        }
 
         .installation-tabs {
             background: var(--background-light);
@@ -743,6 +779,18 @@
             <h2>🎪 Discord Rich Presence Integration</h2>
             <p>Show your gaming library management activity on Discord! Your status will dynamically update to show what you're doing:</p>
             
+            <div class="info-box">
+                <div class="info-box-title">
+                    ✅ Ready to Use - No Setup Required!
+                </div>
+                <div class="info-box-content">
+                    <strong>Using the pre-built release?</strong> Discord Rich Presence is already fully configured and working out of the box! 
+                    The release binaries include a verified Discord application integration - just download, run, and enjoy automatic Discord status updates.
+                    <br><br>
+                    <em>The setup instructions below are only needed if you're building from source or want to use your own Discord application.</em>
+                </div>
+            </div>
+            
             <div class="discord-features-grid">
                 <div class="discord-feature-card">
                     <span class="discord-feature-icon">🎮</span>
@@ -776,22 +824,27 @@
                 </div>
             </div>
 
-            <h3>Setup Instructions</h3>
-            <div class="step-list">
-                <div class="step-item">
-                    <strong>Create Discord Application:</strong> Go to the <a href="https://discord.com/developers/applications">Discord Developer Portal</a> and create a new application
-                </div>
-                <div class="step-item">
-                    <strong>Get Application ID:</strong> Copy the Application ID from the General Information tab
-                </div>
-                <div class="step-item">
-                    <strong>Configure GamesList Manager:</strong> Edit <code>discord_integration.py</code> and replace the CLIENT_ID placeholder with your Application ID
-                </div>
-                <div class="step-item">
-                    <strong>Install Dependencies:</strong> Run <code>pip install pypresence</code>
-                </div>
-                <div class="step-item">
-                    <strong>Test It Out:</strong> Launch GamesList Manager with Discord running to see your status update!
+            <div class="developer-section">
+                <h3>🛠️ Developer Setup Instructions</h3>
+                <p style="color: rgba(255, 255, 255, 0.8); margin-bottom: 20px; font-style: italic;">
+                    Only follow these steps if you're building from source or want to use your own Discord application
+                </p>
+                <div class="step-list">
+                    <div class="step-item">
+                        <strong>Create Discord Application:</strong> Go to the <a href="https://discord.com/developers/applications">Discord Developer Portal</a> and create a new application
+                    </div>
+                    <div class="step-item">
+                        <strong>Get Application ID:</strong> Copy the Application ID from the General Information tab
+                    </div>
+                    <div class="step-item">
+                        <strong>Configure GamesList Manager:</strong> Edit <code>discord_integration.py</code> and replace the CLIENT_ID placeholder with your Application ID
+                    </div>
+                    <div class="step-item">
+                        <strong>Install Dependencies:</strong> Run <code>pip install pypresence</code>
+                    </div>
+                    <div class="step-item">
+                        <strong>Test It Out:</strong> Launch GamesList Manager with Discord running to see your status update!
+                    </div>
                 </div>
             </div>
 
