@@ -266,11 +266,93 @@
             font-size: 1.1em;
         }
 
-        .discord-feature-desc {
-            color: rgba(255, 255, 255, 0.8);
-            font-size: 0.9em;
-            line-height: 1.4;
-        }
+                 .discord-feature-desc {
+             color: rgba(255, 255, 255, 0.8);
+             font-size: 0.9em;
+             line-height: 1.4;
+         }
+
+         /* Image Lightbox Styles */
+         .screenshot-card img {
+             cursor: pointer;
+             transition: transform 0.3s ease, box-shadow 0.3s ease;
+         }
+
+         .screenshot-card img:hover {
+             transform: scale(1.05);
+             box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+         }
+
+         .lightbox {
+             display: none;
+             position: fixed;
+             z-index: 1000;
+             left: 0;
+             top: 0;
+             width: 100%;
+             height: 100%;
+             background-color: rgba(0, 0, 0, 0.9);
+             backdrop-filter: blur(5px);
+         }
+
+         .lightbox-content {
+             position: relative;
+             margin: auto;
+             display: block;
+             width: 90%;
+             max-width: 1200px;
+             max-height: 90%;
+             object-fit: contain;
+             top: 50%;
+             transform: translateY(-50%);
+             border-radius: 8px;
+             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+         }
+
+         .lightbox-close {
+             position: absolute;
+             top: 20px;
+             right: 35px;
+             color: #fff;
+             font-size: 40px;
+             font-weight: bold;
+             cursor: pointer;
+             z-index: 1001;
+             background: rgba(0, 0, 0, 0.5);
+             border-radius: 50%;
+             width: 50px;
+             height: 50px;
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             transition: background 0.3s ease;
+         }
+
+         .lightbox-close:hover {
+             background: rgba(0, 0, 0, 0.8);
+         }
+
+         .lightbox-caption {
+             position: absolute;
+             bottom: 20px;
+             left: 50%;
+             transform: translateX(-50%);
+             color: white;
+             background: rgba(0, 0, 0, 0.7);
+             padding: 15px 25px;
+             border-radius: 25px;
+             font-size: 1.1em;
+             text-align: center;
+             max-width: 80%;
+         }
+
+         .screenshot-hint {
+             text-align: center;
+             color: var(--secondary-color);
+             font-size: 0.9em;
+             margin-top: 20px;
+             font-style: italic;
+         }
 
         .installation-tabs {
             background: var(--background-light);
@@ -551,22 +633,23 @@
             <h2 class="section-title">Screenshots</h2>
                          <div class="screenshots">
                  <div class="screenshot-card">
-                     <img src="images/screenshot-games-list.png" alt="Games List View">
+                     <img src="images/screenshot-games-list.png" alt="Games List View" onclick="openLightbox(this, 'Comprehensive game library with sortable columns, color-coded status, and search functionality')">
                      <div class="caption">Comprehensive game library with sortable columns, color-coded status, and search functionality</div>
                  </div>
                  <div class="screenshot-card">
-                     <img src="images/screenshot-summary.png" alt="Summary Dashboard">
+                     <img src="images/screenshot-summary.png" alt="Summary Dashboard" onclick="openLightbox(this, 'Visual analytics including status distribution and top games by playtime')">
                      <div class="caption">Visual analytics including status distribution and top games by playtime</div>
                  </div>
                  <div class="screenshot-card">
-                     <img src="images/screenshot-statistics.png" alt="Statistics View">
+                     <img src="images/screenshot-statistics.png" alt="Statistics View" onclick="openLightbox(this, 'Detailed game analysis with rating comparisons and comprehensive statistics')">
                      <div class="caption">Detailed game analysis with rating comparisons and comprehensive statistics</div>
                  </div>
                  <div class="screenshot-card">
-                     <img src="images/screenshot-heatmap.png" alt="Gaming Heatmap">
+                     <img src="images/screenshot-heatmap.png" alt="Gaming Heatmap" onclick="openLightbox(this, 'GitHub-style gaming activity heatmap showing daily gaming patterns')">
                      <div class="caption">GitHub-style gaming activity heatmap showing daily gaming patterns</div>
                  </div>
              </div>
+             <div class="screenshot-hint">💡 Click on any screenshot to view full size</div>
         </div>
     </div>
 
@@ -775,6 +858,13 @@
         </div>
     </div>
 
+    <!-- Lightbox Modal -->
+    <div id="lightbox" class="lightbox" onclick="closeLightbox()">
+        <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+        <img class="lightbox-content" id="lightbox-img">
+        <div class="lightbox-caption" id="lightbox-caption"></div>
+    </div>
+
     <script>
         function showTab(tabName) {
             // Hide all tab contents
@@ -791,6 +881,40 @@
             // Add active class to clicked button
             event.target.classList.add('active');
         }
+
+        function openLightbox(img, caption) {
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImg = document.getElementById('lightbox-img');
+            const lightboxCaption = document.getElementById('lightbox-caption');
+            
+            lightbox.style.display = 'block';
+            lightboxImg.src = img.src;
+            lightboxImg.alt = img.alt;
+            lightboxCaption.innerHTML = caption;
+            
+            // Prevent body scrolling when lightbox is open
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeLightbox() {
+            const lightbox = document.getElementById('lightbox');
+            lightbox.style.display = 'none';
+            
+            // Restore body scrolling
+            document.body.style.overflow = 'auto';
+        }
+
+        // Close lightbox with Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeLightbox();
+            }
+        });
+
+        // Prevent lightbox from closing when clicking on the image
+        document.getElementById('lightbox-img').addEventListener('click', function(event) {
+            event.stopPropagation();
+        });
     </script>
 </body>
 </html> 
