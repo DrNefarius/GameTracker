@@ -71,26 +71,26 @@ GamesList Manager is a comprehensive desktop application for managing your video
 ## Screenshots
 
 ### Main Interface - Games List
-![Games List View](screenshot-games-list.png)
+![Games List View](images/screenshot-games-list.png)
 *Comprehensive game library with sortable columns, color-coded status, ratings, and search functionality*
 
 ### Summary Dashboard
-![Summary Dashboard](screenshot-summary.png)
+![Summary Dashboard](images/screenshot-summary.png)
 *Visual analytics including status distribution, top games by playtime, and release year analysis*
 
 ### Advanced Statistics & Analytics
-![Statistics View](screenshot-statistics.png)
+![Statistics View](images/screenshot-statistics.png)
 *Detailed game analysis with rating comparisons, session tracking, and comprehensive statistics*
 
 ### Gaming Activity Visualizations
-![Contributions Map](screenshot-contributions.png)
+![Contributions Map](images/screenshot-contributions.png)
 *GitHub-style gaming activity heatmap showing daily gaming patterns throughout the year*
 
-![Gaming Heatmap](screenshot-heatmap.png)
+![Gaming Heatmap](images/screenshot-heatmap.png)
 *Time-based gaming sessions heatmap revealing optimal gaming hours and session patterns*
 
 ### Interactive Features
-![Game Actions](screenshot-actions.png)
+![Game Actions](images/screenshot-actions.png)
 *Context-sensitive game actions including time tracking, editing, and rating capabilities*
 
 ## System Requirements
