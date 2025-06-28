@@ -378,6 +378,30 @@
             line-height: 1.5;
         }
 
+        /* Light version for use on light backgrounds */
+        .info-box-light {
+            background: rgba(0, 212, 170, 0.1);
+            border-left: 4px solid #00d4aa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 30px 0;
+        }
+
+        .info-box-light .info-box-title {
+            color: var(--primary-color);
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .info-box-light .info-box-content {
+            color: #333;
+            line-height: 1.5;
+        }
+
         .developer-section {
             margin-top: 40px;
             padding-top: 30px;
@@ -767,7 +791,7 @@
                 </div>
             </div>
 
-            <div class="info-box">
+            <div class="info-box-light">
                 <div class="info-box-title">🎛️ Update Settings</div>
                 <div class="info-box-content">
                     <p><strong>Access via Options Menu:</strong></p>
