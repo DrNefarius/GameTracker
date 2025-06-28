@@ -425,13 +425,7 @@ def handle_table_event(event, data_with_indices, window, sort_directions, fn=Non
 
 def handle_menu_events(event, window, data_with_indices, fn):
     """Handle menu events like Open, Save As, Import, etc."""
-    if event == 'Notes::notes_toggle':
-        # Notes are now always available with unified feedback system
-        sg.popup("Session feedback is now always available when tracking time or viewing sessions.", 
-                title="Session Feedback", icon='gameslisticon.ico')
-        return None
-        
-    elif event.startswith('Discord:') and event.endswith('::discord_toggle'):
+    if event.startswith('Discord:') and event.endswith('::discord_toggle'):
         # Toggle Discord Rich Presence integration
         config = load_config()
         current_enabled = config.get('discord_enabled', True)
@@ -551,6 +545,23 @@ def handle_menu_events(event, window, data_with_indices, fn):
         
     elif event == 'About':
         show_about_dialog()
+        
+    elif event == 'Check for Updates':
+        # Check for updates manually
+        from update_ui import check_for_updates_manual
+        check_for_updates_manual()
+        
+    elif event == 'Update Settings':
+        # Show update settings dialog
+        from update_ui import show_update_settings
+        from auto_updater import get_updater
+        
+        settings = show_update_settings()
+        if settings:
+            updater = get_updater()
+            updater.set_check_on_startup_enabled(settings['check_on_startup_enabled'])
+            
+            sg.popup("Update settings saved successfully!", title="Settings Updated")
         
     return None
 

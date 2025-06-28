@@ -15,6 +15,9 @@ Pillow>=9.0.0
 # Discord Rich Presence integration
 pypresence>=4.2.0
 
+# HTTP requests for downloading images
+requests>=2.25.0
+
 # Standard library modules (included with Python)
 # - datetime
 # - json

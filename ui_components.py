@@ -491,7 +491,7 @@ def create_main_layout(data_with_indices):
     # Main layout with tabs
     layout = [
         [sg.Menu([['File', ['Open', 'Save As', 'Import from Excel', 'Exit']], 
-                  ['Options', ['Notes::notes_toggle', get_discord_menu_text()]], 
+                  ['Options', [get_discord_menu_text(), '---', 'Check for Updates', 'Update Settings']], 
                   ['Help', ['User Guide', 'Feature Tour', '---', 'Data Format Info', 
                            'Troubleshooting', '---', 'Release Notes', 'Report Bug', '---', 'About']]], key='-MENU-')],
         [sg.TabGroup([

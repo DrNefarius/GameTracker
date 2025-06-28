@@ -25,7 +25,7 @@ class DiscordIntegration:
     CLIENT_ID = "1234567890123456789"  # Placeholder - needs to be replaced with actual Discord app ID
     
     # GitHub URL for Discord button
-    GITHUB_URL = "https://github.com/yourusername/GameTracker"
+    GITHUB_URL = "https://yourname.github.io/GameTracker/"
     
     def __init__(self, enabled=True):
         self.rpc = None

@@ -542,6 +542,36 @@
             font-weight: bold;
         }
 
+        .feature-highlight {
+            text-align: center;
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .highlight-badge {
+            display: inline-block;
+            background: var(--success-color);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .feature-highlight h3 {
+            font-size: 2em;
+            color: var(--primary-color);
+            margin-bottom: 15px;
+        }
+
+        .feature-highlight p {
+            font-size: 1.1em;
+            color: var(--secondary-color);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
         @media (max-width: 768px) {
             .hero h1 {
                 font-size: 2.5em;
@@ -574,7 +604,7 @@
             <p>A comprehensive desktop application for managing your video game collection and tracking your gaming sessions</p>
             <div class="badges">
                 <span class="badge">Python 3.7+</span>
-                <span class="badge">Version 1.8.0</span>
+                <span class="badge">Version 1.9.0</span>
                 <span class="badge">GPL-3.0 License</span>
                 <span class="badge">Discord Integration</span>
             </div>
@@ -686,6 +716,68 @@
                  </div>
              </div>
              <div class="screenshot-hint">💡 Click on any screenshot to view full size</div>
+        </div>
+    </div>
+
+    <!-- Auto-Updater Section -->
+    <div class="section">
+        <div class="container">
+            <h2 class="section-title">🔄 Auto-Updater System</h2>
+            <div class="feature-highlight">
+                <div class="highlight-badge">New in v1.9.0</div>
+                <h3>Stay Always Up-to-Date</h3>
+                <p>GamesList Manager now includes a comprehensive auto-updater system that keeps your application current with the latest features, improvements, and bug fixes.</p>
+            </div>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <h3>One-Click Updates</h3>
+                    <p>Download and install updates with a single click. The intelligent staging system handles everything safely in the background.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Smart Progress Tracking</h3>
+                    <p>Real-time download progress with the ability to cancel at any time. No more waiting in the dark!</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🔒</div>
+                    <h3>Safe Installation</h3>
+                    <p>Automatic backups are created before any update. If something goes wrong, rollback is automatic.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📋</div>
+                    <h3>Rich Release Notes</h3>
+                    <p>View detailed release information with images and formatted text right in the application.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">⚙️</div>
+                    <h3>Flexible Settings</h3>
+                    <p>Configure startup checking, manage downloads, or disable entirely. You're in control.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🌐</div>
+                    <h3>Cross-Platform</h3>
+                    <p>Works seamlessly on Windows, macOS, and Linux with platform-specific updater scripts.</p>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <div class="info-box-title">🎛️ Update Settings</div>
+                <div class="info-box-content">
+                    <p><strong>Access via Options Menu:</strong></p>
+                    <ul>
+                        <li><strong>Check for Updates:</strong> Manually check for and install updates</li>
+                        <li><strong>Update Settings:</strong> Configure startup checking, manage downloads, or disable auto-updates entirely</li>
+                    </ul>
+                    <p>Auto-updates respect your preferences - they can be configured to check on startup or disabled completely based on your needs.</p>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -871,6 +963,9 @@
                 </div>
                 <div class="step-item">
                     <strong>Organize Your Collection:</strong> Use search, filters, and sorting to manage your library
+                </div>
+                <div class="step-item">
+                    <strong>Configure Updates:</strong> Visit Options → Update Settings to manage auto-updates (can be disabled if preferred)
                 </div>
             </div>
         </div>

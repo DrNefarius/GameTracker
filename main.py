@@ -23,6 +23,8 @@ from event_handlers import (
 from visualizations import update_summary_charts
 from session_management import display_all_game_notes, get_game_sessions, migrate_all_game_sessions
 from discord_integration import initialize_discord, get_discord_integration, cleanup_discord
+from auto_updater import initialize_updater, get_updater
+from update_ui import show_update_notification, show_update_settings, handle_update_process, check_for_updates_manual
 
 def force_scrollable_refresh(window):
     """Force PySimpleGUI to recalculate scrollable areas by temporarily resizing the window"""
@@ -105,6 +107,23 @@ def main():
     print(f"Initial Discord setup: {total_games} games, {completed_games} completed, enabled: {discord_enabled}")
     discord.update_game_library_stats(total_games, completed_games)
     discord.update_presence_browsing('Games List')  # Set initial presence
+    
+    # Initialize Auto-Updater
+    updater = initialize_updater(check_on_startup=True)
+    
+    # Set up update callback for notifications
+    def update_notification_callback(update_info):
+        if update_info:
+            result = show_update_notification(update_info)
+            if result == 'download':
+                handle_update_process(update_info)
+            elif result == 'disable':
+                updater.set_check_on_startup_enabled(False)
+    
+    updater.register_update_callback(update_notification_callback)
+    
+    # Check for updates on startup if enabled
+    updater.check_on_startup()
 
     # Create the main window layout
     layout = create_main_layout(data_with_indices)
@@ -141,9 +160,9 @@ def main():
             break
             
         # Handle menu events
-        elif (event in ['Notes::notes_toggle', 'Open', 'Save As', 'Import from Excel', 'User Guide', 
+        elif (event in ['Open', 'Save As', 'Import from Excel', 'User Guide', 
                        'Feature Tour', 'Data Format Info', 'Troubleshooting', 
-                       'Release Notes', 'Report Bug', 'About'] or 
+                       'Check for Updates', 'Update Settings', 'Release Notes', 'Report Bug', 'About'] or 
               (isinstance(event, str) and event.startswith('Discord:') and event.endswith('::discord_toggle'))):
             result = handle_menu_events(event, window, data_with_indices, fn)
             if result:
