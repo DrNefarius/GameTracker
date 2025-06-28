@@ -767,13 +767,13 @@ def show_update_success_popup(update_info: Dict[str, str]):
         [sg.Text(f"GamesList Manager has been successfully updated!", font=('Arial', 11))],
         [sg.Text("")],
         [sg.Text(f"Previous Version: {previous_version}")],
-        [sg.Text(f"Current Version: {new_version}", font=('Arial', 10, 'bold'), text_color='#2E7D4F')],
+        [sg.Text(f"Current Version: {new_version}", font=('Arial', 10, 'bold'), text_color='#5CB85C')],
         [sg.Text("")],
         [sg.Text("✅ All files updated successfully")],
         [sg.Text("✅ Backup of previous version created")],
         [sg.Text("✅ Application restarted automatically")],
         [sg.Text("")],
-        [sg.Button("Awesome!", key="-OK-", button_color=('white', '#2E7D4F'), size=(12, 1))]
+        [sg.Button("Awesome!", key="-OK-", button_color=('white', '#5CB85C'), size=(12, 1))]
     ]
     
     window = sg.Window(
