@@ -359,6 +359,9 @@ class AutoUpdater:
             print(f"Creating backup at {backup_path}")
             shutil.copytree(current_dir, backup_path, ignore=shutil.ignore_patterns('*.log', '__pycache__', '*.pyc'))
             
+            # Clean up old backups (keep only last 3)
+            self._cleanup_old_backups(backup_dir)
+            
             if progress_callback:
                 progress_callback(90, "Creating updater script...")
             
@@ -377,6 +380,58 @@ class AutoUpdater:
             print(f"Error staging update: {str(e)}")
             return False
     
+    def _cleanup_old_backups(self, backup_dir: str, keep_count: int = 3):
+        """
+        Clean up old backup directories, keeping only the most recent ones.
+        
+        Args:
+            backup_dir: Directory containing backup folders
+            keep_count: Number of most recent backups to keep (default: 3)
+        """
+        try:
+            if not os.path.exists(backup_dir):
+                return
+            
+            # Get all backup directories
+            backup_folders = []
+            for item in os.listdir(backup_dir):
+                item_path = os.path.join(backup_dir, item)
+                if os.path.isdir(item_path) and item.startswith('backup_'):
+                    # Extract timestamp from folder name (backup_version_YYYYMMDD_HHMMSS)
+                    parts = item.split('_')
+                    if len(parts) >= 4:  # backup + version + date + time
+                        try:
+                            # Combine date and time parts for sorting
+                            date_str = parts[-2]  # YYYYMMDD
+                            time_str = parts[-1]  # HHMMSS
+                            timestamp_str = f"{date_str}_{time_str}"
+                            timestamp = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
+                            backup_folders.append((timestamp, item_path, item))
+                        except (ValueError, IndexError):
+                            # Skip folders with invalid timestamp format
+                            continue
+            
+            # Sort by timestamp (newest first)
+            backup_folders.sort(key=lambda x: x[0], reverse=True)
+            
+            # Keep only the most recent backups
+            if len(backup_folders) > keep_count:
+                backups_to_remove = backup_folders[keep_count:]
+                
+                print(f"Cleaning up {len(backups_to_remove)} old backup(s), keeping {keep_count} most recent")
+                
+                for timestamp, backup_path, backup_name in backups_to_remove:
+                    try:
+                        print(f"Removing old backup: {backup_name}")
+                        shutil.rmtree(backup_path)
+                    except Exception as e:
+                        print(f"Failed to remove backup {backup_name}: {e}")
+            else:
+                print(f"Backup cleanup: {len(backup_folders)} backup(s) found, no cleanup needed")
+                
+        except Exception as e:
+            print(f"Error during backup cleanup: {e}")
+    
     def _create_updater_script(self, staging_dir: str, target_dir: str, executable_name: str, backup_path: str) -> str:
         """Create an updater script that runs after the main process exits"""
         system_name = platform.system().lower()
@@ -392,6 +447,11 @@ class AutoUpdater:
         
         # Get current process ID to wait for it to exit
         current_pid = os.getpid()
+        
+        # Extract version from backup path for success flag
+        backup_name = os.path.basename(backup_path)
+        parts = backup_name.split('_')
+        previous_version = parts[1] if len(parts) >= 2 else 'Unknown'
         
         script_content = f'''@echo off
 echo GamesList Manager Updater
@@ -451,6 +511,11 @@ del "%~f0" 2>NUL
         # Get current process ID to wait for it to exit
         current_pid = os.getpid()
         
+        # Extract version from backup path for success flag
+        backup_name = os.path.basename(backup_path)
+        parts = backup_name.split('_')
+        previous_version = parts[1] if len(parts) >= 2 else 'Unknown'
+        
         script_content = f'''#!/bin/bash
 echo "GamesList Manager Updater"
 echo ""
@@ -466,6 +531,7 @@ echo "Updating application files..."
 echo "Copying files from '{staging_dir}' to '{target_dir}'"
 if cp -R "{staging_dir}/"* "{target_dir}/"; then
     echo "Update completed successfully!"
+    
 else
     echo "ERROR: Failed to copy files!"
     echo "Attempting to restore from backup..."
@@ -526,7 +592,18 @@ rm "$0" 2>/dev/null
         self.update_check_thread.start()
     
     def check_on_startup(self):
-        """Check for updates on application startup if enabled"""
+        """Check for updates on application startup if enabled and show success message if update completed"""
+        # First, check if we just completed an update
+        try:
+            update_success_info = self.check_for_update_success()
+            if update_success_info:
+                # Import here to avoid circular imports
+                from update_ui import show_update_success_popup
+                show_update_success_popup(update_success_info)
+        except Exception as e:
+            print(f"Error checking for update success: {str(e)}")
+        
+        # Then check for new updates if enabled
         if self.check_on_startup_enabled:
             try:
                 update_info = self.check_for_updates()
@@ -540,6 +617,49 @@ rm "$0" 2>/dev/null
             except Exception as e:
                 print(f"Error checking for updates on startup: {str(e)}")
     
+    def _create_update_flag(self, new_version: str):
+        """Create a flag file to indicate an update is in progress"""
+        try:
+            flag_file = os.path.join(get_config_dir(), 'update_flag.json')
+            
+            flag_data = {
+                'previous_version': self.current_version,
+                'new_version': new_version,
+                'update_time': datetime.now().isoformat()
+            }
+            
+            with open(flag_file, 'w') as f:
+                json.dump(flag_data, f, indent=2)
+            
+            print(f"Created update flag: {flag_file}")
+            
+        except Exception as e:
+            print(f"Failed to create update flag: {e}")
+    
+    def check_for_update_success(self) -> Optional[Dict[str, str]]:
+        """
+        Check if app was recently updated and return update info.
+        Returns update info if flag exists, None otherwise.
+        """
+        try:
+            flag_file = os.path.join(get_config_dir(), 'update_flag.json')
+            
+            if not os.path.exists(flag_file):
+                return None
+            
+            with open(flag_file, 'r') as f:
+                flag_data = json.load(f)
+            
+            # Remove the flag file after reading
+            os.remove(flag_file)
+            print(f"Removed update flag: {flag_file}")
+            
+            return flag_data
+            
+        except Exception as e:
+            print(f"Error checking update flag: {e}")
+            return None
+
     def _save_config(self):
         """Save updater configuration"""
         config = load_config()
@@ -569,6 +689,11 @@ rm "$0" 2>/dev/null
             
             if os.path.exists(updater_script):
                 print("Starting updater script and exiting application...")
+                
+                # Create update flag before restart
+                if self.latest_release_info:
+                    self._create_update_flag(self.latest_release_info.get('version', 'Unknown'))
+                
                 # Start the updater script in the background
                 if system_name == 'windows':
                     # Use subprocess.Popen with CREATE_NEW_CONSOLE to run independently
