@@ -21,6 +21,7 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
         return
 
     name = data_with_indices[row_index][1][0]
+    platform = data_with_indices[row_index][1][2]  # Extract platform information
     initial_time_str = data_with_indices[row_index][1][3]
     
     try:
@@ -115,7 +116,7 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
                     # Record session start time
                     session_start_time = datetime.now().isoformat()
                     # Update Discord presence to show playing
-                    discord.update_presence_playing(name, datetime.fromisoformat(session_start_time))
+                    discord.update_presence_playing(name, datetime.fromisoformat(session_start_time), platform)
                 
                 start_time = time.time() - elapsed_time.total_seconds()
                 running = True
@@ -123,7 +124,7 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
                 
                 # If resuming from pause, update Discord presence back to playing
                 if current_pause:
-                    discord.update_presence_playing(name, datetime.fromisoformat(session_start_time))
+                    discord.update_presence_playing(name, datetime.fromisoformat(session_start_time), platform)
                 
                 # Complete current pause if resuming from pause
                 if current_pause:
@@ -152,7 +153,7 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
                 popup_window['-PLAY-'].update(disabled=False)
                 
                 # Update Discord presence to show paused
-                discord.update_presence_paused(name)
+                discord.update_presence_paused(name, platform)
                 
                 # Start a new pause
                 current_pause = {
@@ -192,7 +193,7 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
                 update_time_and_date(row_index, elapsed_time, session, data_with_indices, data_storage)
                 
                 # Update Discord presence to show session complete
-                discord.update_presence_session_complete(name, format_timedelta_with_seconds(elapsed_time))
+                discord.update_presence_session_complete(name, format_timedelta_with_seconds(elapsed_time), platform)
                 
                 # Automatically save the data when tracking is stopped
                 if save_filename:

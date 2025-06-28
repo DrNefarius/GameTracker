@@ -24,6 +24,9 @@ class DiscordIntegration:
     # See DISCORD_SETUP.md for detailed setup instructions
     CLIENT_ID = "1234567890123456789"  # Placeholder - needs to be replaced with actual Discord app ID
     
+    # GitHub URL for Discord button
+    GITHUB_URL = "https://github.com/yourusername/GameTracker"
+    
     def __init__(self, enabled=True):
         self.rpc = None
         self.connected = False
@@ -143,7 +146,7 @@ class DiscordIntegration:
                 small_image="browsing",
                 small_text=f"In {current_tab}",
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
+                    {"label": "View on GitHub", "url": self.GITHUB_URL}
                 ]
             )
             self.current_state = "browsing"
@@ -151,7 +154,7 @@ class DiscordIntegration:
         except Exception as e:
             print(f"Error updating Discord presence (browsing): {str(e)}")
     
-    def update_presence_playing(self, game_name: str, session_start_time: datetime = None):
+    def update_presence_playing(self, game_name: str, session_start_time: datetime = None, platform: str = None):
         """Set playing presence - tracking time for a specific game"""
         if not self.is_connected():
             return
@@ -164,18 +167,23 @@ class DiscordIntegration:
             # Truncate game name if too long for Discord
             display_name = game_name[:128] if len(game_name) > 128 else game_name
             
+            # Add platform information to the state if available
+            state_text = "Playing"
+            if platform and platform.strip():
+                state_text = f"Playing on {platform}"
+            
             # Show timer only when actively playing - this tracks the session duration
             # Make the game name more prominent in user list display
             self.rpc.update(
                 details=f"🎮 {display_name}",  # Game name with icon like other statuses
-                state="Playing",  # Clean, concise status
+                state=state_text,  # Playing status with platform
                 large_image="gameslist_logo",
                 large_text="GamesList Manager",
                 small_image="playing",
                 small_text="In session",
                 start=self.session_start_time,  # Timer shows session duration
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
+                    {"label": "View on GitHub", "url": self.GITHUB_URL}
                 ]
             )
             self.current_state = "playing"
@@ -183,7 +191,7 @@ class DiscordIntegration:
         except Exception as e:
             print(f"Error updating Discord presence (playing): {str(e)}")
     
-    def update_presence_paused(self, game_name: str):
+    def update_presence_paused(self, game_name: str, platform: str = None):
         """Set paused presence - game session is paused"""
         if not self.is_connected():
             return
@@ -191,17 +199,22 @@ class DiscordIntegration:
         try:
             display_name = game_name[:100] if len(game_name) > 100 else game_name
             
+            # Add platform information to the state if available
+            state_text = "Session paused"
+            if platform and platform.strip():
+                state_text = f"Paused on {platform}"
+            
             # No timer when paused - paused sessions shouldn't show elapsed time
             # Show paused game name prominently
             self.rpc.update(
                 details=f"⏸️ {display_name}",  # Paused game shows clearly in user list
-                state="Session paused",
+                state=state_text,
                 large_image="gameslist_logo",
                 large_text="GamesList Manager", 
                 small_image="paused",
                 small_text="Paused",
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
+                    {"label": "View on GitHub", "url": self.GITHUB_URL}
                 ]
             )
             self.current_state = "paused"
@@ -227,7 +240,7 @@ class DiscordIntegration:
                 small_image="editing",
                 small_text="Adding game",
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
+                    {"label": "View on GitHub", "url": self.GITHUB_URL}
                 ]
             )
             self.current_state = "adding"
@@ -255,7 +268,7 @@ class DiscordIntegration:
                 small_image="editing",
                 small_text="Editing",
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
+                    {"label": "View on GitHub", "url": self.GITHUB_URL}
                 ]
             )
             self.current_state = "editing"
@@ -294,7 +307,7 @@ class DiscordIntegration:
                 small_image="statistics",
                 small_text=small_text,
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
+                    {"label": "View on GitHub", "url": self.GITHUB_URL}
                 ]
             )
             self.current_state = "viewing_stats"
@@ -302,13 +315,19 @@ class DiscordIntegration:
         except Exception as e:
             print(f"Error updating Discord presence (viewing stats): {str(e)}")
     
-    def update_presence_session_complete(self, game_name: str, session_duration: str):
+    def update_presence_session_complete(self, game_name: str, session_duration: str, platform: str = None):
         """Set presence for completed session - shows for 10 seconds then returns to current context"""
         if not self.is_connected():
             return
             
         try:
             display_name = game_name[:100] if len(game_name) > 100 else game_name
+            
+            # Add platform information to the state if available
+            if platform and platform.strip():
+                state_text = f"Completed on {platform} • {session_duration}"
+            else:
+                state_text = f"Played for {session_duration}"
             
             # Set completion flag to prevent other updates
             self.showing_completion = True
@@ -319,13 +338,13 @@ class DiscordIntegration:
             
             self.rpc.update(
                 details=f"✅ {display_name}",
-                state=f"Played for {session_duration}",
+                state=state_text,
                 large_image="gameslist_logo",
                 large_text="GamesList Manager",
                 small_image="completed",
                 small_text="Session complete",
                 buttons=[
-                    {"label": "View on GitHub", "url": "https://github.com/yourusername/GameTracker"}
+                    {"label": "View on GitHub", "url": self.GITHUB_URL}
                 ]
             )
             self.current_state = "session_complete"
