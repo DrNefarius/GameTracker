@@ -50,14 +50,14 @@ For better visuals, you can upload custom images:
 
 ### Step 4: Configure GamesList Manager
 
-1. Open `discord_integration.py` in your GamesList Manager folder
+1. Open `constants.py` in your GamesList Manager folder
 2. Find this line near the top:
    ```python
-   CLIENT_ID = "1234567890123456789"  # Placeholder
+   DISCORD_CLIENT_ID = "1234567890123456789"  # Placeholder
    ```
 3. Replace the placeholder with your actual Application ID:
    ```python
-   CLIENT_ID = "YOUR_APPLICATION_ID_HERE"
+   DISCORD_CLIENT_ID = "YOUR_APPLICATION_ID_HERE"
    ```
 4. Save the file
 

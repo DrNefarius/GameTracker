@@ -15,6 +15,8 @@ except ImportError:
     DISCORD_AVAILABLE = False
     print("Discord Rich Presence not available - pypresence not installed")
 
+from constants import DISCORD_CLIENT_ID, DISCORD_GITHUB_URL
+
 
 class DiscordIntegration:
     """Manages Discord Rich Presence for GamesList Manager"""
@@ -22,10 +24,10 @@ class DiscordIntegration:
     # Discord Application ID (you'll need to create one at https://discord.com/developers/applications)
     # SETUP REQUIRED: Replace this with your actual Discord Application ID
     # See DISCORD_SETUP.md for detailed setup instructions
-    CLIENT_ID = "1234567890123456789"  # Placeholder - needs to be replaced with actual Discord app ID
+    CLIENT_ID = DISCORD_CLIENT_ID
     
     # GitHub URL for Discord button
-    GITHUB_URL = "https://yourname.github.io/GameTracker/"
+    GITHUB_URL = DISCORD_GITHUB_URL
     
     def __init__(self, enabled=True):
         self.rpc = None

@@ -27,16 +27,11 @@ if platform.system().lower() == 'windows':
 else:
     CREATE_NEW_CONSOLE = 0
 
-from constants import VERSION
+from constants import VERSION, GITHUB_OWNER, GITHUB_REPO, GITHUB_API_BASE
 from config import get_config_dir, load_config, save_config
 
 class AutoUpdater:
     """Handles automatic updates from GitHub releases"""
-    
-    # GitHub repository information
-    GITHUB_OWNER = "DrNefarius"
-    GITHUB_REPO = "GameTracker" 
-    GITHUB_API_BASE = "https://api.github.com"
     
     def __init__(self, startup_check=True):
         self.current_version = VERSION
@@ -119,7 +114,7 @@ class AutoUpdater:
         """
         try:
             # Get latest release info from GitHub API
-            api_url = f"{self.GITHUB_API_BASE}/repos/{self.GITHUB_OWNER}/{self.GITHUB_REPO}/releases/latest"
+            api_url = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
             
             with urlopen(api_url, timeout=10) as response:
                 if response.status != 200:
