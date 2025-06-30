@@ -374,8 +374,16 @@ def update_window_title(window, file_path):
     """Update the window title to display the current file name"""
     window.set_title(f'Games List Manager - {os.path.basename(file_path)}')
 
+# Global variables for double-click detection
+_last_click_time = 0
+_last_click_row = None
+_double_click_threshold = 0.5  # seconds
+
 def handle_table_event(event, data_with_indices, window, sort_directions, fn=None, data_storage=None):
     """Handle table click events including sorting and row selection"""
+    import time
+    global _last_click_time, _last_click_row
+    
     try:
         # Extract the table event data
         event_data = event[2] if len(event) > 2 else None
@@ -415,8 +423,22 @@ def handle_table_event(event, data_with_indices, window, sort_directions, fn=Non
                         if col_clicked == 4:  # Status column
                             return handle_status_change(row_index, data_with_indices, window, data_storage, fn)
                         else:
-                            # Handle left-click on any other column - show the game actions dialog
-                            return {'action': 'show_actions', 'row_index': row_index}
+                            # DOUBLE-CLICK DETECTION for other columns
+                            current_time = time.time()
+                            
+                            # Check if this is a double-click (same row, within threshold time)
+                            if (_last_click_row == row_index and 
+                                current_time - _last_click_time <= _double_click_threshold):
+                                # Double-click detected - show actions dialog
+                                _last_click_time = 0  # Reset to prevent triple-click
+                                _last_click_row = None
+                                return {'action': 'show_actions', 'row_index': row_index}
+                            else:
+                                # Single-click - just record the click for potential double-click
+                                _last_click_time = current_time
+                                _last_click_row = row_index
+                                # Single-click just selects the row (no action)
+                                return None
     
     except Exception as e:
         print(f"Error handling table event: {str(e)}")
@@ -608,6 +630,7 @@ def handle_status_change(row_index, data_with_indices, window, data_storage=None
     
     return None
 
+
 def handle_game_action(row_index, data_with_indices, window, data_storage=None, fn=None):
     """Handle game actions like Track Time, Edit Game, Rate Game"""
     action = show_game_actions_dialog(row_index, data_with_indices)
@@ -766,6 +789,14 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
                 return {'action': 'session_added', 'data': data_with_indices}
             else:
                 sg.popup_error(f"Failed to add session to {game_name}", title="Error")
+    
+    elif action == "View Statistics":
+        # Get game data
+        game_data = data_with_indices[row_index][1]
+        game_name = game_data[0]
+        
+        # Switch to Statistics tab and pre-select the game
+        return {'action': 'view_statistics', 'game_name': game_name, 'data': data_with_indices}
     
     return None
 

@@ -15,13 +15,14 @@ from config import load_config, save_config
 from data_management import load_from_gmd, save_data
 from utilities import format_timedelta_with_seconds
 from game_statistics import update_summary, count_total_completed, count_total_entries, calculate_total_time
-from ui_components import create_main_layout, get_display_row_with_rating
+from ui_components import create_main_layout, get_display_row_with_rating, create_entry_popup
 from event_handlers import (
     handle_menu_events, handle_table_event, handle_game_action, 
     handle_session_table_click, handle_add_entry
 )
 from visualizations import update_summary_charts
-from session_management import display_all_game_notes, get_game_sessions, migrate_all_game_sessions
+from session_management import display_all_game_notes, get_game_sessions, migrate_all_game_sessions, show_popup
+from ratings import show_rating_popup
 from discord_integration import initialize_discord, get_discord_integration, cleanup_discord
 from auto_updater import initialize_updater, get_updater
 from update_ui import show_update_notification, show_update_settings, handle_update_process, check_for_updates_manual
@@ -133,9 +134,6 @@ def main():
                       resizable=True, return_keyboard_events=True, finalize=True, 
                       icon='gameslisticon.ico', size=(1300, 700))
     window['-TABGROUP-'].Widget.select(0)  # Ensure first tab is selected by default
-
-    # Bind right-click event to the table
-    window['-TABLE-'].bind('<Button-3>', 'Right')  # Bind right-click event
 
     # Track which tabs have been loaded
     tabs_loaded = {0: True, 1: False, 2: False}
@@ -679,6 +677,7 @@ def main():
                 
         # Handle table events
         elif isinstance(event, tuple) and event[0] == '-TABLE-':
+
             result = handle_table_event(event, data_with_indices, window, sort_directions, fn, data_storage)
             if result:
                 if isinstance(result, list):  # Sorted data returned
@@ -688,8 +687,53 @@ def main():
                         result['row_index'], data_with_indices, window, 
                         data_storage, fn
                     )
+
                     if action_result:
-                        if action_result.get('action') in ['game_edited', 'game_deleted', 'game_rated', 'time_tracked', 'session_added']:
+                        if action_result.get('action') == 'view_statistics':
+                            # Switch to Statistics tab and pre-select the game
+                            game_name = action_result['game_name']
+                            data_with_indices = action_result['data']
+                            
+                            # Switch to Statistics tab (index 2)
+                            window['-TABGROUP-'].Widget.select(2)
+                            
+                            # Update tab tracking
+                            if not tabs_loaded[2]:
+                                from datetime import datetime
+                                current_year = datetime.now().year
+                                window['-CONTRIB-YEAR-DISPLAY-'].update(str(current_year))
+                                tabs_loaded[2] = True
+                            
+                            # Update statistics tab with all games first to populate the list
+                            from event_handlers import update_statistics_tab
+                            update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
+                            
+                            # Get the game list to find the index of our target game
+                            game_list_values = window['-GAME-LIST-'].Values
+                            
+                            # Find the game in the list and select it
+                            if game_name in game_list_values:
+                                game_index = game_list_values.index(game_name)
+                                window['-GAME-LIST-'].update(set_to_index=[game_index], scroll_to_index=game_index)
+                                
+                                # Update the selected game variable for other features like "View Activity Log"
+                                selected_game_for_stats = game_name
+                                
+                                # Update statistics tab with the selected game
+                                update_statistics_tab(window, data_with_indices, selected_game=game_name, update_game_list=False)
+                                
+                                # Update Discord presence for viewing stats
+                                discord.update_presence_viewing_stats(game_name)
+                            else:
+                                # Game doesn't have sessions/statistics data, show message
+                                sg.popup(f"'{game_name}' doesn't have any session data or statistics to display.", 
+                                        title="No Statistics Available", icon='gameslisticon.ico')
+                                # Switch back to Games List tab
+                                window['-TABGROUP-'].Widget.select(0)
+                            
+                            force_scrollable_refresh(window)
+                            
+                        elif action_result.get('action') in ['game_edited', 'game_deleted', 'game_rated', 'time_tracked', 'session_added']:
                             data_with_indices = action_result['data']
                             
                             # Update Discord stats after game actions
@@ -751,68 +795,10 @@ def main():
                                                     distribution_chart_type=chart_type)
                                 force_scrollable_refresh(window)
                                     
-        # Handle right-click on table
-        elif event == '-TABLE-Right':
-            if window['-TABLE-'].SelectedRows and len(window['-TABLE-'].SelectedRows) > 0:
-                row_index = window['-TABLE-'].SelectedRows[0]
-                action_result = handle_game_action(
-                    row_index, data_with_indices, window, 
-                    data_storage, fn
-                )
-                if action_result:
-                    if action_result.get('action') in ['game_edited', 'game_deleted', 'game_rated', 'time_tracked', 'session_added']:
-                        data_with_indices = action_result['data']
+
+
                         
-                        # Update Discord stats after right-click actions
-                        total_games = count_total_entries(data_with_indices)
-                        completed_games = count_total_completed(data_with_indices)
-                        discord.update_game_library_stats(total_games, completed_games)
-                        
-                        # Map tab key to tab name for Discord
-                        current_tab_key = values['-TABGROUP-']
-                        tab_name_map = {'-TAB1-': 'Games List', '-TAB2-': 'Summary', '-TAB3-': 'Statistics'}
-                        current_tab = tab_name_map.get(current_tab_key, 'Games List')
-                        discord.update_presence_browsing(current_tab)
-                        
-                        from ui_components import update_table_display
-                        update_table_display(data_with_indices, window)
-                        update_summary(data_with_indices, window)
-                        # Update statistics tab if it's currently active
-                        if values['-TABGROUP-'] == '-TAB3-':
-                            from event_handlers import update_statistics_tab
-                            from datetime import datetime
-                            
-                            # Get current selected game from statistics tab if available
-                            selected_game = None
-                            if values['-GAME-LIST-']:
-                                selected_game = values['-GAME-LIST-'][0]
-                            
-                            # Get current settings
-                            chart_type_text = values.get('-DISTRIBUTION-CHART-TYPE-', 'Line Chart')
-                            chart_type_map = {
-                                'Line Chart': 'line',
-                                'Scatter Plot': 'scatter', 
-                                'Box Plot': 'box',
-                                'Histogram': 'histogram'
-                            }
-                            chart_type = chart_type_map.get(chart_type_text, 'line')
-                            
-                            contributions_year = None
-                            try:
-                                contributions_year = int(window['-CONTRIB-YEAR-DISPLAY-'].get())
-                            except:
-                                contributions_year = datetime.now().year
-                            
-                            window_text = values.get('-HEATMAP-WINDOW-SIZE-', '1 Month')
-                            window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 1)
-                            heatmap_end_date = getattr(main, 'heatmap_end_date', None)
-                            
-                            update_statistics_tab(window, data_with_indices, selected_game, 
-                                                update_game_list=True, contributions_year=contributions_year,
-                                                heatmap_window_months=window_months, heatmap_end_date=heatmap_end_date,
-                                                distribution_chart_type=chart_type)
-                            force_scrollable_refresh(window)
-                        
+
         # Handle session table clicks
         elif event == '-SESSIONS-TABLE-' and values['-SESSIONS-TABLE-']:
             result = handle_session_table_click(

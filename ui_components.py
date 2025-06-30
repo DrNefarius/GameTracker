@@ -186,7 +186,7 @@ def show_game_actions_dialog(row_index, data_with_indices):
     actions_popup = sg.Window(f"Actions for {game_name}", 
                             [[sg.Text(f"What would you like to do with '{game_name}'?")],
                             [sg.Button("Track Time"), sg.Button("Edit Game"), sg.Button("Rate Game"), sg.Button("Add Session")],
-                            [sg.Button("Cancel")]],
+                            [sg.Button("View Statistics"), sg.Button("Cancel")]],
                             modal=True, icon='gameslisticon.ico')
     
     action, _ = actions_popup.read()
