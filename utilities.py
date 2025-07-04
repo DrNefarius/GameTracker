@@ -142,4 +142,44 @@ def get_game_table_row_colors(data_with_indices):
         # Use the standard colors without any modifications
         row_colors.append((i, base_style[0], base_style[1]))
     
-    return row_colors 
+    return row_colors
+
+def calculate_popup_center_location(parent_window, popup_width=400, popup_height=300):
+    """
+    Calculate the center position for a popup window relative to the parent window.
+    
+    Args:
+        parent_window: The main window (PySimpleGUI Window object)
+        popup_width: Expected width of the popup window in pixels
+        popup_height: Expected height of the popup window in pixels
+    
+    Returns:
+        Tuple (x, y) representing the location for the popup window
+    """
+    try:
+        # Get the parent window's position and size
+        parent_location = parent_window.current_location()
+        parent_size = parent_window.size
+        
+        if parent_location is None or parent_size is None:
+            # If we can't get parent window info, return None to use default centering
+            return None
+        
+        # Calculate center position
+        parent_x, parent_y = parent_location
+        parent_width, parent_height = parent_size
+        
+        # Center the popup on the parent window
+        popup_x = parent_x + (parent_width - popup_width) // 2
+        popup_y = parent_y + (parent_height - popup_height) // 2
+        
+        # Make sure the popup doesn't go off screen (basic bounds checking)
+        popup_x = max(0, popup_x)
+        popup_y = max(0, popup_y)
+        
+        return (popup_x, popup_y)
+        
+    except Exception as e:
+        # If anything goes wrong, return None to use default centering
+        print(f"Warning: Could not calculate popup center position: {e}")
+        return None 

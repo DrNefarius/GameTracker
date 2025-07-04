@@ -85,7 +85,7 @@ def get_session_rating_summary(sessions):
         'most_common_tags': most_common_tags
     }
 
-def show_rating_popup(existing_rating=None):
+def show_rating_popup(existing_rating=None, parent_window=None):
     """Show a popup for rating a game or session"""
     is_edit = existing_rating is not None
     
@@ -146,7 +146,13 @@ def show_rating_popup(existing_rating=None):
         [sg.Button('OK'), sg.Button('Cancel')]
     ]
     
-    popup = sg.Window(f"{'Edit' if is_edit else 'Add'} Rating", layout, modal=True, icon='gameslisticon.ico', finalize=True)
+    # Calculate center position relative to parent window
+    popup_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        popup_location = calculate_popup_center_location(parent_window, popup_width=500, popup_height=400)
+    
+    popup = sg.Window(f"{'Edit' if is_edit else 'Add'} Rating", layout, modal=True, icon='gameslisticon.ico', finalize=True, location=popup_location)
     
     # Update stars display when slider moves
     while True:

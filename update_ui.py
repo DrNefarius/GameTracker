@@ -120,7 +120,7 @@ def clean_html_to_text(html_content: str) -> str:
     
     return text.strip()
 
-def show_update_notification(update_info: Dict[str, Any]) -> str:
+def show_update_notification(update_info: Dict[str, Any], parent_window=None) -> str:
     """
     Show update notification dialog.
     Returns: 'download', 'disable', or 'close'
@@ -188,6 +188,12 @@ def show_update_notification(update_info: Dict[str, Any]) -> str:
     
     layout = top_section + notes_section + bottom_section
     
+    # Calculate center position relative to parent window
+    notification_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        notification_location = calculate_popup_center_location(parent_window, popup_width=700, popup_height=650)
+    
     window = sg.Window(
         "GamesList Manager - Update Available", 
         layout, 
@@ -196,7 +202,8 @@ def show_update_notification(update_info: Dict[str, Any]) -> str:
         element_justification='left',
         size=(700, 650),  # Reduced from 700 to 650 for better proportions
         resizable=True,
-        finalize=True
+        finalize=True,
+        location=notification_location
     )
     
     def load_images_synchronously():
@@ -349,7 +356,7 @@ def show_staging_progress() -> sg.Window:
     
     return window
 
-def show_install_confirmation(download_path: str) -> bool:
+def show_install_confirmation(download_path: str, parent_window=None) -> bool:
     """
     Show confirmation dialog before installing update.
     Returns True if user confirms, False otherwise.
@@ -374,12 +381,19 @@ def show_install_confirmation(download_path: str) -> bool:
         ]
     ]
     
+    # Calculate center position relative to parent window
+    install_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        install_location = calculate_popup_center_location(parent_window, popup_width=500, popup_height=350)
+    
     window = sg.Window(
         "Install Update", 
         layout, 
         modal=True, 
         icon='gameslisticon.ico',
-        element_justification='left'
+        element_justification='left',
+        location=install_location
     )
     
     result = False
@@ -396,7 +410,7 @@ def show_install_confirmation(download_path: str) -> bool:
     window.close()
     return result
 
-def show_update_settings() -> Dict[str, bool]:
+def show_update_settings(parent_window=None) -> Dict[str, bool]:
     """
     Show update settings dialog.
     Returns dictionary with update preferences.
@@ -426,12 +440,19 @@ def show_update_settings() -> Dict[str, bool]:
         ]
     ]
     
+    # Calculate center position relative to parent window
+    settings_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        settings_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=300)
+    
     window = sg.Window(
         "Update Settings", 
         layout, 
         modal=True, 
         icon='gameslisticon.ico',
-        element_justification='left'
+        element_justification='left',
+        location=settings_location
     )
     
     result = None
@@ -448,7 +469,7 @@ def show_update_settings() -> Dict[str, bool]:
             break
         elif event == '-CHECK-NOW-':
             # Check for updates manually
-            update_result = check_for_updates_manual()
+            update_result = check_for_updates_manual(parent_window)
             if update_result == 'download':
                 # User chose to download/install, close settings dialog
                 window.close()
@@ -462,15 +483,16 @@ def show_update_settings() -> Dict[str, bool]:
             if os.path.exists(downloads_dir):
                 subprocess.run(['explorer', downloads_dir], shell=True)
             else:
-                sg.popup("Downloads folder not found.", title="Info")
+                downloads_info_location = calculate_popup_center_location(parent_window, popup_width=300, popup_height=100) if parent_window else None
+                sg.popup("Downloads folder not found.", title="Info", location=downloads_info_location)
         elif event == '-CLEAR-DOWNLOADS-':
             # Clear downloaded updates
-            clear_downloads()
+            clear_downloads(parent_window)
     
     window.close()
     return result
 
-def check_for_updates_manual():
+def check_for_updates_manual(parent_window=None):
     """Manually check for updates with progress indication"""
     
     # Show checking dialog
@@ -480,13 +502,20 @@ def check_for_updates_manual():
         [sg.Text("Please wait...", justification='center')],
     ]
     
+    # Calculate center position relative to parent window
+    check_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        check_location = calculate_popup_center_location(parent_window, popup_width=350, popup_height=150)
+    
     progress_window = sg.Window(
         "Checking for Updates", 
         layout, 
         modal=True, 
         icon='gameslisticon.ico',
         element_justification='center',
-        finalize=True
+        finalize=True,
+        location=check_location
     )
     
     # Animate progress bar while checking
@@ -515,9 +544,9 @@ def check_for_updates_manual():
     # Show results
     if update_info:
         # Directly show update notification and handle the process
-        result = show_update_notification(update_info)
+        result = show_update_notification(update_info, parent_window)
         if result == 'download':
-            handle_update_process(update_info)
+            handle_update_process(update_info, parent_window)
             return 'download'
         elif result == 'disable':
             updater = get_updater()
@@ -525,14 +554,19 @@ def check_for_updates_manual():
             return 'disable'
         return result
     else:
+        no_update_location = None
+        if parent_window:
+            from utilities import calculate_popup_center_location
+            no_update_location = calculate_popup_center_location(parent_window, popup_width=350, popup_height=150)
         sg.popup(
             "You're running the latest version!\n\n"
             f"Current version: {get_updater().current_version}",
-            title="No Updates Available"
+            title="No Updates Available",
+            location=no_update_location
         )
         return None
 
-def clear_downloads():
+def clear_downloads(parent_window=None):
     """Clear downloaded update files"""
     import os
     import shutil
@@ -541,7 +575,11 @@ def clear_downloads():
     downloads_dir = os.path.join(get_config_dir(), 'downloads')
     
     if not os.path.exists(downloads_dir):
-        sg.popup("No downloads to clear.", title="Info")
+        no_downloads_location = None
+        if parent_window:
+            from utilities import calculate_popup_center_location
+            no_downloads_location = calculate_popup_center_location(parent_window, popup_width=300, popup_height=100)
+        sg.popup("No downloads to clear.", title="Info", location=no_downloads_location)
         return
     
     try:
@@ -550,23 +588,39 @@ def clear_downloads():
                          if os.path.isfile(os.path.join(downloads_dir, f))])
         
         if file_count == 0:
-            sg.popup("No downloads to clear.", title="Info")
+            empty_downloads_location = None
+            if parent_window:
+                from utilities import calculate_popup_center_location
+                empty_downloads_location = calculate_popup_center_location(parent_window, popup_width=300, popup_height=100)
+            sg.popup("No downloads to clear.", title="Info", location=empty_downloads_location)
             return
         
         # Confirm deletion
+        confirm_location = None
+        if parent_window:
+            from utilities import calculate_popup_center_location
+            confirm_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
         if sg.popup_yes_no(
             f"This will delete {file_count} downloaded update file(s).\n\n"
             "Are you sure you want to continue?",
-            title="Clear Downloads"
+            title="Clear Downloads",
+            location=confirm_location
         ) == "Yes":
             shutil.rmtree(downloads_dir)
             os.makedirs(downloads_dir, exist_ok=True)
-            sg.popup(f"Cleared {file_count} downloaded files.", title="Success")
+            success_location = None
+            if parent_window:
+                success_location = calculate_popup_center_location(parent_window, popup_width=350, popup_height=100)
+            sg.popup(f"Cleared {file_count} downloaded files.", title="Success", location=success_location)
     
     except Exception as e:
-        sg.popup(f"Error clearing downloads: {str(e)}", title="Error")
+        error_location = None
+        if parent_window:
+            from utilities import calculate_popup_center_location
+            error_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
+        sg.popup(f"Error clearing downloads: {str(e)}", title="Error", location=error_location)
 
-def handle_update_process(update_info: Dict[str, Any]):
+def handle_update_process(update_info: Dict[str, Any], parent_window=None):
     """Handle the complete update process with UI"""
     updater = get_updater()
     new_version = update_info.get('version', 'Unknown')
@@ -576,11 +630,16 @@ def handle_update_process(update_info: Dict[str, Any]):
     
     if existing_download and os.path.exists(existing_download):
         # Ask user if they want to use existing download
+        existing_download_location = None
+        if parent_window:
+            from utilities import calculate_popup_center_location
+            existing_download_location = calculate_popup_center_location(parent_window, popup_width=450, popup_height=200)
         choice = sg.popup_yes_no(
             f"Found existing download for version {new_version}:\n\n"
             f"{existing_download}\n\n"
             "Would you like to use this existing download?",
-            title="Existing Download Found"
+            title="Existing Download Found",
+            location=existing_download_location
         )
         
         if choice == "Yes":
@@ -598,11 +657,15 @@ def handle_update_process(update_info: Dict[str, Any]):
         # User cancelled - don't show any error message
         return
     elif download_result == "failed":
-        sg.popup("Failed to download update. Please try again later.", title="Download Failed")
+        download_failed_location = None
+        if parent_window:
+            from utilities import calculate_popup_center_location
+            download_failed_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
+        sg.popup("Failed to download update. Please try again later.", title="Download Failed", location=download_failed_location)
         return
     
     # Confirm installation
-    if show_install_confirmation(download_path):
+    if show_install_confirmation(download_path, parent_window):
         # Stage update for installation with progress
         def staging_progress_callback(progress, status):
             """Update staging progress bar"""
@@ -633,26 +696,41 @@ def handle_update_process(update_info: Dict[str, Any]):
         
         # Check staging result
         if staging_success:
+            staging_success_location = None
+            if parent_window:
+                from utilities import calculate_popup_center_location
+                staging_success_location = calculate_popup_center_location(parent_window, popup_width=500, popup_height=250)
             sg.popup(
                 "Update has been staged successfully!\n\n"
                 "The application will now close and the updater will:\n"
                 "• Replace the application files\n"
                 "• Restart the application automatically\n\n"
                 "Click OK to begin the update process.",
-                title="Ready to Update"
+                title="Ready to Update",
+                location=staging_success_location
             )
             updater.restart_application()
         else:
+            staging_failed_location = None
+            if parent_window:
+                from utilities import calculate_popup_center_location
+                staging_failed_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
             sg.popup(
                 "Failed to stage update.\n\n"
                 "Please try again or install manually.",
-                title="Update Failed"
+                title="Update Failed",
+                location=staging_failed_location
             )
     else:
+        postponed_location = None
+        if parent_window:
+            from utilities import calculate_popup_center_location
+            postponed_location = calculate_popup_center_location(parent_window, popup_width=450, popup_height=150)
         sg.popup(
             "Update downloaded but not installed.\n\n"
             f"You can install it later from: {download_path}",
-            title="Installation Postponed"
+            title="Installation Postponed",
+            location=postponed_location
         )
 
 def _download_with_progress(updater):

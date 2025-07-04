@@ -7,7 +7,7 @@ import time
 import PySimpleGUI as sg
 from datetime import datetime, timedelta, date
 from constants import STAR_FILLED, STAR_EMPTY, RATING_TAGS, NEGATIVE_TAGS, NEUTRAL_TAGS, POSITIVE_TAGS
-from utilities import format_timedelta_with_seconds
+from utilities import format_timedelta_with_seconds, calculate_popup_center_location
 from session_data import get_latest_session_end_time
 from data_management import save_data
 from discord_integration import get_discord_integration
@@ -17,7 +17,8 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
     """Show the time tracking popup for a game"""
     
     if row_index >= len(data_with_indices):
-        sg.popup("Invalid row index", title="Error")
+        error_location = calculate_popup_center_location(window, popup_width=300, popup_height=100) if window else None
+        sg.popup("Invalid row index", title="Error", location=error_location)
         return
 
     name = data_with_indices[row_index][1][0]
@@ -37,12 +38,14 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
                     initial_time = timedelta(hours=hours, minutes=minutes)
                 except ValueError:
                     # Default to 0 if parsing fails
-                    sg.popup(f"Warning: Could not parse time format '{initial_time_str}'. Starting with 0.", title="Time Format Error")
+                    warning_location = calculate_popup_center_location(window, popup_width=400, popup_height=150) if window else None
+                    sg.popup(f"Warning: Could not parse time format '{initial_time_str}'. Starting with 0.", title="Time Format Error", location=warning_location)
                     initial_time = timedelta(0)
         else:
             initial_time = timedelta(0)
     except Exception as e:
-        sg.popup(f"Error parsing time: {str(e)}", title="Error")
+        error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150) if window else None
+        sg.popup(f"Error parsing time: {str(e)}", title="Error", location=error_location)
         initial_time = timedelta(0)
     
     name_length = len(name) if name else 10
@@ -56,7 +59,12 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
          sg.Button('⏹️', key='-STOP-', button_color=('black', 'red'))]
     ]
 
-    popup_window = sg.Window('Control Timer', layout_popup, modal=True, icon='gameslisticon.ico')
+    # Calculate center position relative to parent window
+    popup_location = None
+    if window:
+        popup_location = calculate_popup_center_location(window, popup_width=popup_width, popup_height=150)
+
+    popup_window = sg.Window('Control Timer', layout_popup, modal=True, icon='gameslisticon.ico', location=popup_location)
     
     # Reset the elapsed time for this new session
     elapsed_time = timedelta(0)
@@ -97,8 +105,9 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
                 }
                 
                 # Ask for feedback (replaces old separate note/rating prompts)
-                if sg.popup_yes_no("Would you like to add feedback for this session?", title="Add Session Feedback") == "Yes":
-                    feedback = show_session_feedback_popup()
+                feedback_location = calculate_popup_center_location(window, popup_width=400, popup_height=150) if window else None
+                if sg.popup_yes_no("Would you like to add feedback for this session?", title="Add Session Feedback", location=feedback_location) == "Yes":
+                    feedback = show_session_feedback_popup(parent_window=window)
                     if feedback:
                         session['feedback'] = feedback
                 
@@ -184,8 +193,9 @@ def show_popup(row_index, data_with_indices, window, data_storage=None, save_fil
                 }
                 
                 # Ask for feedback (replaces old separate note/rating prompts)
-                if sg.popup_yes_no("Would you like to add feedback for this session?", title="Add Session Feedback") == "Yes":
-                    feedback = show_session_feedback_popup()
+                feedback_location = calculate_popup_center_location(window, popup_width=400, popup_height=150) if window else None
+                if sg.popup_yes_no("Would you like to add feedback for this session?", title="Add Session Feedback", location=feedback_location) == "Yes":
+                    feedback = show_session_feedback_popup(parent_window=window)
                     if feedback:
                         session['feedback'] = feedback
                 
@@ -261,7 +271,7 @@ def update_time_and_date(row_index, added_time, session, data_with_indices, data
                 break
 
 
-def show_session_feedback_popup(existing_feedback=None):
+def show_session_feedback_popup(existing_feedback=None, parent_window=None):
     """Show a unified popup for session feedback (text + optional rating)"""
     is_edit = existing_feedback is not None
     
@@ -336,8 +346,13 @@ def show_session_feedback_popup(existing_feedback=None):
         [sg.Button('Save'), sg.Button('Cancel')]
     ]
     
+    # Calculate center position relative to parent window
+    popup_location = None
+    if parent_window:
+        popup_location = calculate_popup_center_location(parent_window, popup_width=600, popup_height=500)
+    
     popup = sg.Window(f"{'Edit' if is_edit else 'Add'} Session Feedback", layout, modal=True, 
-                     icon='gameslisticon.ico', finalize=True)
+                     icon='gameslisticon.ico', finalize=True, location=popup_location)
     
     while True:
         event, values = popup.read()
@@ -381,7 +396,7 @@ def show_session_feedback_popup(existing_feedback=None):
     return None
 
 
-def show_manual_session_popup(game_name):
+def show_manual_session_popup(game_name, parent_window=None):
     """Show a popup for manually adding a gaming session with start/end times and feedback"""
     today = date.today()
     default_start_date = today.strftime('%Y-%m-%d')
@@ -483,8 +498,13 @@ def show_manual_session_popup(game_name):
         [sg.Button('Add Session'), sg.Button('Cancel')]
     ]
     
+    # Calculate center position relative to parent window
+    popup_location = None
+    if parent_window:
+        popup_location = calculate_popup_center_location(parent_window, popup_width=700, popup_height=600)
+    
     popup = sg.Window("Add Manual Gaming Session", layout, modal=True, 
-                     icon='gameslisticon.ico', finalize=True, resizable=True)
+                     icon='gameslisticon.ico', finalize=True, resizable=True, location=popup_location)
     
     while True:
         event, values = popup.read()
@@ -549,7 +569,8 @@ def show_manual_session_popup(game_name):
                 end_time_str = values['-END-TIME-'].strip()
                 
                 if not all([start_date_str, start_time_str, end_date_str, end_time_str]):
-                    sg.popup_error("All date and time fields are required!", title="Validation Error")
+                    validation_error_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150) if parent_window else None
+                    sg.popup_error("All date and time fields are required!", title="Validation Error", location=validation_error_location)
                     continue
                 
                 try:
@@ -558,15 +579,17 @@ def show_manual_session_popup(game_name):
                     end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
                     end_time_obj = datetime.strptime(end_time_str, '%H:%M').time()
                 except ValueError as e:
+                    format_error_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=200) if parent_window else None
                     sg.popup_error(f"Invalid date/time format: {str(e)}\n\nPlease use YYYY-MM-DD for dates and HH:MM for times.", 
-                                  title="Format Error")
+                                  title="Format Error", location=format_error_location)
                     continue
                 
                 start_datetime = datetime.combine(start_date, start_time_obj)
                 end_datetime = datetime.combine(end_date, end_time_obj)
                 
                 if end_datetime <= start_datetime:
-                    sg.popup_error("End time must be after start time!", title="Validation Error")
+                    end_time_error_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150) if parent_window else None
+                    sg.popup_error("End time must be after start time!", title="Validation Error", location=end_time_error_location)
                     continue
                 
                 duration_timedelta = end_datetime - start_datetime
@@ -607,7 +630,8 @@ def show_manual_session_popup(game_name):
                 return session
                 
             except Exception as e:
-                sg.popup_error(f"Error creating session: {str(e)}", title="Error")
+                general_error_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150) if parent_window else None
+                sg.popup_error(f"Error creating session: {str(e)}", title="Error", location=general_error_location)
                 continue
     
     return None

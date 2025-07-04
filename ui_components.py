@@ -102,7 +102,7 @@ def validate_entry_form(values):
     # Return errors if any, otherwise None
     return errors if errors else None
 
-def create_entry_popup(existing_entry=None):
+def create_entry_popup(existing_entry=None, parent_window=None):
     """Create a popup for adding or editing a game entry"""
     # Prepare default values with validation
     default_name = existing_entry[0] if existing_entry else ''
@@ -136,7 +136,13 @@ def create_entry_popup(existing_entry=None):
     if existing_entry:
         layout[-1][0:0] = [sg.Button('Delete', button_color=('white', 'red'))]
     
-    popup_window = sg.Window('Edit Entry' if existing_entry else 'Add New Entry', layout, modal=True, finalize=True, icon='gameslisticon.ico')
+    # Calculate center position relative to parent window
+    popup_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        popup_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=250)
+    
+    popup_window = sg.Window('Edit Entry' if existing_entry else 'Add New Entry', layout, modal=True, finalize=True, icon='gameslisticon.ico', location=popup_location)
     
     # Variable to store the rating
     current_rating = default_rating
@@ -151,7 +157,7 @@ def create_entry_popup(existing_entry=None):
         
         elif event == '-EDIT-RATING-':
             # Open rating popup
-            new_rating = show_rating_popup(current_rating)
+            new_rating = show_rating_popup(current_rating, parent_window)
             if new_rating:
                 current_rating = new_rating
                 # Update rating display
@@ -165,16 +171,19 @@ def create_entry_popup(existing_entry=None):
             # Validate form
             errors = validate_entry_form(values)
             if errors:
-                sg.popup('\n'.join(errors), title='Error')
+                error_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=200) if parent_window else None
+                sg.popup('\n'.join(errors), title='Error', location=error_location)
                 continue
                 
             # Return values for processing
             popup_window.close()
             return values, 'Submit', current_rating
     
+    # This should not be reached, but return safe defaults
+    popup_window.close()
     return None, None, None
 
-def show_game_actions_dialog(row_index, data_with_indices):
+def show_game_actions_dialog(row_index, data_with_indices, parent_window=None):
     """Show a dialog with game action options instead of right-click context menu"""
     if row_index is None or row_index >= len(data_with_indices):
         return None
@@ -182,12 +191,18 @@ def show_game_actions_dialog(row_index, data_with_indices):
     game_data = data_with_indices[row_index][1]
     game_name = game_data[0]
     
+    # Calculate center position relative to parent window
+    popup_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        popup_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
+    
     # Create actions popup
     actions_popup = sg.Window(f"Actions for {game_name}", 
                             [[sg.Text(f"What would you like to do with '{game_name}'?")],
                             [sg.Button("Track Time"), sg.Button("Edit Game"), sg.Button("Rate Game"), sg.Button("Add Session")],
                             [sg.Button("View Statistics"), sg.Button("Cancel")]],
-                            modal=True, icon='gameslisticon.ico')
+                            modal=True, icon='gameslisticon.ico', location=popup_location)
     
     action, _ = actions_popup.read()
     actions_popup.close()

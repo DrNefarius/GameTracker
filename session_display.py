@@ -158,7 +158,7 @@ def format_rating_comments_for_display(comments):
     return display_data
 
 
-def display_all_game_notes(game_name, sessions, data_with_indices):
+def display_all_game_notes(game_name, sessions, data_with_indices, parent_window=None):
     """Display all feedback for a game in chronological order along with status changes"""
     
     # Collect all sessions with feedback, keeping track of their original indices
@@ -286,7 +286,11 @@ def display_all_game_notes(game_name, sessions, data_with_indices):
     
     # If no entries found
     if not entries:
-        sg.popup(f"No feedback, ratings, or status changes found for {game_name}", title="No Entries", icon='gameslisticon.ico')
+        no_entries_location = None
+        if parent_window:
+            from utilities import calculate_popup_center_location
+            no_entries_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
+        sg.popup(f"No feedback, ratings, or status changes found for {game_name}", title="No Entries", icon='gameslisticon.ico', location=no_entries_location)
         return
     
     # Sort by timestamp (chronological order)
@@ -311,4 +315,8 @@ def display_all_game_notes(game_name, sessions, data_with_indices):
             notes_text += f"Changed from '{from_status}' to '{to_status}'\n\n"
     
     # Display in a scrolled popup
-    sg.popup_scrolled(notes_text, title=f"Activity Log for {game_name}", size=(70, 30), icon='gameslisticon.ico') 
+    activity_log_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        activity_log_location = calculate_popup_center_location(parent_window, popup_width=700, popup_height=600)
+    sg.popup_scrolled(notes_text, title=f"Activity Log for {game_name}", size=(70, 30), icon='gameslisticon.ico', location=activity_log_location) 

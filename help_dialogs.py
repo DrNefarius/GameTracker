@@ -11,7 +11,7 @@ from datetime import datetime
 from constants import VERSION
 from emoji_utils import emoji_image, get_emoji
 
-def show_user_guide():
+def show_user_guide(parent_window=None):
     """Show comprehensive user guide with emoji images"""
     
     # Create a custom window with emoji support
@@ -73,8 +73,14 @@ def show_user_guide():
         [sg.Button('Close')]
     ]
     
+    # Calculate center position relative to parent window
+    guide_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        guide_location = calculate_popup_center_location(parent_window, popup_width=800, popup_height=600)
+    
     guide_window = sg.Window('User Guide', guide_layout, modal=True, size=(800, 600), 
-                            icon='gameslisticon.ico', finalize=True, resizable=True)
+                            icon='gameslisticon.ico', finalize=True, resizable=True, location=guide_location)
     
     while True:
         event, values = guide_window.read()
@@ -83,7 +89,7 @@ def show_user_guide():
     
     guide_window.close()
 
-def show_data_format_info():
+def show_data_format_info(parent_window=None):
     """Show information about data formats and file structure"""
     format_text = """
 DATA FORMAT INFORMATION
@@ -136,9 +142,13 @@ Sessions include:
 • Temporary chart files: System temp directory (auto-cleaned)
 """
     
-    sg.popup_scrolled(format_text, title="Data Format Information", size=(75, 30), icon='gameslisticon.ico')
+    format_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        format_location = calculate_popup_center_location(parent_window, popup_width=750, popup_height=600)
+    sg.popup_scrolled(format_text, title="Data Format Information", size=(75, 30), icon='gameslisticon.ico', location=format_location)
 
-def show_troubleshooting_guide():
+def show_troubleshooting_guide(parent_window=None):
     """Show troubleshooting guide with emoji images"""
     
     # Create a custom window with emoji support
@@ -211,8 +221,14 @@ def show_troubleshooting_guide():
         [sg.Button('Close')]
     ]
     
+    # Calculate center position relative to parent window
+    troubleshooting_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        troubleshooting_location = calculate_popup_center_location(parent_window, popup_width=800, popup_height=600)
+    
     troubleshooting_window = sg.Window('Troubleshooting Guide', troubleshooting_layout, modal=True, size=(800, 600), 
-                                      icon='gameslisticon.ico', finalize=True, resizable=True)
+                                      icon='gameslisticon.ico', finalize=True, resizable=True, location=troubleshooting_location)
     
     while True:
         event, values = troubleshooting_window.read()
@@ -221,7 +237,7 @@ def show_troubleshooting_guide():
     
     troubleshooting_window.close()
 
-def show_feature_tour():
+def show_feature_tour(parent_window=None):
     """Show feature tour/walkthrough"""
     tour_text = """
 FEATURE TOUR - DISCOVER WHAT'S POSSIBLE
@@ -321,9 +337,13 @@ FEATURE TOUR - DISCOVER WHAT'S POSSIBLE
 Ready to explore? Start with adding a few games and tracking some sessions!
 """
     
-    sg.popup_scrolled(tour_text, title="Feature Tour", size=(85, 40), icon='gameslisticon.ico')
+    tour_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        tour_location = calculate_popup_center_location(parent_window, popup_width=850, popup_height=800)
+    sg.popup_scrolled(tour_text, title="Feature Tour", size=(85, 40), icon='gameslisticon.ico', location=tour_location)
 
-def show_release_notes():
+def show_release_notes(parent_window=None):
     """Show release notes and version history"""
     
     # Create a custom window with emoji support
@@ -451,8 +471,14 @@ def show_release_notes():
         [sg.Button('Close')]
     ]
     
+    # Calculate center position relative to parent window
+    release_notes_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        release_notes_location = calculate_popup_center_location(parent_window, popup_width=800, popup_height=600)
+    
     release_notes_window = sg.Window('Release Notes', release_notes_layout, modal=True, size=(800, 600), 
-                                    icon='gameslisticon.ico', finalize=True, resizable=True)
+                                    icon='gameslisticon.ico', finalize=True, resizable=True, location=release_notes_location)
     
     while True:
         event, values = release_notes_window.read()
@@ -461,7 +487,7 @@ def show_release_notes():
     
     release_notes_window.close()
 
-def show_bug_report_info():
+def show_bug_report_info(parent_window=None):
     """Show bug reporting information with emoji images"""
     
     # Create a custom window with emoji support
@@ -555,8 +581,14 @@ def show_bug_report_info():
         [sg.Button('Close')]
     ]
     
+    # Calculate center position relative to parent window
+    bug_report_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        bug_report_location = calculate_popup_center_location(parent_window, popup_width=800, popup_height=600)
+    
     bug_report_window = sg.Window('Bug Reporting & Feedback', bug_report_layout, modal=True, size=(800, 600), 
-                                 icon='gameslisticon.ico', finalize=True, resizable=True)
+                                 icon='gameslisticon.ico', finalize=True, resizable=True, location=bug_report_location)
     
     while True:
         event, values = bug_report_window.read()
@@ -567,7 +599,7 @@ def show_bug_report_info():
     
     bug_report_window.close()
 
-def show_about_dialog():
+def show_about_dialog(parent_window=None):
     """Show enhanced about dialog with emoji images"""
     
     # Get system information
@@ -619,8 +651,14 @@ def show_about_dialog():
          sg.Button('Close', key='-CLOSE-')]
     ]
     
+    # Calculate center position relative to parent window
+    about_location = None
+    if parent_window:
+        from utilities import calculate_popup_center_location
+        about_location = calculate_popup_center_location(parent_window, popup_width=500, popup_height=600)
+    
     about_window = sg.Window('About Games List Manager', about_layout, 
-                            modal=True, size=(500, 600), icon='gameslisticon.ico', finalize=True)
+                            modal=True, size=(500, 600), icon='gameslisticon.ico', finalize=True, location=about_location)
     
     while True:
         event, values = about_window.read()
@@ -629,11 +667,11 @@ def show_about_dialog():
             break
         elif event == '-RELEASE-NOTES-':
             about_window.close()
-            show_release_notes()
+            show_release_notes(parent_window)
             break
         elif event == '-REPORT-BUG-':
             about_window.close()
-            show_bug_report_info()
+            show_bug_report_info(parent_window)
             break
     
     about_window.close() 

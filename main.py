@@ -44,6 +44,8 @@ def force_scrollable_refresh(window):
 
 def main():
     """Main entry point for the application"""
+    from utilities import calculate_popup_center_location
+    
     # Load config to get settings
     config = load_config()
     last_file = config.get('last_file')
@@ -657,7 +659,8 @@ def main():
             save_data(data_with_indices, fn, data_storage)
             from event_handlers import update_window_title
             update_window_title(window, fn)
-            sg.popup(f'Data manually saved to {fn}!\n\nNote: Most operations now auto-save. Manual save is mainly needed for search/filter changes or as backup.', title='Manual Save Confirmation')
+            save_location = calculate_popup_center_location(window, popup_width=500, popup_height=200)
+            sg.popup(f'Data manually saved to {fn}!\n\nNote: Most operations now auto-save. Manual save is mainly needed for search/filter changes or as backup.', title='Manual Save Confirmation', location=save_location)
             
         # Handle add entry
         elif event == 'Add Entry':
@@ -726,8 +729,9 @@ def main():
                                 discord.update_presence_viewing_stats(game_name)
                             else:
                                 # Game doesn't have sessions/statistics data, show message
+                                stats_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
                                 sg.popup(f"'{game_name}' doesn't have any session data or statistics to display.", 
-                                        title="No Statistics Available", icon='gameslisticon.ico')
+                                        title="No Statistics Available", icon='gameslisticon.ico', location=stats_location)
                                 # Switch back to Games List tab
                                 window['-TABGROUP-'].Widget.select(0)
                             
@@ -812,12 +816,14 @@ def main():
                 from session_management import get_game_sessions
                 if selected_game_for_stats:
                     game_sessions = get_game_sessions(data_with_indices, selected_game_for_stats)
-                    display_all_game_notes(selected_game_for_stats, game_sessions, data_with_indices)
+                    display_all_game_notes(selected_game_for_stats, game_sessions, data_with_indices, window)
                 else:
-                    sg.popup("Please select a game first", title="No Game Selected", icon='gameslisticon.ico')
+                    no_game_location = calculate_popup_center_location(window, popup_width=300, popup_height=120)
+                    sg.popup("Please select a game first", title="No Game Selected", icon='gameslisticon.ico', location=no_game_location)
             except Exception as e:
                 print(f"Error displaying all notes: {str(e)}")
-                sg.popup_error(f"Error displaying notes: {str(e)}", title="Error")
+                error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                sg.popup_error(f"Error displaying notes: {str(e)}", title="Error", location=error_location)
                 
         # Handle add session button in statistics tab
         elif event == '-ADD-SESSION-':
@@ -825,7 +831,7 @@ def main():
                 from session_management import show_manual_session_popup, add_manual_session_to_game
                 if selected_game_for_stats:
                     # Show manual session popup
-                    session = show_manual_session_popup(selected_game_for_stats)
+                    session = show_manual_session_popup(selected_game_for_stats, window)
                     if session:
                         # Add session to game
                         success = add_manual_session_to_game(selected_game_for_stats, session, data_with_indices, data_storage)
@@ -868,14 +874,18 @@ def main():
                                                 distribution_chart_type=chart_type)
                             force_scrollable_refresh(window)
                             
-                            sg.popup(f"Manual session added to {selected_game_for_stats}!", title="Session Added")
+                            session_added_location = calculate_popup_center_location(window, popup_width=350, popup_height=120)
+                            sg.popup(f"Manual session added to {selected_game_for_stats}!", title="Session Added", location=session_added_location)
                         else:
-                            sg.popup_error(f"Failed to add session to {selected_game_for_stats}", title="Error")
+                            session_error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                            sg.popup_error(f"Failed to add session to {selected_game_for_stats}", title="Error", location=session_error_location)
                 else:
-                    sg.popup("Please select a game first", title="No Game Selected", icon='gameslisticon.ico')
+                    no_game_location2 = calculate_popup_center_location(window, popup_width=300, popup_height=120)
+                    sg.popup("Please select a game first", title="No Game Selected", icon='gameslisticon.ico', location=no_game_location2)
             except Exception as e:
                 print(f"Error adding manual session: {str(e)}")
-                sg.popup_error(f"Error adding session: {str(e)}", title="Error")
+                error_location2 = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                sg.popup_error(f"Error adding session: {str(e)}", title="Error", location=error_location2)
 
     window.close()
 

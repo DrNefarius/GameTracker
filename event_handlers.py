@@ -28,7 +28,7 @@ from session_management import (
 )
 from visualizations import update_summary_charts
 from game_statistics import update_summary
-from utilities import safe_sort_by_date, safe_sort_by_time
+from utilities import safe_sort_by_date, safe_sort_by_time, calculate_popup_center_location
 from ratings import show_rating_popup, get_session_rating_summary, format_rating
 from help_dialogs import show_user_guide, show_data_format_info, show_troubleshooting_guide, show_feature_tour, show_release_notes, show_bug_report_info, show_about_dialog
 from discord_integration import get_discord_integration
@@ -469,13 +469,15 @@ def handle_menu_events(event, window, data_with_indices, fn):
         else:
             status_msg = "Discord integration is not available."
         
+        discord_toggle_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
         sg.popup(status_msg + "\n\nNote: The menu will show the updated status on next restart.", 
-                title="Discord Integration", icon='gameslisticon.ico')
+                title="Discord Integration", icon='gameslisticon.ico', location=discord_toggle_location)
         return None
         
     elif event == 'Open':
         # Open file dialog to select .gmd file
-        file_path = sg.popup_get_file('Select .gmd file to open', file_types=(("GMD Files", "*.gmd"),), initial_folder=os.path.dirname(fn))
+        open_file_location = calculate_popup_center_location(window, popup_width=500, popup_height=300)
+        file_path = sg.popup_get_file('Select .gmd file to open', file_types=(("GMD Files", "*.gmd"),), initial_folder=os.path.dirname(fn), location=open_file_location)
         if file_path and os.path.exists(file_path):
             try:
                 # Load data from selected file
@@ -496,16 +498,19 @@ def handle_menu_events(event, window, data_with_indices, fn):
                     save_config(config)
                     # Update window title
                     update_window_title(window, file_path)
-                    sg.popup(f"Successfully loaded {len(loaded_data)} games from {file_path}")
+                    success_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                    sg.popup(f"Successfully loaded {len(loaded_data)} games from {file_path}", location=success_location)
                     return {'action': 'file_loaded', 'data': loaded_data, 'filename': file_path}
             except Exception as e:
-                sg.popup_error(f"Error loading file: {str(e)}")
+                error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                sg.popup_error(f"Error loading file: {str(e)}", location=error_location)
                 
     elif event == 'Save As':
         # Open file dialog to select destination .gmd file
+        save_file_location = calculate_popup_center_location(window, popup_width=500, popup_height=300)
         file_path = sg.popup_get_file('Save as .gmd file', file_types=(("GMD Files", "*.gmd"),), 
                                      save_as=True, default_extension=".gmd", 
-                                     initial_folder=os.path.dirname(fn))
+                                     initial_folder=os.path.dirname(fn), location=save_file_location)
         if file_path:
             try:
                 # Save data to the selected file
@@ -516,19 +521,23 @@ def handle_menu_events(event, window, data_with_indices, fn):
                     save_config(config)
                     # Update window title
                     update_window_title(window, file_path)
-                    sg.popup(f"Successfully saved {len(data_with_indices)} games to {file_path}")
+                    save_success_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                    sg.popup(f"Successfully saved {len(data_with_indices)} games to {file_path}", location=save_success_location)
                     return {'action': 'file_saved', 'filename': file_path}
             except Exception as e:
-                sg.popup_error(f"Error saving file: {str(e)}")
+                save_error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                sg.popup_error(f"Error saving file: {str(e)}", location=save_error_location)
                 
     elif event == 'Import from Excel':
         # Open file dialog to select Excel file
-        excel_path = sg.popup_get_file('Select Excel file to import', file_types=(("Excel Files", "*.xlsx"),), initial_folder=os.path.dirname(fn))
+        excel_file_location = calculate_popup_center_location(window, popup_width=500, popup_height=300)
+        excel_path = sg.popup_get_file('Select Excel file to import', file_types=(("Excel Files", "*.xlsx"),), initial_folder=os.path.dirname(fn), location=excel_file_location)
         if excel_path and os.path.exists(excel_path):
             # Ask for destination .gmd file
+            gmd_save_location = calculate_popup_center_location(window, popup_width=500, popup_height=300)
             gmd_path = sg.popup_get_file('Save as .gmd file', file_types=(("GMD Files", "*.gmd"),), 
                                         save_as=True, default_extension=".gmd", 
-                                        initial_folder=os.path.dirname(fn))
+                                        initial_folder=os.path.dirname(fn), location=gmd_save_location)
             if gmd_path:
                 try:
                     # Convert Excel to GMD
@@ -540,50 +549,54 @@ def handle_menu_events(event, window, data_with_indices, fn):
                         save_config(config)
                         # Update window title
                         update_window_title(window, gmd_path)
-                        sg.popup(f"Successfully converted Excel file to {gmd_path}")
+                        convert_success_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                        sg.popup(f"Successfully converted Excel file to {gmd_path}", location=convert_success_location)
                         return {'action': 'file_converted', 'data': converted_data, 'filename': gmd_path}
                     else:
-                        sg.popup_error("Failed to convert Excel file to GMD format.")
+                        convert_error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                        sg.popup_error("Failed to convert Excel file to GMD format.", location=convert_error_location)
                 except Exception as e:
-                    sg.popup_error(f"Error converting Excel file: {str(e)}")
+                    convert_exception_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                    sg.popup_error(f"Error converting Excel file: {str(e)}", location=convert_exception_location)
                     
     elif event == 'User Guide':
-        show_user_guide()
+        show_user_guide(window)
         
     elif event == 'Data Format Info':
-        show_data_format_info()
+        show_data_format_info(window)
         
     elif event == 'Troubleshooting':
-        show_troubleshooting_guide()
+        show_troubleshooting_guide(window)
         
     elif event == 'Feature Tour':
-        show_feature_tour()
+        show_feature_tour(window)
         
     elif event == 'Release Notes':
-        show_release_notes()
+        show_release_notes(window)
         
     elif event == 'Report Bug':
-        show_bug_report_info()
+        show_bug_report_info(window)
         
     elif event == 'About':
-        show_about_dialog()
+        show_about_dialog(window)
         
     elif event == 'Check for Updates':
         # Check for updates manually
         from update_ui import check_for_updates_manual
-        check_for_updates_manual()
+        check_for_updates_manual(window)
         
     elif event == 'Update Settings':
         # Show update settings dialog
         from update_ui import show_update_settings
         from auto_updater import get_updater
         
-        settings = show_update_settings()
+        settings = show_update_settings(window)
         if settings:
             updater = get_updater()
             updater.set_check_on_startup_enabled(settings['check_on_startup_enabled'])
             
-            sg.popup("Update settings saved successfully!", title="Settings Updated")
+            settings_saved_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+            sg.popup("Update settings saved successfully!", title="Settings Updated", location=settings_saved_location)
         
     return None
 
@@ -633,7 +646,7 @@ def handle_status_change(row_index, data_with_indices, window, data_storage=None
 
 def handle_game_action(row_index, data_with_indices, window, data_storage=None, fn=None):
     """Handle game actions like Track Time, Edit Game, Rate Game"""
-    action = show_game_actions_dialog(row_index, data_with_indices)
+    action = show_game_actions_dialog(row_index, data_with_indices, window)
     
     if action == "Track Time":
         show_popup(row_index, data_with_indices, window, data_storage, save_filename=fn)
@@ -647,7 +660,7 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
         discord = get_discord_integration()
         discord.update_presence_editing_game(game_name)
         
-        popup_values, action_type, rating = create_entry_popup(existing_entry)
+        popup_values, action_type, rating = create_entry_popup(existing_entry, window)
         
         # If action_type is None, the dialog was cancelled - reset Discord presence
         if action_type is None:
@@ -657,8 +670,10 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
         
         if action_type == 'Delete':
             # Confirm deletion
+            from utilities import calculate_popup_center_location
+            delete_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
             if sg.popup_yes_no(f"Are you sure you want to delete '{existing_entry[0]}'?", 
-                               title="Confirm Deletion") == 'Yes':
+                               title="Confirm Deletion", location=delete_location) == 'Yes':
                 # Remove from data_with_indices
                 original_idx = data_with_indices[row_index][0]
                 deleted_game = data_with_indices.pop(row_index)
@@ -675,7 +690,8 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
                 if fn:
                     save_data(data_with_indices, fn, data_storage)
 
-                sg.popup(f"'{existing_entry[0]}' has been deleted.", title="Deletion Complete")
+                deletion_complete_location = calculate_popup_center_location(window, popup_width=350, popup_height=120)
+                sg.popup(f"'{existing_entry[0]}' has been deleted.", title="Deletion Complete", location=deletion_complete_location)
                 return {'action': 'game_deleted', 'data': data_with_indices}
         
         elif action_type == 'Submit':
@@ -755,7 +771,7 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
         existing_rating = game_data[9] if len(game_data) > 9 else None
         
         # Show rating popup
-        new_rating = show_rating_popup(existing_rating)
+        new_rating = show_rating_popup(existing_rating, window)
         if new_rating:
             # Add the rating to the game data
             while len(game_data) <= 9:
@@ -766,7 +782,8 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
             if fn:
                 save_data(data_with_indices, fn, data_storage)
             
-            sg.popup(f"Rating saved for {game_data[0]}", title="Rating Added")
+            rating_saved_location = calculate_popup_center_location(window, popup_width=350, popup_height=120)
+            sg.popup(f"Rating saved for {game_data[0]}", title="Rating Added", location=rating_saved_location)
             return {'action': 'game_rated', 'data': data_with_indices}
     
     elif action == "Add Session":
@@ -776,7 +793,7 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
         
         # Show manual session popup
         from session_management import show_manual_session_popup, add_manual_session_to_game
-        session = show_manual_session_popup(game_name)
+        session = show_manual_session_popup(game_name, window)
         if session:
             # Add session to game
             success = add_manual_session_to_game(game_name, session, data_with_indices, data_storage)
@@ -785,10 +802,12 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
                 if fn:
                     save_data(data_with_indices, fn, data_storage)
                 
-                sg.popup(f"Manual session added to {game_name}!", title="Session Added")
+                session_added_location = calculate_popup_center_location(window, popup_width=350, popup_height=120)
+                sg.popup(f"Manual session added to {game_name}!", title="Session Added", location=session_added_location)
                 return {'action': 'session_added', 'data': data_with_indices}
             else:
-                sg.popup_error(f"Failed to add session to {game_name}", title="Error")
+                session_error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                sg.popup_error(f"Failed to add session to {game_name}", title="Error", location=session_error_location)
     
     elif action == "View Statistics":
         # Get game data
@@ -817,10 +836,11 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                     # Ask what action to take
                     if has_feedback:
                         # Create a custom popup with buttons
+                        feedback_options_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
                         feedback_popup = sg.Window("Session Feedback Options", 
                                             [[sg.Text("This session has feedback. What would you like to do?")],
                                             [sg.Button("View"), sg.Button("Edit"), sg.Button("Delete", button_color=('white', 'red')), sg.Button("Cancel")]],
-                                            modal=True, icon='gameslisticon.ico')
+                                            modal=True, icon='gameslisticon.ico', location=feedback_options_location)
                         
                         feedback_action, _ = feedback_popup.read()
                         feedback_popup.close()
@@ -836,10 +856,11 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                                     rating_info += f"\nTags: {', '.join(rating['tags'])}"
                             
                             full_feedback = feedback_text + rating_info
-                            sg.popup_scrolled(full_feedback, title=f"Session Feedback - {selected_game}", size=(60, 20), icon='gameslisticon.ico')
+                            feedback_view_location = calculate_popup_center_location(window, popup_width=600, popup_height=400)
+                            sg.popup_scrolled(full_feedback, title=f"Session Feedback - {selected_game}", size=(60, 20), icon='gameslisticon.ico', location=feedback_view_location)
                             
                         elif feedback_action == "Edit":  # Edit
-                            new_feedback = show_session_feedback_popup(session['feedback'])
+                            new_feedback = show_session_feedback_popup(session['feedback'], window)
                             if new_feedback is not None:  # None means cancel was pressed
                                 session['feedback'] = new_feedback
                                 # Update the sessions table
@@ -851,16 +872,18 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                                 
                         elif feedback_action == "Delete":  # Delete
                             # Ask if user wants to delete just the feedback or the entire session
+                            delete_options_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
                             delete_options = sg.Window("Delete Options", 
                                                  [[sg.Text("What would you like to delete?")],
                                                  [sg.Button("Delete Feedback Only"), sg.Button("Delete Entire Session"), sg.Button("Cancel")]],
-                                                 modal=True, icon='gameslisticon.ico')
+                                                 modal=True, icon='gameslisticon.ico', location=delete_options_location)
                             
                             delete_choice, _ = delete_options.read()
                             delete_options.close()
                             
                             if delete_choice == "Delete Feedback Only":
-                                if sg.popup_yes_no("Are you sure you want to remove this feedback?", title="Confirm Deletion", icon='gameslisticon.ico') == "Yes":
+                                feedback_delete_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                                if sg.popup_yes_no("Are you sure you want to remove this feedback?", title="Confirm Deletion", icon='gameslisticon.ico', location=feedback_delete_location) == "Yes":
                                     # Remove the feedback
                                     session.pop('feedback', None)
                                     # Update the sessions table
@@ -870,7 +893,8 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                                         save_data(data_with_indices, fn, data_storage)
                                     return {'action': 'session_feedback_deleted'}
                             elif delete_choice == "Delete Entire Session":
-                                if sg.popup_yes_no("Are you sure you want to delete this session?", title="Confirm Deletion", icon='gameslisticon.ico') == "Yes":
+                                session_delete_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                                if sg.popup_yes_no("Are you sure you want to delete this session?", title="Confirm Deletion", icon='gameslisticon.ico', location=session_delete_location) == "Yes":
                                     # Get the game's sessions
                                     game_sessions = get_game_sessions(data_with_indices, selected_game)
                                     # Remove the session
@@ -883,16 +907,17 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                                     return {'action': 'session_deleted'}
                     else:
                         # No feedback exists, show options popup with Add Feedback and Delete options
+                        session_options_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
                         feedback_popup = sg.Window("Session Options", 
                                             [[sg.Text("What would you like to do with this session?")],
                                             [sg.Button("Add Feedback"), sg.Button("Delete", button_color=('white', 'red')), sg.Button("Cancel")]],
-                                            modal=True, icon='gameslisticon.ico')
+                                            modal=True, icon='gameslisticon.ico', location=session_options_location)
                         
                         feedback_action, _ = feedback_popup.read()
                         feedback_popup.close()
                         
                         if feedback_action == "Add Feedback":
-                            new_feedback = show_session_feedback_popup()
+                            new_feedback = show_session_feedback_popup(None, window)
                             if new_feedback:
                                 session['feedback'] = new_feedback
                                 # Update the sessions table
@@ -902,7 +927,8 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                                     save_data(data_with_indices, fn, data_storage)
                                 return {'action': 'session_feedback_added'}
                         elif feedback_action == "Delete":
-                            if sg.popup_yes_no("Are you sure you want to delete this session?", title="Confirm Deletion", icon='gameslisticon.ico') == "Yes":
+                            final_delete_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                            if sg.popup_yes_no("Are you sure you want to delete this session?", title="Confirm Deletion", icon='gameslisticon.ico', location=final_delete_location) == "Yes":
                                 # Get the game's sessions
                                 game_sessions = get_game_sessions(data_with_indices, selected_game)
                                 # Remove the session
@@ -925,7 +951,7 @@ def handle_add_entry(data_with_indices, window, fn=None, data_storage=None):
     discord.update_presence_adding_game()
     
     # Call the popup with no existing entry
-    popup_values, action, rating = create_entry_popup()
+    popup_values, action, rating = create_entry_popup(None, window)
     
     if action == 'Submit':
         # All validation is now handled in create_entry_popup() 
