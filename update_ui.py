@@ -188,22 +188,26 @@ def show_update_notification(update_info: Dict[str, Any], parent_window=None) ->
     
     layout = top_section + notes_section + bottom_section
     
-    # Calculate center position relative to parent window
-    notification_location = None
+    # Calculate center position relative to parent window or use default centering
+    window_kwargs = {
+        'modal': True,
+        'icon': 'gameslisticon.ico',
+        'element_justification': 'left',
+        'size': (700, 650),  # Reduced from 700 to 650 for better proportions
+        'resizable': True,
+        'finalize': True
+    }
+    
     if parent_window:
         from utilities import calculate_popup_center_location
         notification_location = calculate_popup_center_location(parent_window, popup_width=700, popup_height=650)
+        if notification_location:
+            window_kwargs['location'] = notification_location
     
     window = sg.Window(
         "GamesList Manager - Update Available", 
         layout, 
-        modal=True, 
-        icon='gameslisticon.ico',
-        element_justification='left',
-        size=(700, 650),  # Reduced from 700 to 650 for better proportions
-        resizable=True,
-        finalize=True,
-        location=notification_location
+        **window_kwargs
     )
     
     def load_images_synchronously():

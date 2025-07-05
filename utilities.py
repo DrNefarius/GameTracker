@@ -182,4 +182,5 @@ def calculate_popup_center_location(parent_window, popup_width=400, popup_height
     except Exception as e:
         # If anything goes wrong, return None to use default centering
         print(f"Warning: Could not calculate popup center position: {e}")
-        return None 
+        return None
+ 
