@@ -53,7 +53,7 @@ def record_status_change(game_data, old_status, new_status):
     return status_change
 
 def update_statistics_tab(window, data, selected_game=None, update_game_list=True, contributions_year=None, 
-                          heatmap_window_months=1, heatmap_end_date=None, distribution_chart_type='line'):
+                          heatmap_window_months=1, heatmap_end_date=None, distribution_chart_type='line', full_dataset=None):
     """Update all elements in the Statistics tab"""
     # Extract all sessions
     all_sessions = extract_all_sessions(data)
@@ -86,9 +86,12 @@ def update_statistics_tab(window, data, selected_game=None, update_game_list=Tru
     
     # Only update game list when explicitly requested (not during selection)
     if update_game_list:
+        # Use full dataset for game list population to show all games even when filtering is active
+        game_list_data = full_dataset if full_dataset is not None else data
+        
         # Get unique game names for the game list - include games with sessions, status history, OR game-level ratings
         game_names = []
-        for idx, game_data in data:
+        for idx, game_data in game_list_data:
             game_name = game_data[0]
             has_sessions = len(game_data) > 7 and game_data[7] and len(game_data[7]) > 0
             has_status_history = len(game_data) > 8 and game_data[8] and len(game_data[8]) > 0
@@ -995,7 +998,20 @@ def handle_add_entry(data_with_indices, window, fn=None, data_storage=None):
         if rating is not None:
             new_entry.append(rating)
         
-        data_with_indices.append((len(data_with_indices), new_entry))
+        # Handle adding entry properly when filtering is active
+        if data_storage is not None:
+            # Filtering is active - add to both data_storage and data_with_indices
+            new_index = len(data_storage)  # Use full dataset size for correct index
+            new_entry_with_index = (new_index, new_entry)
+            
+            # Add to the full dataset
+            data_storage.append(new_entry_with_index)
+            
+            # Add to current filtered view so it appears immediately
+            data_with_indices.append(new_entry_with_index)
+        else:
+            # No filtering active - add normally
+            data_with_indices.append((len(data_with_indices), new_entry))
         
         # Auto-save after adding new entry
         if fn:

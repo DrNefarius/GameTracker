@@ -27,6 +27,10 @@ from discord_integration import initialize_discord, get_discord_integration, cle
 from auto_updater import initialize_updater, get_updater
 from update_ui import show_update_notification, show_update_settings, handle_update_process, check_for_updates_manual
 
+def get_full_dataset(data_with_indices, data_storage):
+    """Get the full dataset for statistics - use data_storage if filtering is active, otherwise data_with_indices"""
+    return data_storage if data_storage is not None else data_with_indices
+
 def force_scrollable_refresh(window):
     """Force PySimpleGUI to recalculate scrollable areas by temporarily resizing the window"""
     try:
@@ -105,8 +109,9 @@ def main():
     # Initialize Discord Rich Presence with the loaded data
     discord_enabled = config.get('discord_enabled', True)
     discord = initialize_discord(enabled=discord_enabled)
-    total_games = count_total_entries(data_with_indices)
-    completed_games = count_total_completed(data_with_indices)
+    full_dataset = get_full_dataset(data_with_indices, None)  # No filtering at startup
+    total_games = count_total_entries(full_dataset)
+    completed_games = count_total_completed(full_dataset)
     print(f"Initial Discord setup: {total_games} games, {completed_games} completed, enabled: {discord_enabled}")
     discord.update_game_library_stats(total_games, completed_games)
     discord.update_presence_browsing('Games List')  # Set initial presence
@@ -172,8 +177,9 @@ def main():
                     data_storage = None  # Reset data storage
                     
                     # Update Discord with new file stats
-                    total_games = count_total_entries(data_with_indices)
-                    completed_games = count_total_completed(data_with_indices)
+                    full_dataset = get_full_dataset(data_with_indices, data_storage)
+                    total_games = count_total_entries(full_dataset)
+                    completed_games = count_total_completed(full_dataset)
                     discord.update_game_library_stats(total_games, completed_games)
                     
                     # Map tab key to tab name for Discord
@@ -196,7 +202,8 @@ def main():
                             window['-RATING-CHART-'].update(filename=charts['rating_chart'])
                             force_scrollable_refresh(window)
                     elif values['-TABGROUP-'] == '-TAB3-':
-                        update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
+                        full_dataset = get_full_dataset(data_with_indices, data_storage)
+                        update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True, full_dataset=full_dataset)
                         force_scrollable_refresh(window)
                 elif result.get('action') == 'file_saved':
                     fn = result['filename']
@@ -206,8 +213,9 @@ def main():
                     data_storage = None  # Reset data storage
                     
                     # Update Discord with converted file stats
-                    total_games = count_total_entries(data_with_indices)
-                    completed_games = count_total_completed(data_with_indices)
+                    full_dataset = get_full_dataset(data_with_indices, data_storage)
+                    total_games = count_total_entries(full_dataset)
+                    completed_games = count_total_completed(full_dataset)
                     discord.update_game_library_stats(total_games, completed_games)
                     
                     # Map tab key to tab name for Discord
@@ -228,7 +236,8 @@ def main():
                             window['-RATING-CHART-'].update(filename=charts['rating_chart'])
                             force_scrollable_refresh(window)
                     elif values['-TABGROUP-'] == '-TAB3-':
-                        update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
+                        full_dataset = get_full_dataset(data_with_indices, data_storage)
+                        update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True, full_dataset=full_dataset)
                         force_scrollable_refresh(window)
                         
         # Handle tab changes
@@ -247,8 +256,9 @@ def main():
             print(f"Main: Tab changed to '{current_tab}' (key: '{current_tab_key}')")
             
             # Update Discord presence based on tab - also update game stats
-            total_games = count_total_entries(data_with_indices)
-            completed_games = count_total_completed(data_with_indices)
+            full_dataset = get_full_dataset(data_with_indices, data_storage)
+            total_games = count_total_entries(full_dataset)
+            completed_games = count_total_completed(full_dataset)
             print(f"Main: Updating Discord with {total_games} games, {completed_games} completed")
             discord.update_game_library_stats(total_games, completed_games)
             discord.update_presence_browsing(current_tab)
@@ -272,7 +282,8 @@ def main():
                 current_year = datetime.now().year
                 window['-CONTRIB-YEAR-DISPLAY-'].update(str(current_year))
                 
-                update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
+                full_dataset = get_full_dataset(data_with_indices, data_storage)
+                update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True, full_dataset=full_dataset)
                 force_scrollable_refresh(window)
                 tabs_loaded[2] = True
                 
@@ -605,15 +616,18 @@ def main():
             # Clear selected game from Discord tracking and update to general stats
             discord.update_presence_viewing_stats(None)
             
+            full_dataset = get_full_dataset(data_with_indices, data_storage)
             update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True,
-                                distribution_chart_type=chart_type)
+                                distribution_chart_type=chart_type, full_dataset=full_dataset)
             force_scrollable_refresh(window)
             
         # Handle session search
         elif event == '-SESSION-SEARCH-':
             search_query = values['-SESSION-SEARCH-'].lower()
             game_names = []
-            for idx, game_data in data_with_indices:
+            # Use original dataset if available, otherwise use current filtered view
+            search_data = data_storage if data_storage is not None else data_with_indices
+            for idx, game_data in search_data:
                 game_name = game_data[0]
                 has_sessions = len(game_data) > 7 and game_data[7] and len(game_data[7]) > 0
                 has_status_history = len(game_data) > 8 and game_data[8] and len(game_data[8]) > 0
@@ -624,7 +638,9 @@ def main():
         elif event == '-SESSION-SEARCH-BTN-':
             search_query = values['-SESSION-SEARCH-'].lower()
             game_names = []
-            for idx, game_data in data_with_indices:
+            # Use original dataset if available, otherwise use current filtered view
+            search_data = data_storage if data_storage is not None else data_with_indices
+            for idx, game_data in search_data:
                 game_name = game_data[0]
                 has_sessions = len(game_data) > 7 and game_data[7] and len(game_data[7]) > 0
                 has_status_history = len(game_data) > 8 and game_data[8] and len(game_data[8]) > 0
@@ -634,10 +650,18 @@ def main():
             
         # Handle search and reset
         elif event == 'Search' or event in ['\r', QT_ENTER_KEY1, QT_ENTER_KEY2]:
-            query = values['-SEARCH-'].lower()
+            query = values['-SEARCH-'].lower().strip()
             if data_storage is None:  # save the whole dataset once before filtering
                 data_storage = data_with_indices.copy()
-            data_with_indices = [row for row in data_with_indices if any(query in str(cell).lower() for cell in row[1])]
+            
+            # Always filter from the original dataset (data_storage), not from current filtered view
+            # This prevents nested filtering where each new search filters the already filtered results
+            if not query:
+                # If query is empty, show all entries
+                data_with_indices = data_storage.copy()
+            else:
+                data_with_indices = [row for row in data_storage if any(query in str(cell).lower() for cell in row[1])]
+            
             from ui_components import update_table_display
             update_table_display(data_with_indices, window)
             update_summary(data_with_indices, window)
@@ -669,8 +693,9 @@ def main():
                 data_with_indices = result['data']
                 
                 # Update Discord stats after adding entry
-                total_games = count_total_entries(data_with_indices)
-                completed_games = count_total_completed(data_with_indices)
+                full_dataset = get_full_dataset(data_with_indices, data_storage)
+                total_games = count_total_entries(full_dataset)
+                completed_games = count_total_completed(full_dataset)
                 discord.update_game_library_stats(total_games, completed_games)
                 discord.update_presence_browsing(values['-TABGROUP-'])
                 
@@ -709,7 +734,8 @@ def main():
                             
                             # Update statistics tab with all games first to populate the list
                             from event_handlers import update_statistics_tab
-                            update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True)
+                            full_dataset = get_full_dataset(data_with_indices, data_storage)
+                            update_statistics_tab(window, data_with_indices, selected_game=None, update_game_list=True, full_dataset=full_dataset)
                             
                             # Get the game list to find the index of our target game
                             game_list_values = window['-GAME-LIST-'].Values
@@ -741,8 +767,9 @@ def main():
                             data_with_indices = action_result['data']
                             
                             # Update Discord stats after game actions
-                            total_games = count_total_entries(data_with_indices)
-                            completed_games = count_total_completed(data_with_indices)
+                            full_dataset = get_full_dataset(data_with_indices, data_storage)
+                            total_games = count_total_entries(full_dataset)
+                            completed_games = count_total_completed(full_dataset)
                             discord.update_game_library_stats(total_games, completed_games)
                             
                             # Map tab key to tab name for Discord
@@ -793,10 +820,11 @@ def main():
                                 window_months = {'1 Month': 1, '3 Months': 3, '6 Months': 6, '1 Year': 12}.get(window_text, 1)
                                 heatmap_end_date = getattr(main, 'heatmap_end_date', None)
                                 
+                                full_dataset = get_full_dataset(data_with_indices, data_storage)
                                 update_statistics_tab(window, data_with_indices, selected_game, 
                                                     update_game_list=True, contributions_year=contributions_year,
                                                     heatmap_window_months=window_months, heatmap_end_date=heatmap_end_date,
-                                                    distribution_chart_type=chart_type)
+                                                    distribution_chart_type=chart_type, full_dataset=full_dataset)
                                 force_scrollable_refresh(window)
                                     
 
@@ -840,8 +868,9 @@ def main():
                             save_data(data_with_indices, fn, data_storage)
                             
                             # Update Discord stats after adding manual session
-                            total_games = count_total_entries(data_with_indices)
-                            completed_games = count_total_completed(data_with_indices)
+                            full_dataset = get_full_dataset(data_with_indices, data_storage)
+                            total_games = count_total_entries(full_dataset)
+                            completed_games = count_total_completed(full_dataset)
                             discord.update_game_library_stats(total_games, completed_games)
                             
                             # Update statistics tab to reflect the new session
