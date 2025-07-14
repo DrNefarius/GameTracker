@@ -673,7 +673,6 @@ def handle_game_action(row_index, data_with_indices, window, data_storage=None, 
         
         if action_type == 'Delete':
             # Confirm deletion
-            from utilities import calculate_popup_center_location
             delete_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
             if sg.popup_yes_no(f"Are you sure you want to delete '{existing_entry[0]}'?", 
                                title="Confirm Deletion", location=delete_location) == 'Yes':
@@ -831,9 +830,35 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                 selected_row = values['-SESSIONS-TABLE-'][0]
                 # Get the sessions for this game
                 game_sessions = get_game_sessions(data_with_indices, selected_game)
-                if selected_row < len(game_sessions):
-                    # Get the session
-                    session = game_sessions[selected_row]
+                
+                # Sort sessions the same way as the display function to get the correct session
+                def get_session_start_datetime(session):
+                    """Get datetime object for sorting, defaulting to epoch for invalid dates"""
+                    if 'start' in session:
+                        try:
+                            return datetime.fromisoformat(session['start'])
+                        except (ValueError, TypeError):
+                            pass
+                    return datetime.min  # Default to earliest possible date for invalid sessions
+                
+                sorted_sessions = sorted(game_sessions, key=get_session_start_datetime)
+                
+                if selected_row < len(sorted_sessions):
+                    # Get the session from the sorted list (this is what user actually clicked on)
+                    session = sorted_sessions[selected_row]
+                    
+                    # Find the original index of this session in the unsorted list for modification
+                    original_session_index = None
+                    for i, original_session in enumerate(game_sessions):
+                        if original_session is session:  # Reference equality check
+                            original_session_index = i
+                            break
+                    
+                    # Safety check to ensure we found the original index
+                    if original_session_index is None:
+                        print(f"Error: Could not find original session index for selected session")
+                        return None
+                    
                     has_feedback = 'feedback' in session and session['feedback']
                     
                     # Ask what action to take
@@ -900,8 +925,8 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                                 if sg.popup_yes_no("Are you sure you want to delete this session?", title="Confirm Deletion", icon='gameslisticon.ico', location=session_delete_location) == "Yes":
                                     # Get the game's sessions
                                     game_sessions = get_game_sessions(data_with_indices, selected_game)
-                                    # Remove the session
-                                    game_sessions.pop(selected_row)
+                                    # Remove the session using the original index
+                                    game_sessions.pop(original_session_index)
                                     # Update the sessions table
                                     update_statistics_tab(window, data_with_indices, selected_game, update_game_list=False)
                                     # Save changes
@@ -934,8 +959,8 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                             if sg.popup_yes_no("Are you sure you want to delete this session?", title="Confirm Deletion", icon='gameslisticon.ico', location=final_delete_location) == "Yes":
                                 # Get the game's sessions
                                 game_sessions = get_game_sessions(data_with_indices, selected_game)
-                                # Remove the session
-                                game_sessions.pop(selected_row)
+                                # Remove the session using the original index
+                                game_sessions.pop(original_session_index)
                                 # Update the sessions table
                                 update_statistics_tab(window, data_with_indices, selected_game, update_game_list=False)
                                 # Save changes

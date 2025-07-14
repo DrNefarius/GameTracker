@@ -13,7 +13,19 @@ def format_session_for_display(sessions):
     """Format session data for display in the table"""
     display_data = []
     
-    for session in sessions:
+    # Sort sessions by start date (earliest first)
+    def get_session_start_datetime(session):
+        """Get datetime object for sorting, defaulting to epoch for invalid dates"""
+        if 'start' in session:
+            try:
+                return datetime.fromisoformat(session['start'])
+            except (ValueError, TypeError):
+                pass
+        return datetime.min  # Default to earliest possible date for invalid sessions
+    
+    sorted_sessions = sorted(sessions, key=get_session_start_datetime)
+    
+    for session in sorted_sessions:
         try:
             # Parse start time
             start_time = "Unknown"
