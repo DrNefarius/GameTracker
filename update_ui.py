@@ -391,13 +391,21 @@ def show_install_confirmation(download_path: str, parent_window=None) -> bool:
         from utilities import calculate_popup_center_location
         install_location = calculate_popup_center_location(parent_window, popup_width=500, popup_height=350)
     
+    # Create window kwargs and conditionally include location
+    window_kwargs = {
+        'modal': True,
+        'icon': 'gameslisticon.ico',
+        'element_justification': 'left'
+    }
+    
+    # Only include location if it's not None to allow PySimpleGUI default centering
+    if install_location is not None:
+        window_kwargs['location'] = install_location
+    
     window = sg.Window(
         "Install Update", 
         layout, 
-        modal=True, 
-        icon='gameslisticon.ico',
-        element_justification='left',
-        location=install_location
+        **window_kwargs
     )
     
     result = False
@@ -488,7 +496,11 @@ def show_update_settings(parent_window=None) -> Dict[str, bool]:
                 subprocess.run(['explorer', downloads_dir], shell=True)
             else:
                 downloads_info_location = calculate_popup_center_location(parent_window, popup_width=300, popup_height=100) if parent_window else None
-                sg.popup("Downloads folder not found.", title="Info", location=downloads_info_location)
+                # Only pass location if it's not None to allow PySimpleGUI default centering
+                popup_kwargs = {"title": "Info"}
+                if downloads_info_location is not None:
+                    popup_kwargs["location"] = downloads_info_location
+                sg.popup("Downloads folder not found.", **popup_kwargs)
         elif event == '-CLEAR-DOWNLOADS-':
             # Clear downloaded updates
             clear_downloads(parent_window)
