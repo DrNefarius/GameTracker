@@ -3,7 +3,7 @@ Constants used throughout the GamesList application
 """
 
 # Application version - update this single location to change version across the entire app
-VERSION = "1.9.7"
+VERSION = "1.9.8"
 
 _DEBUG = False
 
@@ -15,7 +15,7 @@ GITHUB_API_BASE = "https://api.github.com"
 # Discord Rich Presence configuration
 # SETUP REQUIRED: Replace CLIENT_ID with your actual Discord Application ID
 # See DISCORD_SETUP.md for detailed setup instructions
-DISCORD_CLIENT_ID = "123456789012345678"  # Placeholder - needs to be replaced with actual Discord app ID
+DISCORD_CLIENT_ID = "1234567890123456789"  # Placeholder - needs to be replaced with actual Discord app ID
 DISCORD_GITHUB_URL = "https://yourname.github.io/GameTracker/"
 
 # Special key constants for different platforms
