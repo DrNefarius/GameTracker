@@ -317,6 +317,45 @@ class DiscordIntegration:
         except Exception as e:
             print(f"Error updating Discord presence (viewing stats): {str(e)}")
     
+    def update_presence_viewing_daily_activity(self, activity_date):
+        """Set presence for viewing daily activity for a specific date"""
+        if not self.is_connected():
+            return
+            
+        try:
+            # Format the date for display
+            if isinstance(activity_date, str):
+                from datetime import datetime
+                try:
+                    date_obj = datetime.strptime(activity_date, '%Y-%m-%d').date()
+                except ValueError:
+                    date_obj = datetime.now().date()
+            else:
+                date_obj = activity_date
+            
+            # Format date string for display
+            date_str = date_obj.strftime('%B %d, %Y')  # e.g., "December 25, 2024"
+            
+            # Create details text
+            details = f"Viewing daily activity"
+            state = f"For {date_str}"
+            
+            self.rpc.update(
+                details=details,
+                state=state,
+                large_image="gameslist_logo",
+                large_text="GamesList Manager",
+                small_image="statistics",
+                small_text="Daily Activity View",
+                buttons=[
+                    {"label": "View on GitHub", "url": self.GITHUB_URL}
+                ]
+            )
+            self.current_state = "viewing_daily_activity"
+            
+        except Exception as e:
+            print(f"Error updating Discord presence (viewing daily activity): {str(e)}")
+    
     def update_presence_session_complete(self, game_name: str, session_duration: str, platform: str = None):
         """Set presence for completed session - shows for 10 seconds then returns to current context"""
         if not self.is_connected():

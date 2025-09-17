@@ -1,7 +1,7 @@
 # GamesList Manager
 
 ![Python](https://badgen.net/badge/python/3.7%2B/blue?icon=python)
-![Version](https://badgen.net/badge/version/v1.9.8/orange?icon=github)
+![Version](https://badgen.net/badge/version/v1.10.0/orange?icon=github)
 ![License](https://badgen.net/badge/license/GPL-3.0/green?icon=github)
 
 ## Table of Contents
@@ -68,22 +68,20 @@ GamesList Manager is a comprehensive desktop application for managing your video
 - Customizable presence messages and branding
 - Easy setup with your own Discord application
 
-## What's New in Version 1.9 🚀
+## What's New in Version 1.10 🚀
 
-### **🔄 Complete Auto-Updater System**
-Version 1.9 introduces a comprehensive automatic update system that keeps your GamesList Manager always up-to-date with the latest features and improvements:
+### **📅 Daily Activity View**
+View all your gaming activity for any specific date, sorted chronologically by time:
 
-- **🎯 One-Click Updates**: Download and install updates with a single click
-- **📊 Smart Progress Tracking**: Real-time download progress with cancellation support
-- **🔒 Safe Installation**: Intelligent staging system handles file locking and creates automatic backups
-- **🌐 Cross-Platform Support**: Works seamlessly on Windows, macOS, and Linux
-- **📋 Rich Release Notes**: View detailed release information with image support
-- **⚙️ Flexible Settings**: Configure startup checking or check manually via Options menu
-- **🎉 Success Notifications**: Confirmation dialogs after successful updates
+- **🎯 Date-Based Navigation**: Click through any date to see detailed gaming sessions
+- **📊 Daily Summaries**: Total time played, session count, and games list
+- **🌐 Multiple Access Points**: View menu shortcuts for Today/Yesterday, plus date picker
+- **💬 Discord Integration**: Rich Presence shows which date you're reviewing
+- **🔄 Session Details**: Click any session for detailed notes, ratings, and feedback
 
-The auto-updater integrates directly with GitHub releases, ensuring you always have access to the latest features, bug fixes, and improvements. Updates can be configured to check on startup or disabled entirely based on your preferences.
+Perfect for reviewing your gaming history and understanding daily patterns.
 
-**Access via**: Options → Check for Updates / Update Settings
+**Access via**: Statistics → View Date Activity, or View menu → Today's/Yesterday's Activity
 
 ## Screenshots
 

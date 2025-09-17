@@ -537,6 +537,10 @@ def create_github_style_contributions_heatmap(sessions, game_name=None):
         canvas = canvas_element.Widget
         canvas.delete("all")
         
+        # Clear any existing event bindings to prevent accumulation
+        canvas.unbind('<Motion>')
+        canvas.unbind('<Leave>')
+        
         tooltip_items = []
         
         def on_mouse_motion(event):
@@ -622,6 +626,11 @@ def create_github_style_contributions_heatmap(sessions, game_name=None):
         
         title_text = f"Gaming Contributions - {game_name}" if game_name else "Gaming Contributions"
         canvas.create_text(canvas_width//2, 18, text=title_text, font=('Arial', 12, 'bold'), fill='black')
+        
+        # Add instruction text for accessing date activities
+        instruction_text = "Use 'View Date Activity' button below to see detailed activities for specific dates"
+        canvas.create_text(canvas_width//2, canvas_height - 20, text=instruction_text, 
+                          font=('Arial', 8), fill='#586069')
         
         day_labels = ['Mon', 'Wed', 'Fri']
         day_indices = [0, 2, 4]
@@ -823,6 +832,10 @@ def create_github_contributions_canvas(sessions, game_name=None, canvas_key='-CO
         canvas = canvas_element.Widget
         canvas.delete("all")  # Clear canvas
         
+        # Clear any existing event bindings to prevent accumulation
+        canvas.unbind('<Motion>')
+        canvas.unbind('<Leave>')
+        
         # Variable to store current tooltip canvas items
         tooltip_items = []
         
@@ -919,6 +932,11 @@ def create_github_contributions_canvas(sessions, game_name=None, canvas_key='-CO
         
         title_text = f"Gaming Contributions - {game_name}" if game_name else "Gaming Contributions"
         canvas.create_text(canvas_width//2, 18, text=title_text, font=('Arial', 12, 'bold'), fill='black')
+        
+        # Add instruction text for accessing date activities
+        instruction_text = "Use 'View Date Activity' button below to see detailed activities for specific dates"
+        canvas.create_text(canvas_width//2, canvas_height - 20, text=instruction_text, 
+                          font=('Arial', 8), fill='#586069')
         
         day_labels = ['Mon', 'Wed', 'Fri']
         day_indices = [0, 2, 4]

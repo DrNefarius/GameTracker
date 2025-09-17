@@ -422,7 +422,8 @@ def create_main_layout(data_with_indices):
             [sg.Text("Sessions: 0", key='-GAME-SESSIONS-', size=(20, 1)),
              sg.Text("Total Time: 00:00:00", key='-GAME-SESSION-TIME-', size=(20, 1))],
             [sg.Button("View Activity Log", key='-VIEW-ALL-NOTES-', tooltip='Display the activity log for the selected game', size=(15, 1)),
-             sg.Button("Add Session", key='-ADD-SESSION-', tooltip='Manually add a gaming session for the selected game', size=(12, 1))],
+             sg.Button("Add Session", key='-ADD-SESSION-', tooltip='Manually add a gaming session for the selected game', size=(12, 1)),
+             sg.Button("View Date Activity", key='-VIEW-DATE-ACTIVITY-', tooltip='View all gaming activity for a specific date', size=(15, 1))],
             [sg.TabGroup([
                 [sg.Tab('Sessions', [
                     [sg.Text("Click on a session with [FEEDBACK] to view or edit feedback", font=('Helvetica', 8, 'italic'))],
@@ -506,6 +507,7 @@ def create_main_layout(data_with_indices):
     # Main layout with tabs
     layout = [
         [sg.Menu([['File', ['Open', 'Save As', 'Import from Excel', 'Exit']], 
+                  ['View', ['View Activity by Date', '---', 'Today\'s Activity', 'Yesterday\'s Activity']], 
                   ['Options', [get_discord_menu_text(), '---', 'Check for Updates', 'Update Settings']], 
                   ['Help', ['User Guide', 'Feature Tour', '---', 'Data Format Info', 
                            'Troubleshooting', '---', 'Release Notes', 'Report Bug', '---', 'About']]], key='-MENU-')],

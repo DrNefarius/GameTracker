@@ -167,7 +167,8 @@ def main():
         # Handle menu events
         elif (event in ['Open', 'Save As', 'Import from Excel', 'User Guide', 
                        'Feature Tour', 'Data Format Info', 'Troubleshooting', 
-                       'Check for Updates', 'Update Settings', 'Release Notes', 'Report Bug', 'About'] or 
+                       'Check for Updates', 'Update Settings', 'Release Notes', 'Report Bug', 'About',
+                       'View Activity by Date', 'Today\'s Activity', 'Yesterday\'s Activity'] or 
               (isinstance(event, str) and event.startswith('Discord:') and event.endswith('::discord_toggle'))):
             result = handle_menu_events(event, window, data_with_indices, fn)
             if result:
@@ -852,6 +853,22 @@ def main():
                 print(f"Error displaying all notes: {str(e)}")
                 error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
                 sg.popup_error(f"Error displaying notes: {str(e)}", title="Error", location=error_location)
+                
+        # Handle view date activity button
+        elif event == '-VIEW-DATE-ACTIVITY-':
+            try:
+                from date_activity_view import show_date_picker_dialog, show_date_activity_view
+                # Show date picker dialog
+                selected_date = show_date_picker_dialog(window)
+                if selected_date:
+                    # Get full dataset to include all activities, not just filtered view
+                    full_dataset = get_full_dataset(data_with_indices, data_storage)
+                    # Show activity view for the selected date
+                    show_date_activity_view(selected_date, full_dataset, window)
+            except Exception as e:
+                print(f"Error showing date activity view: {str(e)}")
+                error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                sg.popup_error(f"Error showing date activity: {str(e)}", title="Error", location=error_location)
                 
         # Handle add session button in statistics tab
         elif event == '-ADD-SESSION-':

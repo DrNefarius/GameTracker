@@ -603,6 +603,64 @@
             margin-bottom: 15px;
         }
 
+        /* Collapsible Section Styles */
+        .collapsible-section {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .collapsible-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 20px;
+            background: var(--background-light);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .collapsible-header:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .highlight-badge.clickable {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .highlight-badge.clickable:hover {
+            background: #218838;
+            transform: scale(1.05);
+        }
+
+        .collapse-arrow {
+            font-size: 1.2em;
+            color: var(--secondary-color);
+            transition: transform 0.3s ease;
+        }
+
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-out;
+            background: white;
+        }
+
+        .collapsible-content.expanded {
+            max-height: 2000px;
+            transition: max-height 0.5s ease-in;
+        }
+
+        .collapsible-content .section-title {
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }
+
         .feature-highlight h3 {
             font-size: 2em;
             color: var(--primary-color);
@@ -648,7 +706,7 @@
             <p>A comprehensive desktop application for managing your video game collection and tracking your gaming sessions</p>
             <div class="badges">
                 <span class="badge">Python 3.7+</span>
-                <span class="badge">Version 1.9.8</span>
+                <span class="badge">Version 1.10.0</span>
                 <span class="badge">GPL-3.0 License</span>
                 <span class="badge">Discord Integration</span>
             </div>
@@ -763,63 +821,108 @@
         </div>
     </div>
 
-    <!-- Auto-Updater Section -->
+    <!-- Daily Activity View Section -->
     <div class="section">
         <div class="container">
-            <h2 class="section-title">🔄 Auto-Updater System</h2>
+            <h2 class="section-title">📅 Daily Activity View</h2>
             <div class="feature-highlight">
-                <div class="highlight-badge">New in v1.9.0</div>
-                <h3>Stay Always Up-to-Date</h3>
-                <p>GamesList Manager now includes a comprehensive auto-updater system that keeps your application current with the latest features, improvements, and bug fixes.</p>
+                <div class="highlight-badge">New in v1.10.0</div>
+                <h3>View Gaming Activity by Date</h3>
+                <p>Explore your gaming history with detailed daily activity views. See exactly what you played, when, and for how long on any specific date.</p>
             </div>
             
             <div class="features-grid">
                 <div class="feature-card">
                     <div class="feature-icon">🎯</div>
-                    <h3>One-Click Updates</h3>
-                    <p>Download and install updates with a single click. The intelligent staging system handles everything safely in the background.</p>
+                    <h3>Date-Based Navigation</h3>
+                    <p>Browse through any date to see chronologically sorted gaming sessions with detailed timing information.</p>
                 </div>
 
                 <div class="feature-card">
                     <div class="feature-icon">📊</div>
-                    <h3>Smart Progress Tracking</h3>
-                    <p>Real-time download progress with the ability to cancel at any time. No more waiting in the dark!</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">🔒</div>
-                    <h3>Safe Installation</h3>
-                    <p>Automatic backups are created before any update. If something goes wrong, rollback is automatic.</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">📋</div>
-                    <h3>Rich Release Notes</h3>
-                    <p>View detailed release information with images and formatted text right in the application.</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">⚙️</div>
-                    <h3>Flexible Settings</h3>
-                    <p>Configure startup checking, manage downloads, or disable entirely. You're in control.</p>
+                    <h3>Daily Summaries</h3>
+                    <p>Get instant insights with total time played, session count, and list of games for each day.</p>
                 </div>
 
                 <div class="feature-card">
                     <div class="feature-icon">🌐</div>
-                    <h3>Cross-Platform</h3>
-                    <p>Works seamlessly on Windows, macOS, and Linux with platform-specific updater scripts.</p>
+                    <h3>Multiple Access Points</h3>
+                    <p>Quick access via View menu for Today/Yesterday, plus date picker for any specific date.</p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">💬</div>
+                    <h3>Discord Integration</h3>
+                    <p>Discord Rich Presence shows which date you're currently reviewing to friends.</p>
                 </div>
             </div>
+        </div>
+    </div>
 
-            <div class="info-box-light">
-                <div class="info-box-title">🎛️ Update Settings</div>
-                <div class="info-box-content">
-                    <p><strong>Access via Options Menu:</strong></p>
-                    <ul>
-                        <li><strong>Check for Updates:</strong> Manually check for and install updates</li>
-                        <li><strong>Update Settings:</strong> Configure startup checking, manage downloads, or disable auto-updates entirely</li>
-                    </ul>
-                    <p>Auto-updates respect your preferences - they can be configured to check on startup or disabled completely based on your needs.</p>
+    <!-- Auto-Updater Section -->
+    <div class="section">
+        <div class="container">
+            <div class="collapsible-section">
+                <div class="collapsible-header" onclick="toggleCollapsible('v19-section')">
+                    <div class="highlight-badge clickable">New in v1.9.0</div>
+                    <span class="collapse-arrow" id="v19-arrow">▼</span>
+                </div>
+                <div class="collapsible-content" id="v19-section">
+                    <h2 class="section-title">🔄 Auto-Updater System</h2>
+                    <div class="feature-highlight">
+                        <h3>Stay Always Up-to-Date</h3>
+                        <p>GamesList Manager now includes a comprehensive auto-updater system that keeps your application current with the latest features, improvements, and bug fixes.</p>
+                    </div>
+                    
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">🎯</div>
+                            <h3>One-Click Updates</h3>
+                            <p>Download and install updates with a single click. The intelligent staging system handles everything safely in the background.</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">📊</div>
+                            <h3>Smart Progress Tracking</h3>
+                            <p>Real-time download progress with the ability to cancel at any time. No more waiting in the dark!</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">🔒</div>
+                            <h3>Safe Installation</h3>
+                            <p>Automatic backups are created before any update. If something goes wrong, rollback is automatic.</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">📋</div>
+                            <h3>Rich Release Notes</h3>
+                            <p>View detailed release information with images and formatted text right in the application.</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">⚙️</div>
+                            <h3>Flexible Settings</h3>
+                            <p>Configure startup checking, manage downloads, or disable entirely. You're in control.</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">🌐</div>
+                            <h3>Cross-Platform</h3>
+                            <p>Works seamlessly on Windows, macOS, and Linux with platform-specific updater scripts.</p>
+                        </div>
+                    </div>
+
+                    <div class="info-box-light">
+                        <div class="info-box-title">🎛️ Update Settings</div>
+                        <div class="info-box-content">
+                            <p><strong>Access via Options Menu:</strong></p>
+                            <ul>
+                                <li><strong>Check for Updates:</strong> Manually check for and install updates</li>
+                                <li><strong>Update Settings:</strong> Configure startup checking, manage downloads, or disable auto-updates entirely</li>
+                            </ul>
+                            <p>Auto-updates respect your preferences - they can be configured to check on startup or disabled completely based on your needs.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1107,6 +1210,22 @@
         document.getElementById('lightbox-img').addEventListener('click', function(event) {
             event.stopPropagation();
         });
+
+        // Collapsible functionality
+        function toggleCollapsible(sectionId) {
+            const content = document.getElementById(sectionId);
+            const arrow = document.getElementById(sectionId.replace('-section', '-arrow'));
+            
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                arrow.innerHTML = '▼';
+                arrow.style.transform = 'rotate(0deg)';
+            } else {
+                content.classList.add('expanded');
+                arrow.innerHTML = '▲';
+                arrow.style.transform = 'rotate(180deg)';
+            }
+        }
     </script>
 </body>
 </html> 

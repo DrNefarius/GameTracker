@@ -600,6 +600,42 @@ def handle_menu_events(event, window, data_with_indices, fn):
             
             settings_saved_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
             sg.popup("Update settings saved successfully!", title="Settings Updated", location=settings_saved_location)
+    
+    elif event == 'View Activity by Date':
+        # Show date picker dialog for viewing activity
+        try:
+            from date_activity_view import show_date_picker_dialog, show_date_activity_view
+            selected_date = show_date_picker_dialog(window)
+            if selected_date:
+                show_date_activity_view(selected_date, data_with_indices, window)
+        except Exception as e:
+            print(f"Error showing date activity view: {str(e)}")
+            error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+            sg.popup_error(f"Error showing date activity: {str(e)}", title="Error", location=error_location)
+            
+    elif event == 'Today\'s Activity':
+        # Show today's gaming activity
+        try:
+            from date_activity_view import show_date_activity_view
+            from datetime import date
+            today = date.today()
+            show_date_activity_view(today, data_with_indices, window)
+        except Exception as e:
+            print(f"Error showing today's activity: {str(e)}")
+            error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+            sg.popup_error(f"Error showing today's activity: {str(e)}", title="Error", location=error_location)
+            
+    elif event == 'Yesterday\'s Activity':
+        # Show yesterday's gaming activity
+        try:
+            from date_activity_view import show_date_activity_view
+            from datetime import date, timedelta
+            yesterday = date.today() - timedelta(days=1)
+            show_date_activity_view(yesterday, data_with_indices, window)
+        except Exception as e:
+            print(f"Error showing yesterday's activity: {str(e)}")
+            error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+            sg.popup_error(f"Error showing yesterday's activity: {str(e)}", title="Error", location=error_location)
         
     return None
 
