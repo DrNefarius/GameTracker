@@ -188,21 +188,19 @@ def show_update_notification(update_info: Dict[str, Any], parent_window=None) ->
     
     layout = top_section + notes_section + bottom_section
     
-    # Calculate center position relative to parent window or use default centering
+    # Always center update dialogs on screen for consistent positioning
+    from utilities import get_monitor_center_location
+    notification_location = get_monitor_center_location(popup_width=700, popup_height=650)
+    
     window_kwargs = {
         'modal': True,
         'icon': 'gameslisticon.ico',
         'element_justification': 'left',
         'size': (700, 650),  # Reduced from 700 to 650 for better proportions
         'resizable': True,
-        'finalize': True
+        'finalize': True,
+        'location': notification_location
     }
-    
-    if parent_window:
-        from utilities import calculate_popup_center_location
-        notification_location = calculate_popup_center_location(parent_window, popup_width=700, popup_height=650)
-        if notification_location:
-            window_kwargs['location'] = notification_location
     
     window = sg.Window(
         "GamesList Manager - Update Available", 
@@ -326,12 +324,17 @@ def show_download_progress() -> sg.Window:
         [sg.Button("Cancel", key='-CANCEL-')]
     ]
     
+    # Always center update dialogs on screen for consistent positioning
+    from utilities import get_monitor_center_location
+    download_location = get_monitor_center_location(popup_width=400, popup_height=200)
+    
     window = sg.Window(
         "Downloading Update", 
         layout, 
-        modal=True, 
+        modal=True,
         icon='gameslisticon.ico',
-        element_justification='center'
+        element_justification='center',
+        location=download_location
     )
     
     return window
@@ -349,13 +352,18 @@ def show_staging_progress() -> sg.Window:
         [sg.Text("Please wait, this may take a few moments.", font=('Arial', 9), text_color='#4A90E2')]
     ]
     
+    # Always center update dialogs on screen for consistent positioning
+    from utilities import get_monitor_center_location
+    staging_location = get_monitor_center_location(popup_width=450, popup_height=200)
+    
     window = sg.Window(
         "Staging Update", 
         layout, 
-        modal=True, 
+        modal=True,
         icon='gameslisticon.ico',
         element_justification='center',
-        finalize=True
+        finalize=True,
+        location=staging_location
     )
     
     return window
@@ -385,22 +393,16 @@ def show_install_confirmation(download_path: str, parent_window=None) -> bool:
         ]
     ]
     
-    # Calculate center position relative to parent window
-    install_location = None
-    if parent_window:
-        from utilities import calculate_popup_center_location
-        install_location = calculate_popup_center_location(parent_window, popup_width=500, popup_height=350)
+    # Always center update dialogs on screen for consistent positioning  
+    from utilities import get_monitor_center_location
+    install_location = get_monitor_center_location(popup_width=500, popup_height=350)
     
-    # Create window kwargs and conditionally include location
     window_kwargs = {
         'modal': True,
         'icon': 'gameslisticon.ico',
-        'element_justification': 'left'
+        'element_justification': 'left',
+        'location': install_location
     }
-    
-    # Only include location if it's not None to allow PySimpleGUI default centering
-    if install_location is not None:
-        window_kwargs['location'] = install_location
     
     window = sg.Window(
         "Install Update", 
@@ -452,19 +454,21 @@ def show_update_settings(parent_window=None) -> Dict[str, bool]:
         ]
     ]
     
-    # Calculate center position relative to parent window
-    settings_location = None
-    if parent_window:
-        from utilities import calculate_popup_center_location
-        settings_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=300)
+    # Always center update dialogs on screen for consistent positioning
+    from utilities import get_monitor_center_location  
+    settings_location = get_monitor_center_location(popup_width=400, popup_height=300)
+    
+    window_kwargs = {
+        'modal': True,
+        'icon': 'gameslisticon.ico',
+        'element_justification': 'left',
+        'location': settings_location
+    }
     
     window = sg.Window(
         "Update Settings", 
         layout, 
-        modal=True, 
-        icon='gameslisticon.ico',
-        element_justification='left',
-        location=settings_location
+        **window_kwargs
     )
     
     result = None
@@ -495,12 +499,10 @@ def show_update_settings(parent_window=None) -> Dict[str, bool]:
             if os.path.exists(downloads_dir):
                 subprocess.run(['explorer', downloads_dir], shell=True)
             else:
-                downloads_info_location = calculate_popup_center_location(parent_window, popup_width=300, popup_height=100) if parent_window else None
-                # Only pass location if it's not None to allow PySimpleGUI default centering
-                popup_kwargs = {"title": "Info"}
-                if downloads_info_location is not None:
-                    popup_kwargs["location"] = downloads_info_location
-                sg.popup("Downloads folder not found.", **popup_kwargs)
+                # Always center update dialogs on screen for consistent positioning
+                from utilities import get_monitor_center_location
+                downloads_info_location = get_monitor_center_location(popup_width=300, popup_height=100)
+                sg.popup("Downloads folder not found.", title="Info", location=downloads_info_location)
         elif event == '-CLEAR-DOWNLOADS-':
             # Clear downloaded updates
             clear_downloads(parent_window)
@@ -518,20 +520,22 @@ def check_for_updates_manual(parent_window=None):
         [sg.Text("Please wait...", justification='center')],
     ]
     
-    # Calculate center position relative to parent window
-    check_location = None
-    if parent_window:
-        from utilities import calculate_popup_center_location
-        check_location = calculate_popup_center_location(parent_window, popup_width=350, popup_height=150)
+    # Always center update dialogs on screen for consistent positioning
+    from utilities import get_monitor_center_location
+    check_location = get_monitor_center_location(popup_width=350, popup_height=150)
+    
+    window_kwargs = {
+        'modal': True,
+        'icon': 'gameslisticon.ico',
+        'element_justification': 'center',
+        'finalize': True,
+        'location': check_location
+    }
     
     progress_window = sg.Window(
         "Checking for Updates", 
         layout, 
-        modal=True, 
-        icon='gameslisticon.ico',
-        element_justification='center',
-        finalize=True,
-        location=check_location
+        **window_kwargs
     )
     
     # Animate progress bar while checking
@@ -570,10 +574,10 @@ def check_for_updates_manual(parent_window=None):
             return 'disable'
         return result
     else:
-        no_update_location = None
-        if parent_window:
-            from utilities import calculate_popup_center_location
-            no_update_location = calculate_popup_center_location(parent_window, popup_width=350, popup_height=150)
+        # Always center update dialogs on screen for consistent positioning
+        from utilities import get_monitor_center_location
+        no_update_location = get_monitor_center_location(popup_width=350, popup_height=150)
+            
         sg.popup(
             "You're running the latest version!\n\n"
             f"Current version: {get_updater().current_version}",
@@ -591,10 +595,10 @@ def clear_downloads(parent_window=None):
     downloads_dir = os.path.join(get_config_dir(), 'downloads')
     
     if not os.path.exists(downloads_dir):
-        no_downloads_location = None
-        if parent_window:
-            from utilities import calculate_popup_center_location
-            no_downloads_location = calculate_popup_center_location(parent_window, popup_width=300, popup_height=100)
+        # Always center update dialogs on screen for consistent positioning
+        from utilities import get_monitor_center_location
+        no_downloads_location = get_monitor_center_location(popup_width=300, popup_height=100)
+            
         sg.popup("No downloads to clear.", title="Info", location=no_downloads_location)
         return
     
@@ -604,18 +608,17 @@ def clear_downloads(parent_window=None):
                          if os.path.isfile(os.path.join(downloads_dir, f))])
         
         if file_count == 0:
-            empty_downloads_location = None
-            if parent_window:
-                from utilities import calculate_popup_center_location
-                empty_downloads_location = calculate_popup_center_location(parent_window, popup_width=300, popup_height=100)
+            # Always center update dialogs on screen for consistent positioning
+            from utilities import get_monitor_center_location
+            empty_downloads_location = get_monitor_center_location(popup_width=300, popup_height=100)
+                
             sg.popup("No downloads to clear.", title="Info", location=empty_downloads_location)
             return
         
-        # Confirm deletion
-        confirm_location = None
-        if parent_window:
-            from utilities import calculate_popup_center_location
-            confirm_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
+        # Always center update dialogs on screen for consistent positioning
+        from utilities import get_monitor_center_location
+        confirm_location = get_monitor_center_location(popup_width=400, popup_height=150)
+            
         if sg.popup_yes_no(
             f"This will delete {file_count} downloaded update file(s).\n\n"
             "Are you sure you want to continue?",
@@ -624,16 +627,16 @@ def clear_downloads(parent_window=None):
         ) == "Yes":
             shutil.rmtree(downloads_dir)
             os.makedirs(downloads_dir, exist_ok=True)
-            success_location = None
-            if parent_window:
-                success_location = calculate_popup_center_location(parent_window, popup_width=350, popup_height=100)
+            # Always center update dialogs on screen for consistent positioning  
+            success_location = get_monitor_center_location(popup_width=350, popup_height=100)
+                
             sg.popup(f"Cleared {file_count} downloaded files.", title="Success", location=success_location)
     
     except Exception as e:
-        error_location = None
-        if parent_window:
-            from utilities import calculate_popup_center_location
-            error_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
+        # Always center update dialogs on screen for consistent positioning
+        from utilities import get_monitor_center_location
+        error_location = get_monitor_center_location(popup_width=400, popup_height=150)
+            
         sg.popup(f"Error clearing downloads: {str(e)}", title="Error", location=error_location)
 
 def handle_update_process(update_info: Dict[str, Any], parent_window=None):
@@ -645,11 +648,10 @@ def handle_update_process(update_info: Dict[str, Any], parent_window=None):
     existing_download = updater.check_existing_download(new_version)
     
     if existing_download and os.path.exists(existing_download):
-        # Ask user if they want to use existing download
-        existing_download_location = None
-        if parent_window:
-            from utilities import calculate_popup_center_location
-            existing_download_location = calculate_popup_center_location(parent_window, popup_width=450, popup_height=200)
+        # Always center update dialogs on screen for consistent positioning
+        from utilities import get_monitor_center_location
+        existing_download_location = get_monitor_center_location(popup_width=450, popup_height=200)
+            
         choice = sg.popup_yes_no(
             f"Found existing download for version {new_version}:\n\n"
             f"{existing_download}\n\n"
@@ -673,10 +675,10 @@ def handle_update_process(update_info: Dict[str, Any], parent_window=None):
         # User cancelled - don't show any error message
         return
     elif download_result == "failed":
-        download_failed_location = None
-        if parent_window:
-            from utilities import calculate_popup_center_location
-            download_failed_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
+        # Always center update dialogs on screen for consistent positioning
+        from utilities import get_monitor_center_location
+        download_failed_location = get_monitor_center_location(popup_width=400, popup_height=150)
+            
         sg.popup("Failed to download update. Please try again later.", title="Download Failed", location=download_failed_location)
         return
     
@@ -712,10 +714,10 @@ def handle_update_process(update_info: Dict[str, Any], parent_window=None):
         
         # Check staging result
         if staging_success:
-            staging_success_location = None
-            if parent_window:
-                from utilities import calculate_popup_center_location
-                staging_success_location = calculate_popup_center_location(parent_window, popup_width=500, popup_height=250)
+            # Always center update dialogs on screen for consistent positioning
+            from utilities import get_monitor_center_location
+            staging_success_location = get_monitor_center_location(popup_width=500, popup_height=250)
+                
             sg.popup(
                 "Update has been staged successfully!\n\n"
                 "The application will now close and the updater will:\n"
@@ -725,12 +727,24 @@ def handle_update_process(update_info: Dict[str, Any], parent_window=None):
                 title="Ready to Update",
                 location=staging_success_location
             )
-            updater.restart_application()
+            
+            # Force immediate exit - this should prevent main window creation
+            try:
+                print("Update staged successfully, restarting application for update...")
+                updater.restart_application()
+            except SystemExit:
+                # Expected exit, re-raise it
+                raise
+            except Exception as e:
+                print(f"Error during restart: {e}")
+                # Force exit to prevent main window creation
+                import sys
+                sys.exit(0)
         else:
-            staging_failed_location = None
-            if parent_window:
-                from utilities import calculate_popup_center_location
-                staging_failed_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
+            # Always center update dialogs on screen for consistent positioning
+            from utilities import get_monitor_center_location
+            staging_failed_location = get_monitor_center_location(popup_width=400, popup_height=150)
+                
             sg.popup(
                 "Failed to stage update.\n\n"
                 "Please try again or install manually.",
@@ -738,10 +752,10 @@ def handle_update_process(update_info: Dict[str, Any], parent_window=None):
                 location=staging_failed_location
             )
     else:
-        postponed_location = None
-        if parent_window:
-            from utilities import calculate_popup_center_location
-            postponed_location = calculate_popup_center_location(parent_window, popup_width=450, popup_height=150)
+        # Always center update dialogs on screen for consistent positioning
+        from utilities import get_monitor_center_location
+        postponed_location = get_monitor_center_location(popup_width=450, popup_height=150)
+            
         sg.popup(
             "Update downloaded but not installed.\n\n"
             f"You can install it later from: {download_path}",
@@ -870,14 +884,23 @@ def show_update_success_popup(update_info: Dict[str, str]):
         [sg.Button("Awesome!", key="-OK-", button_color=('white', '#5CB85C'), size=(12, 1))]
     ]
     
+    # Always center update dialogs on screen for consistent positioning
+    from utilities import get_monitor_center_location
+    success_location = get_monitor_center_location(popup_width=400, popup_height=350)
+    
+    window_kwargs = {
+        'modal': True,
+        'icon': 'gameslisticon.ico',
+        'element_justification': 'center',
+        'size': (400, 350),
+        'resizable': False,
+        'location': success_location
+    }
+    
     window = sg.Window(
         "Update Complete",
         layout,
-        modal=True,
-        icon='gameslisticon.ico',
-        element_justification='center',
-        size=(400, 350),
-        resizable=False
+        **window_kwargs
     )
     
     while True:

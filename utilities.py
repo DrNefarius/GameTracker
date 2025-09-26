@@ -144,28 +144,72 @@ def get_game_table_row_colors(data_with_indices):
     
     return row_colors
 
+def get_monitor_center_location(popup_width=400, popup_height=300):
+    """
+    Calculate the center position for a popup window on the monitor.
+    
+    Args:
+        popup_width: Expected width of the popup window in pixels
+        popup_height: Expected height of the popup window in pixels
+    
+    Returns:
+        Tuple (x, y) representing the center location for the popup window
+    """
+    try:
+        # Get screen dimensions using tkinter (now packaged with cx_Freeze)
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        
+        root.destroy()
+        
+        # Calculate center position
+        popup_x = (screen_width - popup_width) // 2
+        popup_y = (screen_height - popup_height) // 2
+        
+        # Ensure minimum position (in case of negative values)
+        popup_x = max(0, popup_x)
+        popup_y = max(0, popup_y)
+        
+        return (popup_x, popup_y)
+        
+    except Exception as e:
+        print(f"Warning: Could not get monitor center position: {e}")
+        # Fallback to reasonable default position for common screen resolution
+        popup_x = max(100, (1920 - popup_width) // 2)  # Assume 1920x1080
+        popup_y = max(100, (1080 - popup_height) // 2)
+        return (popup_x, popup_y)
+
 def calculate_popup_center_location(parent_window, popup_width=400, popup_height=300):
     """
     Calculate the center position for a popup window relative to the parent window.
+    If parent_window is None or unavailable, center on monitor instead.
     
     Args:
-        parent_window: The main window (PySimpleGUI Window object)
+        parent_window: The main window (PySimpleGUI Window object) or None
         popup_width: Expected width of the popup window in pixels
         popup_height: Expected height of the popup window in pixels
     
     Returns:
         Tuple (x, y) representing the location for the popup window
     """
+    # If no parent window, use monitor center
+    if parent_window is None:
+        return get_monitor_center_location(popup_width, popup_height)
+    
     try:
         # Get the parent window's position and size
         parent_location = parent_window.current_location()
         parent_size = parent_window.size
         
         if parent_location is None or parent_size is None:
-            # If we can't get parent window info, return None to use default centering
-            return None
+            # If we can't get parent window info, use monitor center
+            return get_monitor_center_location(popup_width, popup_height)
         
-        # Calculate center position
+        # Calculate center position relative to parent
         parent_x, parent_y = parent_location
         parent_width, parent_height = parent_size
         
@@ -173,14 +217,29 @@ def calculate_popup_center_location(parent_window, popup_width=400, popup_height
         popup_x = parent_x + (parent_width - popup_width) // 2
         popup_y = parent_y + (parent_height - popup_height) // 2
         
-        # Make sure the popup doesn't go off screen (basic bounds checking)
-        popup_x = max(0, popup_x)
-        popup_y = max(0, popup_y)
+        # Get screen dimensions for bounds checking
+        try:
+            import tkinter as tk
+            root = tk.Tk()
+            root.withdraw()
+            screen_width = root.winfo_screenwidth()
+            screen_height = root.winfo_screenheight()
+            root.destroy()
+            
+            # Make sure the popup doesn't go off screen
+            popup_x = max(0, min(popup_x, screen_width - popup_width))
+            popup_y = max(0, min(popup_y, screen_height - popup_height))
+            
+        except Exception as e:
+            print(f"Warning: Could not get screen dimensions for bounds checking: {e}")
+            # Basic bounds checking without screen dimensions
+            popup_x = max(100, popup_x)
+            popup_y = max(100, popup_y)
         
         return (popup_x, popup_y)
         
     except Exception as e:
-        # If anything goes wrong, return None to use default centering
-        print(f"Warning: Could not calculate popup center position: {e}")
-        return None
+        # If anything goes wrong, use monitor center as fallback
+        print(f"Warning: Could not calculate popup center position relative to parent: {e}")
+        return get_monitor_center_location(popup_width, popup_height)
  

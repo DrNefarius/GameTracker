@@ -3,7 +3,11 @@ from constants import VERSION
 
 # Dependencies are automatically detected, but it might need
 # fine tuning.
-build_options = {'packages': [], 'excludes': [], 'include_files': ['gameslisticon.ico']}
+build_options = {
+    'packages': ['tkinter', 'tkinter.filedialog', 'tkinter.messagebox'], 
+    'excludes': [], 
+    'include_files': ['gameslisticon.ico']
+}
 
 base = 'gui'
 

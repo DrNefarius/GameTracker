@@ -117,21 +117,67 @@ def main():
     discord.update_presence_browsing('Games List')  # Set initial presence
     
     # Initialize Auto-Updater
-    updater = initialize_updater(check_on_startup=True)
+    updater = initialize_updater(check_on_startup=False)  # Don't auto-check yet
     
-    # Set up update callback for notifications
+    # Check for updates on startup - do this synchronously to control main window creation
+    
+    # First, check if we just completed an update (show success message)
+    try:
+        update_success_info = updater.check_for_update_success()
+        if update_success_info:
+            # Import here to avoid circular imports
+            from update_ui import show_update_success_popup
+            print(f"Showing update success popup for version {update_success_info.get('new_version', 'Unknown')}")
+            show_update_success_popup(update_success_info)
+    except Exception as e:
+        print(f"Error checking for update success: {str(e)}")
+    
+    # Then check for new updates if enabled
+    if updater.check_on_startup_enabled:
+        try:
+            print("Checking for updates on startup...")
+            update_info = updater.check_for_updates()
+            if update_info:
+                print(f"Update found: {update_info.get('version', 'Unknown')}")
+                # Show update notification (no parent window during startup)
+                result = show_update_notification(update_info, parent_window=None)
+                if result == 'download':
+                    print("User chose to download and install update")
+                    # Handle update process - this should exit the application via sys.exit()
+                    try:
+                        handle_update_process(update_info, parent_window=None)
+                        # If we reach this point, update was cancelled/failed, continue with startup
+                        print("Update process returned normally, continuing with startup")
+                    except SystemExit as e:
+                        print(f"Update process triggered exit: {e}")
+                        # Re-raise the SystemExit to ensure we actually exit
+                        raise
+                    except Exception as e:
+                        print(f"Unexpected error during update process: {e}")
+                        # Continue with startup if there was an error
+                elif result == 'disable':
+                    print("User disabled startup update checks")
+                    updater.set_check_on_startup_enabled(False)
+                else:
+                    print(f"User chose: {result}, continuing with startup")
+            else:
+                print("No updates found, continuing with startup")
+        except Exception as e:
+            print(f"Error during startup update check: {str(e)}, continuing with startup")
+    
+    # If we reach this point, either no update was needed or update was cancelled/failed
+    # Continue with normal startup and create main window
+    
+    # Set up update callback for manual update checks (menu-driven)
     def update_notification_callback(update_info):
         if update_info:
-            result = show_update_notification(update_info)
+            result = show_update_notification(update_info, window if 'window' in locals() else None)
             if result == 'download':
-                handle_update_process(update_info)
+                handle_update_process(update_info, window if 'window' in locals() else None)
             elif result == 'disable':
                 updater.set_check_on_startup_enabled(False)
     
     updater.register_update_callback(update_notification_callback)
-    
-    # Check for updates on startup if enabled
-    updater.check_on_startup()
 
     # Create the main window layout
     layout = create_main_layout(data_with_indices)

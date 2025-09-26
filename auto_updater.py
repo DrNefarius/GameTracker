@@ -6,12 +6,13 @@ Checks for new releases on GitHub and provides update functionality.
 import json
 import os
 import re
+import shlex
+import shutil
+import subprocess
 import sys
 import threading
 import time
 import zipfile
-import shutil
-import subprocess
 import platform
 from datetime import datetime
 from urllib.request import urlopen, urlretrieve
@@ -442,8 +443,8 @@ class AutoUpdater:
             return self._create_unix_updater_script(staging_dir, target_dir, executable_name, backup_path)
     
     def _create_windows_updater_script(self, staging_dir: str, target_dir: str, executable_name: str, backup_path: str) -> str:
-        """Create Windows batch updater script"""
-        script_path = os.path.join(get_config_dir(), 'updater.bat')
+        """Create Windows PowerShell updater script for better Unicode support"""
+        script_path = os.path.join(get_config_dir(), 'updater.ps1')
         
         # Get current process ID to wait for it to exit
         current_pid = os.getpid()
@@ -453,51 +454,78 @@ class AutoUpdater:
         parts = backup_name.split('_')
         previous_version = parts[1] if len(parts) >= 2 else 'Unknown'
         
-        script_content = f'''@echo off
-echo GamesList Manager Updater
-echo.
+        # Escape paths with quotes and handle Unicode properly
+        staging_dir_escaped = staging_dir.replace("'", "''")
+        target_dir_escaped = target_dir.replace("'", "''") 
+        backup_path_escaped = backup_path.replace("'", "''")
+        executable_name_escaped = executable_name.replace("'", "''")
+        
+        script_content = f'''# GamesList Manager Updater (PowerShell)
+# This script handles Unicode paths properly
 
-echo Waiting for main application to close...
-:WAIT_LOOP
-tasklist /FI "PID eq {current_pid}" 2>NUL | find /I "{current_pid}" >NUL
-if %ERRORLEVEL% == 0 (
-    timeout /t 1 /nobreak > NUL
-    goto WAIT_LOOP
-)
+Write-Host "GamesList Manager Updater"
+Write-Host ""
 
-echo Updating application files...
+# Wait for main application to close
+Write-Host "Waiting for main application to close..."
+while (Get-Process -Id {current_pid} -ErrorAction SilentlyContinue) {{
+    Start-Sleep -Seconds 1
+}}
 
-rem Copy new files from staging to target directory
-echo Copying files from "{staging_dir}" to "{target_dir}"
-xcopy /E /Y /I "{staging_dir}\\*" "{target_dir}\\"
+Write-Host "Updating application files..."
 
-if %ERRORLEVEL% neq 0 (
-    echo ERROR: Failed to copy files!
-    echo Attempting to restore from backup...
-    xcopy /E /Y /I "{backup_path}\\*" "{target_dir}\\"
-    echo.
-    echo Update failed! Application restored from backup.
-    pause
-    exit /b 1
-)
+# Copy new files from staging to target directory
+Write-Host "Copying files from '{staging_dir_escaped}' to '{target_dir_escaped}'"
 
-echo Update completed successfully!
-
-rem Clean up staging directory
-echo Cleaning up...
-rmdir /S /Q "{staging_dir}" 2>NUL
-
-echo Starting updated application...
-cd /D "{target_dir}"
-start "" "{executable_name}"
-
-rem Wait a moment then clean up this script
-timeout /t 2 /nobreak > NUL
-del "%~f0" 2>NUL
+try {{
+    # Use robocopy for better Unicode and long path support
+    $result = robocopy '{staging_dir_escaped}' '{target_dir_escaped}' /E /R:3 /W:1 /MT:1
+    
+    # robocopy exit codes: 0-7 are success, 8+ are failures
+    if ($LASTEXITCODE -ge 8) {{
+        throw "Robocopy failed with exit code $LASTEXITCODE"
+    }}
+    
+    Write-Host "Update completed successfully!"
+    
+    # Clean up staging directory
+    Write-Host "Cleaning up..."
+    Remove-Item -Path '{staging_dir_escaped}' -Recurse -Force -ErrorAction SilentlyContinue
+    
+    # Start updated application
+    Write-Host "Starting updated application..."
+    Set-Location -Path '{target_dir_escaped}'
+    Start-Process -FilePath '{executable_name_escaped}' -WorkingDirectory '{target_dir_escaped}'
+    
+    # Wait a moment then clean up this script
+    Start-Sleep -Seconds 2
+    Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
+    
+}} catch {{
+    Write-Host "ERROR: Failed to copy files!"
+    Write-Host "Attempting to restore from backup..."
+    
+    try {{
+        $backup_result = robocopy '{backup_path_escaped}' '{target_dir_escaped}' /E /R:3 /W:1 /MT:1
+        if ($backup_result -ge 8) {{
+            Write-Host "ERROR: Backup restoration also failed!"
+        }} else {{
+            Write-Host "Application restored from backup."
+        }}
+    }} catch {{
+        Write-Host "ERROR: Backup restoration failed: $_"
+    }}
+    
+    Write-Host ""
+    Write-Host "Update failed! Press any key to continue..."
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    exit 1
+}}
 '''
         
         try:
-            with open(script_path, 'w', encoding='utf-8') as f:
+            # Write PowerShell script with UTF-8 BOM for proper Unicode support
+            with open(script_path, 'w', encoding='utf-8-sig') as f:
                 f.write(script_content)
             return script_path
         except Exception as e:
@@ -505,7 +533,7 @@ del "%~f0" 2>NUL
             return None
     
     def _create_unix_updater_script(self, staging_dir: str, target_dir: str, executable_name: str, backup_path: str) -> str:
-        """Create Unix shell updater script"""
+        """Create Unix shell updater script with proper Unicode support"""
         script_path = os.path.join(get_config_dir(), 'updater.sh')
         
         # Get current process ID to wait for it to exit
@@ -516,10 +544,20 @@ del "%~f0" 2>NUL
         parts = backup_name.split('_')
         previous_version = parts[1] if len(parts) >= 2 else 'Unknown'
         
+        # Properly escape paths for shell scripts
+        staging_dir_escaped = shlex.quote(staging_dir)
+        target_dir_escaped = shlex.quote(target_dir)
+        backup_path_escaped = shlex.quote(backup_path)
+        executable_name_escaped = shlex.quote(executable_name)
+        
         script_content = f'''#!/bin/bash
+# GamesList Manager Updater (Bash)
+# This script handles Unicode paths properly
+
 echo "GamesList Manager Updater"
 echo ""
 
+# Wait for main application to close
 echo "Waiting for main application to close..."
 while kill -0 {current_pid} 2>/dev/null; do
     sleep 1
@@ -527,15 +565,38 @@ done
 
 echo "Updating application files..."
 
-# Copy new files from staging to target directory
-echo "Copying files from '{staging_dir}' to '{target_dir}'"
-if cp -R "{staging_dir}/"* "{target_dir}/"; then
-    echo "Update completed successfully!"
-    
+# Copy new files from staging to target directory  
+echo "Copying files from {staging_dir_escaped} to {target_dir_escaped}"
+
+# Use rsync for better Unicode and reliability support
+if command -v rsync >/dev/null 2>&1; then
+    # rsync is available - better for handling special characters and permissions
+    if rsync -av --delete {staging_dir_escaped}/ {target_dir_escaped}/; then
+        echo "Update completed successfully!"
+        update_success=true
+    else
+        echo "ERROR: rsync failed!"
+        update_success=false
+    fi
 else
-    echo "ERROR: Failed to copy files!"
+    # Fallback to cp if rsync is not available
+    if cp -R {staging_dir_escaped}/* {target_dir_escaped}/; then
+        echo "Update completed successfully!"
+        update_success=true
+    else
+        echo "ERROR: cp failed!"
+        update_success=false
+    fi
+fi
+
+# Handle update result
+if [ "$update_success" = false ]; then
     echo "Attempting to restore from backup..."
-    cp -R "{backup_path}/"* "{target_dir}/"
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -av --delete {backup_path_escaped}/ {target_dir_escaped}/
+    else
+        cp -R {backup_path_escaped}/* {target_dir_escaped}/
+    fi
     echo ""
     echo "Update failed! Application restored from backup."
     exit 1
@@ -543,14 +604,15 @@ fi
 
 # Clean up staging directory
 echo "Cleaning up..."
-rm -rf "{staging_dir}"
+rm -rf {staging_dir_escaped}
 
 echo "Starting updated application..."
-cd "{target_dir}"
-if [[ "{executable_name}" == *.py ]]; then
-    python "{executable_name}" &
+cd {target_dir_escaped}
+
+if [[ {executable_name_escaped} == *.py ]]; then
+    python {executable_name_escaped} &
 else
-    ./{executable_name} &
+    ./{executable_name_escaped} &
 fi
 
 # Wait a moment then clean up this script
@@ -683,7 +745,7 @@ rm "$0" 2>/dev/null
             system_name = platform.system().lower()
             
             if system_name == 'windows':
-                updater_script = os.path.join(config_dir, 'updater.bat')
+                updater_script = os.path.join(config_dir, 'updater.ps1')
             else:
                 updater_script = os.path.join(config_dir, 'updater.sh')
             
@@ -696,8 +758,15 @@ rm "$0" 2>/dev/null
                 
                 # Start the updater script in the background
                 if system_name == 'windows':
-                    # Use subprocess.Popen with CREATE_NEW_CONSOLE to run independently
-                    subprocess.Popen([updater_script], creationflags=CREATE_NEW_CONSOLE)
+                    # Use PowerShell to run the .ps1 script with proper Unicode support
+                    # -WindowStyle Hidden hides the PowerShell window
+                    # -ExecutionPolicy Bypass allows script execution
+                    subprocess.Popen([
+                        'powershell.exe', 
+                        '-WindowStyle', 'Hidden',
+                        '-ExecutionPolicy', 'Bypass', 
+                        '-File', updater_script
+                    ], creationflags=CREATE_NEW_CONSOLE)
                 else:
                     # Start the script in background
                     subprocess.Popen(['/bin/bash', updater_script])
