@@ -9,6 +9,35 @@ from session_data import extract_all_sessions
 from utilities import format_timedelta_with_seconds, calculate_popup_center_location
 
 
+def calculate_total_pause_time(session):
+    """Calculate total pause time for a session"""
+    if 'pauses' not in session or not session['pauses']:
+        return timedelta()
+    
+    total_pause_time = timedelta()
+    for pause in session['pauses']:
+        if 'pause_duration' in pause:
+            # Parse pause_duration format (HH:MM:SS)
+            try:
+                duration_str = pause['pause_duration']
+                parts = duration_str.split(':')
+                if len(parts) == 3:
+                    h, m, s = map(int, parts)
+                    total_pause_time += timedelta(hours=h, minutes=m, seconds=s)
+            except (ValueError, TypeError):
+                continue
+        elif 'paused_at' in pause and 'resumed_at' in pause:
+            # Calculate pause duration from timestamps
+            try:
+                pause_start = datetime.fromisoformat(pause['paused_at'])
+                pause_end = datetime.fromisoformat(pause['resumed_at'])
+                total_pause_time += (pause_end - pause_start)
+            except (ValueError, TypeError):
+                continue
+    
+    return total_pause_time
+
+
 def get_sessions_for_date(data, target_date):
     """Get all gaming sessions for a specific date, sorted chronologically"""
     sessions_for_date = []
@@ -28,8 +57,31 @@ def get_sessions_for_date(data, target_date):
                     session_info = session.copy()
                     session_info['start_time'] = session_start.time()
                     
-                    # Calculate end time if we have duration
-                    if 'duration' in session:
+                    # Use actual end time if available, otherwise calculate from duration
+                    if 'end' in session:
+                        try:
+                            session_end = datetime.fromisoformat(session['end'])
+                            session_info['end_time'] = session_end.time()
+                            session_info['end_datetime'] = session_end
+                        except (ValueError, TypeError):
+                            # Fallback to old calculation if end time is invalid
+                            if 'duration' in session:
+                                duration_str = session['duration']
+                                parts = duration_str.split(':')
+                                if len(parts) == 3:
+                                    h, m, s = map(int, parts)
+                                    duration = timedelta(hours=h, minutes=m, seconds=s)
+                                    end_time = session_start + duration
+                                    session_info['end_time'] = end_time.time()
+                                    session_info['end_datetime'] = end_time
+                                else:
+                                    session_info['end_time'] = None
+                                    session_info['end_datetime'] = session_start
+                            else:
+                                session_info['end_time'] = None
+                                session_info['end_datetime'] = session_start
+                    elif 'duration' in session:
+                        # Fallback to old calculation if no end time available
                         duration_str = session['duration']
                         parts = duration_str.split(':')
                         if len(parts) == 3:
@@ -90,10 +142,30 @@ def format_session_for_date_display(session):
             stars = rating['stars']
             rating_display = f" ({'★' * stars}{'☆' * (5 - stars)})"
     
+    # Calculate pause time
+    pause_time = calculate_total_pause_time(session)
+    pause_time_str = format_timedelta_with_seconds(pause_time)
+    
+    # Calculate total time (duration + pause time)
+    try:
+        # Parse duration to timedelta
+        duration_parts = duration.split(':')
+        if len(duration_parts) == 3:
+            h, m, s = map(int, duration_parts)
+            duration_td = timedelta(hours=h, minutes=m, seconds=s)
+            total_time_td = duration_td + pause_time
+            total_time_str = format_timedelta_with_seconds(total_time_td)
+        else:
+            total_time_str = duration  # fallback if parsing fails
+    except (ValueError, TypeError):
+        total_time_str = duration  # fallback if parsing fails
+    
     return {
         'game': game_name,
         'time_range': time_range,
         'duration': duration,
+        'pause_time': pause_time_str,
+        'total_time': total_time_str,
         'notes': notes,
         'rating_display': rating_display,
         'raw_session': session
@@ -160,6 +232,8 @@ def show_date_activity_view(target_date, data, parent_window=None):
                 formatted['game'],
                 formatted['time_range'],
                 formatted['duration'],
+                formatted['pause_time'],
+                formatted['total_time'],
                 formatted['notes'],
                 formatted['rating_display']
             ])
@@ -179,9 +253,9 @@ def show_date_activity_view(target_date, data, parent_window=None):
             [sg.HorizontalSeparator()],
             [sg.Table(
                 values=session_table_data,
-                headings=['Game', 'Time Range', 'Duration', 'Notes', 'Rating'],
+                headings=['Game', 'Time Range', 'Duration', 'Paused Time', 'Total Time', 'Notes', 'Rating'],
                 auto_size_columns=False,
-                col_widths=[25, 15, 10, 40, 8],
+                col_widths=[18, 13, 9, 9, 9, 30, 8],
                 num_rows=min(15, len(session_table_data)),
                 justification='left',
                 key='-DATE-SESSIONS-TABLE-',
