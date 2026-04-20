@@ -4,9 +4,70 @@ Contains various helper functions for formatting, calculations, and data process
 """
 
 import tkinter as tk
+import tkinter.font as tkfont
 from datetime import timedelta, datetime
 
-from constants import STAR_FILLED, STAR_EMPTY, COMPLETED_STYLE, IN_PROGRESS_STYLE, FUTURE_RELEASE_STYLE, DEFAULT_STYLE
+from constants import STAR_FILLED, STAR_EMPTY, COMPLETED_STYLE, DROPPED_STYLE, IN_PROGRESS_STYLE, FUTURE_RELEASE_STYLE, DEFAULT_STYLE
+
+# A single hidden Tk root + per-font Font measurer, shared across all calls to
+# calculate_pixel_width so we don't pay the cost of creating/destroying a Tk
+# instance for every cell when the table is built.
+_pixel_width_root = None
+_pixel_width_font_cache = {}
+
+
+def _get_pixel_width_root():
+    global _pixel_width_root
+    if _pixel_width_root is None:
+        _pixel_width_root = tk.Tk()
+        _pixel_width_root.withdraw()
+    return _pixel_width_root
+
+
+def _get_font_measurer(font):
+    """Return a cached tkinter.font.Font instance for the given (family, size[, style]) tuple."""
+    key = tuple(font) if isinstance(font, (list, tuple)) else (font,)
+    cached = _pixel_width_font_cache.get(key)
+    if cached is not None:
+        return cached
+    root = _get_pixel_width_root()
+    try:
+        if len(key) >= 2:
+            measurer = tkfont.Font(root=root, family=key[0], size=key[1])
+        else:
+            measurer = tkfont.Font(root=root, family=key[0])
+    except tk.TclError:
+        # Fall back to a default Font if the requested family/size is unavailable.
+        measurer = tkfont.Font(root=root)
+    _pixel_width_font_cache[key] = measurer
+    return measurer
+
+def iter_game_rows(data):
+    """Yield the inner game row (list) from each entry in ``data`` regardless of shape.
+    
+    The codebase stores game entries in a few shapes depending on context:
+    - ``(index, [name, release, platform, time, status, ...])``
+    - ``[name, release, platform, time, status, ...]`` (raw row)
+    - ``{...}`` dict (legacy)
+    
+    Rather than repeating the 20-line shape-normalization block in every chart /
+    stat function, use this helper to get a stable ``list`` row. Entries that
+    don't fit any known shape are skipped silently.
+    """
+    for entry in data:
+        try:
+            if isinstance(entry, tuple) and len(entry) > 1:
+                row = entry[1]
+                if isinstance(row, list):
+                    yield row
+                    continue
+            if isinstance(entry, list):
+                yield entry
+                continue
+            # Unknown shape; skip rather than explode.
+        except (IndexError, TypeError):
+            continue
+
 
 def format_timedelta(td):
     """Format timedelta as HH:MM"""
@@ -49,14 +110,20 @@ def format_timedelta_with_seconds(td):
     return f'{hours:02}:{minutes:02}:{seconds:02}'
 
 def calculate_pixel_width(text, font=('Helvetica', 10)):
-    """Calculate the width of a string in pixels"""
-    root = tk.Tk()
-    root.withdraw()
-    label = tk.Label(root, text=text, font=font)
-    label.pack()
-    width = label.winfo_reqwidth()
-    root.destroy()
-    return width
+    """Calculate the width of a string in pixels.
+    
+    Uses a single shared hidden Tk root and cached tkinter.font.Font.measure()
+    instead of creating a new Tk instance per call, which was extremely slow
+    and could crash on some platforms when called in tight loops.
+    """
+    try:
+        measurer = _get_font_measurer(font)
+        return measurer.measure(str(text) if text is not None else "")
+    except Exception as e:
+        # If Tk is unavailable (headless env, etc.), fall back to a rough estimate.
+        print(f"calculate_pixel_width fallback for font={font}: {e}")
+        size = font[1] if isinstance(font, (list, tuple)) and len(font) > 1 else 10
+        return int(len(str(text) if text is not None else "") * size * 0.6)
 
 def safe_sort_by_date(data, column_index, reverse=False):
     """Safely sort data by date, handling missing and invalid dates"""
@@ -128,6 +195,8 @@ def get_game_table_row_colors(data_with_indices):
         # Get base color from status (no special handling for calculated ratings)
         if row[4] == 'Completed':
             base_style = COMPLETED_STYLE
+        elif row[4] == 'Dropped':
+            base_style = DROPPED_STYLE
         elif row[4] == 'In progress':
             base_style = IN_PROGRESS_STYLE
         else:

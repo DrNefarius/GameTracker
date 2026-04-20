@@ -89,6 +89,27 @@ def format_session_for_display(sessions):
     return display_data
 
 
+def _parse_display_timestamp(value):
+    """Parse a 'Unknown'/ISO-ish timestamp string into a datetime for sort keys.
+    
+    Returns datetime.max for unparseable values so they sort to the bottom in
+    newest-first (reverse=True) ordering instead of getting lexicographically
+    interleaved with real dates.
+    """
+    if not value or value == 'Unknown' or value == 'Unknown time':
+        return datetime.max
+    # Accept both '%Y-%m-%d %H:%M' and '%Y-%m-%d %H:%M:%S' display formats.
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return datetime.max
+
+
 def format_status_history_for_display(history):
     """Format status history data for display in a table"""
     display_data = []
@@ -112,8 +133,9 @@ def format_status_history_for_display(history):
             print(f"Error formatting status change: {str(e)}")
             continue
     
-    # Sort by timestamp (newest first)
-    display_data.sort(reverse=True)
+    # Sort by parsed timestamp (newest first). Plain reverse-sort on strings
+    # mis-orders 'Unknown' and any locale-dependent formats.
+    display_data.sort(key=lambda row: _parse_display_timestamp(row[0]), reverse=True)
     return display_data
 
 
@@ -165,8 +187,8 @@ def format_rating_comments_for_display(comments):
             print(f"Error formatting rating comment: {str(e)}")
             continue
     
-    # Sort by timestamp (newest first)
-    display_data.sort(reverse=True)
+    # Sort by parsed timestamp (newest first); see _parse_display_timestamp for why.
+    display_data.sort(key=lambda row: _parse_display_timestamp(row[0]), reverse=True)
     return display_data
 
 

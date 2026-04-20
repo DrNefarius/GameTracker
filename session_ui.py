@@ -249,10 +249,13 @@ def update_time_and_date(row_index, added_time, session, data_with_indices, data
     data_with_indices[row_index][1][3] = new_time
     
     if session:
-        if len(data_with_indices[row_index][1]) <= 7 or data_with_indices[row_index][1][7] is None:
-            data_with_indices[row_index][1].append([])
+        game_row = data_with_indices[row_index][1]
+        while len(game_row) <= 7:
+            game_row.append(None)
+        if game_row[7] is None:
+            game_row[7] = []
         
-        data_with_indices[row_index][1][7].append(session)
+        game_row[7].append(session)
 
     if len(data_with_indices[row_index][1]) > 7 and data_with_indices[row_index][1][7]:
         latest_end_time = get_latest_session_end_time(data_with_indices[row_index][1][7])
@@ -634,18 +637,4 @@ def show_manual_session_popup(game_name, parent_window=None):
                 sg.popup_error(f"Error creating session: {str(e)}", title="Error", location=general_error_location)
                 continue
     
-    return None
-
-
-def setup_contributions_tooltip_callback(window, canvas_key='-CONTRIBUTIONS-CANVAS-'):
-    """Set up tooltip callback for contributions canvas - now disabled since we use canvas-based tooltips"""
-    tooltip_key = '-CONTRIBUTIONS-TOOLTIP-'
-    
-    def tooltip_callback(hovered_square):
-        """Callback function - disabled since we use canvas-based tooltips at mouse position"""
-        try:
-            window[tooltip_key].update(visible=False)
-        except Exception as e:
-            pass
-    
-    return tooltip_callback 
+    return None 

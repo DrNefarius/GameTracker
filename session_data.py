@@ -52,6 +52,9 @@ def calculate_session_statistics(all_sessions):
     
     # Track days with sessions
     days_with_sessions = defaultdict(int)
+    # Count only sessions whose duration we could actually parse, so the avg below
+    # isn't diluted by entries with unparseable / missing durations.
+    parsed_count = 0
     
     # Calculate total time across all sessions
     for session in all_sessions:
@@ -61,9 +64,13 @@ def calculate_session_statistics(all_sessions):
             if isinstance(duration, str):
                 parts = duration.split(':')
                 if len(parts) == 3:
-                    h, m, s = map(int, parts)
-                    duration_td = timedelta(hours=h, minutes=m, seconds=s)
-                    stats['total_time'] += duration_td
+                    try:
+                        h, m, s = map(int, parts)
+                        duration_td = timedelta(hours=h, minutes=m, seconds=s)
+                        stats['total_time'] += duration_td
+                        parsed_count += 1
+                    except ValueError:
+                        pass
             
             # Track session days
             if 'start' in session:
@@ -76,9 +83,9 @@ def calculate_session_statistics(all_sessions):
             print(f"Error processing session: {str(e)}")
             continue
     
-    # Calculate average session length
-    if stats['total_count'] > 0:
-        stats['avg_length'] = stats['total_time'] / stats['total_count']
+    # Calculate average session length (only over sessions with parsed duration)
+    if parsed_count > 0:
+        stats['avg_length'] = stats['total_time'] / parsed_count
     
     # Find most active day
     if days_with_sessions:
@@ -161,8 +168,10 @@ def add_manual_session_to_game(game_name, session, data_with_indices, data_stora
     for idx, (original_idx, game_data) in enumerate(data_with_indices):
         if game_data[0] == game_name:
             # Initialize sessions array if it doesn't exist
-            if len(game_data) <= 7 or game_data[7] is None:
-                game_data.append([])
+            while len(game_data) <= 7:
+                game_data.append(None)
+            if game_data[7] is None:
+                game_data[7] = []
             
             # Add the new session
             game_data[7].append(session)

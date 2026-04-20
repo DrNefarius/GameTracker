@@ -31,8 +31,8 @@ def show_user_guide(parent_window=None):
             [sg.Text("• View all your games in a sortable table")],
             [sg.Text("• Search/filter games using the search box")],
             [sg.Text("• Click column headers to sort by that column")],
-            [sg.Text("• Right-click or left-click games for action menu")],
-            [sg.Text("• Color coding: Green=Completed, Yellow=In Progress, Purple=Future Release, Red=Pending")],
+            [sg.Text("• Double-click a game for the action menu")],
+            [sg.Text("• Color coding: Green=Completed, Dark Green=Dropped, Yellow=In progress, Purple=Future Release, Red=Pending")],
             [sg.Text("")],
             [emoji_image(get_emoji('time'), size=16), sg.Text(" TIME TRACKING:", font=('Arial', 11, 'bold'))],
             [sg.Text("• Click \"Track Time\" to start a session timer")],
@@ -251,7 +251,7 @@ FEATURE TOUR - DISCOVER WHAT'S POSSIBLE
    • Set ownership status with checkbox
 
 2. ORGANIZE YOUR COLLECTION:
-   • Use status: Pending → In Progress → Completed
+   • Use status: Pending → In progress → Completed (or Dropped)
    • Track ownership with the checkbox
    • Sort by any column (click headers)
    • Search to find specific games quickly
@@ -653,18 +653,22 @@ def show_about_dialog(parent_window=None):
     about_window = sg.Window('About Games List Manager', about_layout, 
                             modal=True, size=(500, 600), icon='gameslisticon.ico', finalize=True, location=about_location)
     
+    follow_up = None
     while True:
         event, values = about_window.read()
         
         if event in (sg.WIN_CLOSED, '-CLOSE-'):
             break
         elif event == '-RELEASE-NOTES-':
-            about_window.close()
-            show_release_notes(parent_window)
+            follow_up = 'release_notes'
             break
         elif event == '-REPORT-BUG-':
-            about_window.close()
-            show_bug_report_info(parent_window)
+            follow_up = 'bug_report'
             break
     
-    about_window.close() 
+    about_window.close()
+    
+    if follow_up == 'release_notes':
+        show_release_notes(parent_window)
+    elif follow_up == 'bug_report':
+        show_bug_report_info(parent_window)

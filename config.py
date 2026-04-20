@@ -6,6 +6,7 @@ Handles loading, saving, and accessing application settings.
 import os
 import json
 import platform
+from datetime import datetime
 
 def get_config_dir():
     """Get the configuration directory for the application."""
@@ -45,17 +46,37 @@ def load_config():
             return config
         except Exception as e:
             print(f"Error loading config: {str(e)}")
+            # Preserve the broken config so it isn't overwritten by the next save,
+            # which would otherwise silently erase user settings forever.
+            try:
+                backup_name = f"{config_file}.backup-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                os.rename(config_file, backup_name)
+                print(f"Backed up corrupt config to {backup_name}")
+            except OSError as backup_err:
+                print(f"Failed to back up corrupt config: {backup_err}")
             return default_config
     else:
         return default_config
 
 def save_config(config):
-    """Save configuration to config file."""
+    """Save configuration to config file atomically (write to tmp, then os.replace)."""
     config_file = get_config_file()
+    tmp_file = f"{config_file}.tmp"
     try:
-        with open(config_file, 'w') as f:
+        with open(tmp_file, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except (OSError, AttributeError):
+                pass
+        os.replace(tmp_file, config_file)
         return True
     except Exception as e:
         print(f"Error saving config: {str(e)}")
+        try:
+            if os.path.exists(tmp_file):
+                os.remove(tmp_file)
+        except OSError:
+            pass
         return False 

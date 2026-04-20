@@ -9,6 +9,7 @@ import openpyxl
 from datetime import datetime, timedelta
 from utilities import format_timedelta_with_seconds
 from config import load_config, save_config
+from constants import VALID_STATUSES, STATUS_PENDING
 
 def save_to_gmd(data, filename):
     """Save game data to a .gmd file"""
@@ -39,7 +40,7 @@ def save_to_gmd(data, filename):
             'release_date': row[1] if row[1] else '',
             'platform': row[2] if row[2] else '',
             'time_played': time_played if time_played else '',
-            'status': row[4] if row[4] else 'Pending',
+            'status': row[4] if row[4] else STATUS_PENDING,
             'owned': row[5] == '✅',
             'last_played': row[6] if row[6] else None,
             'sessions': sessions,  # Add sessions to the JSON (now includes notes)
@@ -48,18 +49,34 @@ def save_to_gmd(data, filename):
         }
         games_data.append(game)
     
+    # Write atomically: dump to a sibling tmp file first, flush+fsync, then os.replace
+    # so a crash mid-write can never leave the target .gmd truncated.
+    tmp_filename = f"{filename}.tmp"
     try:
-        with open(filename, 'w') as f:
+        with open(tmp_filename, 'w', encoding='utf-8') as f:
             json.dump({
                 'games': games_data, 
                 'last_modified': datetime.now().isoformat(),
                 'feedback_format_version': 'unified',  # Flag to indicate unified feedback format
                 'pause_format_version': 'integrated'   # Flag to indicate integrated pause format
             }, f, indent=2)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except (OSError, AttributeError):
+                # fsync isn't critical; the os.replace below still gives atomicity.
+                pass
+        os.replace(tmp_filename, filename)
         print(f"Successfully saved {len(games_data)} games to {filename}")
         return True
     except Exception as e:
         print(f"Error saving data to {filename}: {str(e)}")
+        # Clean up partial tmp file so it doesn't accumulate.
+        try:
+            if os.path.exists(tmp_filename):
+                os.remove(tmp_filename)
+        except OSError:
+            pass
         return False
 
 def load_from_gmd(filename):
@@ -83,7 +100,7 @@ def load_from_gmd(filename):
                 release_date = game.get('release_date', '')
                 platform = game.get('platform', '')
                 time_played = game.get('time_played', '')
-                status = game.get('status', 'Pending')
+                status = game.get('status', STATUS_PENDING)
                 owned = game.get('owned', False)
                 last_played = game.get('last_played')
                 sessions = game.get('sessions', [])  # Load sessions from JSON
@@ -91,8 +108,8 @@ def load_from_gmd(filename):
                 rating = game.get('rating')  # Load rating from JSON
                 
                 # Additional validation
-                if status not in ['Pending', 'In progress', 'Completed']:
-                    status = 'Pending'
+                if status not in VALID_STATUSES:
+                    status = STATUS_PENDING
                 
                 # Format time_played if needed
                 if time_played and isinstance(time_played, str) and ':' in time_played:
@@ -160,7 +177,11 @@ def convert_excel_to_gmd(excel_file, gmd_file):
         return []
 
 def save_data(data_with_idx, filename, data_storage=None):
-    """Save game data to the .gmd file"""
+    """Save game data to the .gmd file.
+    
+    Returns True only if the .gmd write succeeded. Callers should show the user
+    an error when this returns False rather than silently claiming success.
+    """
     # If we're working with filtered data, make sure to save the complete dataset
     if data_storage is not None:
         # Make sure any changes in the filtered view are reflected in data_storage
@@ -173,12 +194,16 @@ def save_data(data_with_idx, filename, data_storage=None):
                     break
         
         # Save the complete dataset
-        save_to_gmd(data_storage, filename)
+        gmd_ok = save_to_gmd(data_storage, filename)
     else:
         # We're working with the complete dataset
-        save_to_gmd(data_with_idx, filename)
+        gmd_ok = save_to_gmd(data_with_idx, filename)
     
-    # Update config with the saved file path
+    if not gmd_ok:
+        print(f"save_data: save_to_gmd reported failure for {filename}; skipping last_file config update")
+        return False
+    
+    # Update config with the saved file path only after the game data was persisted.
     config = load_config()
     config['last_file'] = filename
     save_config(config)

@@ -15,9 +15,15 @@ import time
 import zipfile
 import platform
 from datetime import datetime
-from urllib.request import urlopen, urlretrieve
+from urllib.request import urlopen, urlretrieve, Request
 from urllib.error import URLError, HTTPError
 from typing import Optional, Dict, Any, Callable
+
+try:
+    from packaging.version import Version, InvalidVersion
+    _HAS_PACKAGING = True
+except ImportError:  # packaging is bundled with pip/setuptools on most installs
+    _HAS_PACKAGING = False
 
 # Windows-specific subprocess flags
 if platform.system().lower() == 'windows':
@@ -30,6 +36,23 @@ else:
 
 from constants import VERSION, GITHUB_OWNER, GITHUB_REPO, GITHUB_API_BASE
 from config import get_config_dir, load_config, save_config
+
+# GitHub asks unauthenticated clients to send a User-Agent identifying the app.
+USER_AGENT = f"GamesListManager/{VERSION} (+https://github.com/{GITHUB_OWNER}/{GITHUB_REPO})"
+
+
+def _github_open(url: str, timeout: float = 30.0):
+    """urlopen wrapper that sets a User-Agent and surfaces 403/429 clearly."""
+    req = Request(url, headers={'User-Agent': USER_AGENT, 'Accept': 'application/vnd.github+json'})
+    try:
+        return urlopen(req, timeout=timeout)
+    except HTTPError as e:
+        if e.code in (403, 429):
+            # Include the reset hint if GitHub supplied it so callers can log meaningfully.
+            reset = e.headers.get('X-RateLimit-Reset') if e.headers else None
+            remaining = e.headers.get('X-RateLimit-Remaining') if e.headers else None
+            print(f"GitHub API rate limited (HTTP {e.code}); remaining={remaining}, reset={reset}")
+        raise
 
 class AutoUpdater:
     """Handles automatic updates from GitHub releases"""
@@ -50,63 +73,53 @@ class AutoUpdater:
         """Register a callback to be called when updates are found"""
         self.update_callbacks.append(callback)
     
-    def version_compare(self, version1: str, version2: str) -> int:
+    def version_compare(self, version1: str, version2: str) -> Optional[int]:
         """
         Compare two version strings with support for various formats.
-        Returns: -1 if version1 < version2, 0 if equal, 1 if version1 > version2
+        Returns: -1 if version1 < version2, 0 if equal, 1 if version1 > version2,
+        or None if either version could not be parsed (so callers do not silently
+        treat a parse failure as "no update").
         
-        Supports formats like:
-        - 1.7.1, 1.8.0 (semantic versioning)
-        - 1.8-release, 2.0-beta (with suffixes)
-        - v1.8, v2.0 (with prefixes)
+        Uses packaging.version when available (proper semver + prerelease handling),
+        otherwise falls back to a numeric-tuple comparison.
         """
-        def normalize_version(v):
-            """Extract numeric version parts from various formats"""
-            
-            # Remove common prefixes
+        def normalize_tuple(v: str):
             v = v.lstrip('v').lstrip('V')
-            
-            # Extract the numeric part (e.g., "1.8-release" -> "1.8")
-            # Match pattern: digits, dots, and digits
             match = re.match(r'^(\d+(?:\.\d+)*)', v)
-            if match:
-                numeric_part = match.group(1)
-            else:
-                # If no numeric pattern found, try to extract just numbers and dots
-                numeric_part = re.sub(r'[^0-9.]', '', v)
-            
-            # Split into parts and pad to ensure consistent comparison
-            parts = numeric_part.split('.')
-            # Pad with zeros to ensure we have at least 3 parts (major.minor.patch)
+            numeric_part = match.group(1) if match else re.sub(r'[^0-9.]', '', v)
+            parts = numeric_part.split('.') if numeric_part else []
             while len(parts) < 3:
                 parts.append('0')
-            
-            # Convert to integers, handling empty parts
-            int_parts = []
-            for part in parts[:3]:  # Only take first 3 parts
-                try:
-                    int_parts.append(int(part) if part else 0)
-                except ValueError:
-                    int_parts.append(0)
-            
-            return tuple(int_parts)
+            return tuple(int(p) if p.isdigit() else 0 for p in parts[:3])
         
         try:
-            v1_tuple = normalize_version(version1)
-            v2_tuple = normalize_version(version2)
-            
-            print(f"Version comparison: {version1} ({v1_tuple}) vs {version2} ({v2_tuple})")
-            
+            if _HAS_PACKAGING:
+                v1 = Version(version1.lstrip('v').lstrip('V'))
+                v2 = Version(version2.lstrip('v').lstrip('V'))
+                print(f"Version comparison: {version1} ({v1}) vs {version2} ({v2})")
+                if v1 < v2:
+                    return -1
+                if v1 > v2:
+                    return 1
+                return 0
+        except (InvalidVersion, ValueError) as e:
+            print(f"packaging.Version could not parse '{version1}' or '{version2}' ({e}); falling back to tuple compare")
+        except Exception as e:
+            print(f"Unexpected error in packaging version parse: {e}; falling back to tuple compare")
+        
+        try:
+            v1_tuple = normalize_tuple(version1)
+            v2_tuple = normalize_tuple(version2)
+            print(f"Version comparison (tuple): {version1} ({v1_tuple}) vs {version2} ({v2_tuple})")
             if v1_tuple < v2_tuple:
                 return -1
-            elif v1_tuple > v2_tuple:
+            if v1_tuple > v2_tuple:
                 return 1
-            else:
-                return 0
+            return 0
         except Exception as e:
             print(f"Error comparing versions {version1} vs {version2}: {e}")
-            # If version parsing fails, assume no update needed
-            return 0
+            # Surface parse failure as "unknown" rather than silently "equal".
+            return None
     
     def check_for_updates(self) -> Optional[Dict[str, Any]]:
         """
@@ -117,7 +130,7 @@ class AutoUpdater:
             # Get latest release info from GitHub API
             api_url = f"{GITHUB_API_BASE}/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
             
-            with urlopen(api_url, timeout=10) as response:
+            with _github_open(api_url, timeout=10) as response:
                 if response.status != 200:
                     print(f"GitHub API returned status {response.status}")
                     return None
@@ -152,6 +165,9 @@ class AutoUpdater:
             
             # Check if update is available
             comparison_result = self.version_compare(self.current_version, latest_version)
+            if comparison_result is None:
+                print(f"Version comparison result: UNKNOWN (could not parse '{self.current_version}' or '{latest_version}')")
+                return None
             print(f"Version comparison result: {comparison_result} ({'UPDATE AVAILABLE' if comparison_result < 0 else 'NO UPDATE' if comparison_result == 0 else 'DOWNGRADE'})")
             
             if comparison_result < 0:
@@ -263,10 +279,9 @@ class AutoUpdater:
         Returns True if successful, False if cancelled or failed.
         """
         try:
-            from urllib.request import urlopen
-            
-            # Open the URL
-            response = urlopen(url)
+            # Use a generous timeout to avoid hanging forever on a dead connection,
+            # while still giving large release archives time to start streaming.
+            response = _github_open(url, timeout=60)
             total_size = int(response.headers.get('Content-Length', 0))
             downloaded = 0
             chunk_size = 8192  # 8KB chunks
@@ -297,6 +312,33 @@ class AutoUpdater:
         except Exception as e:
             print(f"Download error: {e}")
             return False
+    
+    @staticmethod
+    def _safe_extract_zip(zip_ref: zipfile.ZipFile, target_dir: str) -> None:
+        """
+        Extract a zip archive to target_dir, rejecting any entry whose resolved path
+        would escape target_dir (zip-slip protection). Also skips absolute paths and
+        symlinks, which GitHub release archives should not contain.
+        """
+        target_abs = os.path.realpath(target_dir)
+        members = []
+        for info in zip_ref.infolist():
+            name = info.filename
+            # Reject absolute paths and drive letters outright.
+            if name.startswith('/') or name.startswith('\\') or (len(name) > 1 and name[1] == ':'):
+                raise ValueError(f"Refusing to extract absolute path from archive: {name!r}")
+            
+            # Reject symlinks (high bit 0xA on unix external_attr).
+            if (info.external_attr >> 28) == 0xA:
+                raise ValueError(f"Refusing to extract symlink from archive: {name!r}")
+            
+            # Resolve where this member would land and ensure it stays inside target_dir.
+            dest_path = os.path.realpath(os.path.join(target_abs, name))
+            if dest_path != target_abs and not dest_path.startswith(target_abs + os.sep):
+                raise ValueError(f"Refusing zip-slip path that escapes staging dir: {name!r}")
+            members.append(info)
+        
+        zip_ref.extractall(target_dir, members=members)
     
     def install_update(self, download_path: str, progress_callback: Optional[Callable] = None) -> bool:
         """
@@ -345,7 +387,7 @@ class AutoUpdater:
             if download_path.endswith('.zip'):
                 print("Extracting update to staging directory...")
                 with zipfile.ZipFile(download_path, 'r') as zip_ref:
-                    zip_ref.extractall(staging_dir)
+                    self._safe_extract_zip(zip_ref, staging_dir)
             else:
                 print(f"Unsupported file format: {download_path}")
                 return False
@@ -506,9 +548,10 @@ try {{
     Write-Host "Attempting to restore from backup..."
     
     try {{
-        $backup_result = robocopy '{backup_path_escaped}' '{target_dir_escaped}' /E /R:3 /W:1 /MT:1
-        if ($backup_result -ge 8) {{
-            Write-Host "ERROR: Backup restoration also failed!"
+        robocopy '{backup_path_escaped}' '{target_dir_escaped}' /E /R:3 /W:1 /MT:1 | Out-Null
+        # robocopy exit codes: 0-7 are success, 8+ are failures
+        if ($LASTEXITCODE -ge 8) {{
+            Write-Host "ERROR: Backup restoration also failed! (robocopy exit $LASTEXITCODE)"
         }} else {{
             Write-Host "Application restored from backup."
         }}

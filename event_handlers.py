@@ -39,8 +39,10 @@ def record_status_change(game_data, old_status, new_status):
         return  # No change to record
         
     # Ensure status_history exists
-    if len(game_data) <= 8 or game_data[8] is None:
-        game_data.append([])
+    while len(game_data) <= 8:
+        game_data.append(None)
+    if game_data[8] is None:
+        game_data[8] = []
     
     # Record the status change
     status_change = {
@@ -643,7 +645,7 @@ def handle_status_change(row_index, data_with_indices, window, data_storage=None
     """Handle status change for a game"""
     current_status = data_with_indices[row_index][1][4]
     status_window = sg.Window('Change Status', [
-        [sg.Combo(['Pending', 'In progress', 'Completed'], default_value=current_status, key='-STATUS-'),
+        [sg.Combo(['Pending', 'In progress', 'Completed', 'Dropped'], default_value=current_status, key='-STATUS-'),
          sg.Button('OK')]
     ], modal=True, icon='gameslisticon.ico')
     

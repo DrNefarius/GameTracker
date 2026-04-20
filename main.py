@@ -27,6 +27,8 @@ from discord_integration import initialize_discord, get_discord_integration, cle
 from auto_updater import initialize_updater, get_updater
 from update_ui import show_update_notification, show_update_settings, handle_update_process, check_for_updates_manual
 
+TAB_NAME_MAP = {'-TAB1-': 'Games List', '-TAB2-': 'Summary', '-TAB3-': 'Statistics'}
+
 def get_full_dataset(data_with_indices, data_storage):
     """Get the full dataset for statistics - use data_storage if filtering is active, otherwise data_with_indices"""
     return data_storage if data_storage is not None else data_with_indices
@@ -231,16 +233,13 @@ def main():
                     
                     # Map tab key to tab name for Discord
                     current_tab_key = values['-TABGROUP-']
-                    tab_name_map = {'-TAB1-': 'Games List', '-TAB2-': 'Summary', '-TAB3-': 'Statistics'}
-                    current_tab = tab_name_map.get(current_tab_key, 'Games List')
+                    current_tab = TAB_NAME_MAP.get(current_tab_key, 'Games List')
                     discord.update_presence_browsing(current_tab)
                     
                     from ui_components import update_table_display
                     update_table_display(data_with_indices, window)
                     update_summary(data_with_indices, window)
                     if values['-TABGROUP-'] == '-TAB2-':
-                        update_summary_charts(data_with_indices)
-                        # Update charts after loading data
                         charts = update_summary_charts(data_with_indices)
                         if charts:
                             window['-PIE-CHART-'].update(filename=charts['pie_chart'])
@@ -695,8 +694,14 @@ def main():
                     game_names.append(game_name)
             window['-GAME-LIST-'].update(values=sorted(game_names))
             
-        # Handle search and reset
-        elif event == 'Search' or event in ['\r', QT_ENTER_KEY1, QT_ENTER_KEY2]:
+        # Handle search and reset.
+        # Only treat Enter as Search when the search input actually has focus,
+        # otherwise Enter in any other field (e.g. a note multiline, a combo,
+        # or a popup that has routed Enter back here) would trigger a search.
+        elif event == 'Search' or (
+            event in ['\r', QT_ENTER_KEY1, QT_ENTER_KEY2]
+            and (lambda el: el is not None and getattr(el, 'Key', None) == '-SEARCH-')(window.find_element_with_focus())
+        ):
             query = values['-SEARCH-'].lower().strip()
             if data_storage is None:  # save the whole dataset once before filtering
                 data_storage = data_with_indices.copy()
@@ -744,7 +749,8 @@ def main():
                 total_games = count_total_entries(full_dataset)
                 completed_games = count_total_completed(full_dataset)
                 discord.update_game_library_stats(total_games, completed_games)
-                discord.update_presence_browsing(values['-TABGROUP-'])
+                current_tab = TAB_NAME_MAP.get(values['-TABGROUP-'], 'Games List')
+                discord.update_presence_browsing(current_tab)
                 
                 from ui_components import update_table_display
                 update_table_display(data_with_indices, window)

@@ -303,7 +303,8 @@ def create_status_timeline_chart(history, game_name=None):
     status_colors = {
         'Pending': '#d9534f',
         'In progress': '#f0ad4e',
-        'Completed': '#5cb85c'
+        'Completed': '#5cb85c',
+        'Dropped': '#8e8e8e'
     }
     
     for change in sorted(history, key=lambda x: x.get('timestamp', '')):
@@ -347,7 +348,9 @@ def create_status_timeline_chart(history, game_name=None):
             plt.Line2D([0], [0], marker='o', color='w', label='In progress',
                       markerfacecolor=status_colors['In progress'], markersize=10),
             plt.Line2D([0], [0], marker='o', color='w', label='Completed',
-                      markerfacecolor=status_colors['Completed'], markersize=10)
+                      markerfacecolor=status_colors['Completed'], markersize=10),
+            plt.Line2D([0], [0], marker='o', color='w', label='Dropped',
+                      markerfacecolor=status_colors['Dropped'], markersize=10)
         ]
         ax.legend(handles=legend_elements, loc='upper right', fontsize=8)
         

@@ -248,41 +248,6 @@ def show_update_notification(update_info: Dict[str, Any], parent_window=None) ->
         
         images_loaded = True
 
-    def show_images_window(image_elements, version):
-        """Show images in a separate window"""
-        if not image_elements:
-            return
-        
-        layout = [
-            [sg.Text(f"Release Images - Version {version}", font=('Arial', 14, 'bold'), text_color='white')],
-            [sg.HorizontalSeparator()],
-            [sg.Column(
-                image_elements,
-                size=(600, 500),
-                scrollable=True,
-                vertical_scroll_only=True
-            )],
-            [sg.Text("")],
-            [sg.Button("Close", key="-CLOSE-")]
-        ]
-        
-        images_window = sg.Window(
-            f"Release Images - GamesList Manager v{version}",
-            layout,
-            modal=True,
-            icon='gameslisticon.ico',
-            element_justification='center',
-            size=(650, 500), 
-            resizable=True
-        )
-        
-        while True:
-            event, values = images_window.read()
-            if event in (sg.WIN_CLOSED, '-CLOSE-'):
-                break
-        
-        images_window.close()
-    
     result = 'close'
     while True:
         event, values = window.read()

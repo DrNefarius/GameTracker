@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from constants import STAR_FILLED, STAR_EMPTY, RATING_TAGS, COMPLETED_STYLE, IN_PROGRESS_STYLE, FUTURE_RELEASE_STYLE, DEFAULT_STYLE
 from ratings import format_rating, calculate_session_rating_average, show_rating_popup
 from utilities import calculate_pixel_width, get_game_table_row_colors, format_timedelta_with_seconds, format_timedelta
-from game_statistics import count_total_completed, count_total_entries, calculate_completion_percentage, calculate_total_time
+from game_statistics import count_total_completed, count_total_dropped, count_total_entries, calculate_completion_percentage, calculate_total_time
 
 def get_discord_menu_text():
     """Get the current Discord menu text based on enabled status"""
@@ -109,7 +109,7 @@ def create_entry_popup(existing_entry=None, parent_window=None):
     default_release = existing_entry[1] if existing_entry else ''
     default_platform = existing_entry[2] if existing_entry else ''
     default_time = existing_entry[3] if existing_entry and existing_entry[3] not in [None, ''] else '00:00:00'
-    default_status = existing_entry[4] if existing_entry and existing_entry[4] in ['Pending', 'In progress', 'Completed'] else 'Pending'
+    default_status = existing_entry[4] if existing_entry and existing_entry[4] in ['Pending', 'In progress', 'Completed', 'Dropped'] else 'Pending'
     default_owned = (existing_entry[5] == '✅') if existing_entry else False
     default_rating = existing_entry[9] if existing_entry and len(existing_entry) > 9 else None
     
@@ -123,7 +123,7 @@ def create_entry_popup(existing_entry=None, parent_window=None):
         [sg.Text('Platform'), sg.InputText(key='-NEW-PLATFORM-', default_text=default_platform)],
         [sg.Text('Time Played'), sg.InputText(key='-NEW-TIME-', default_text=default_time, 
                  tooltip='Format: HH:MM:SS (e.g. 01:30:45 for 1 hour, 30 minutes, 45 seconds)')],
-        [sg.Text('Status'), sg.Combo(['Pending', 'In progress', 'Completed'], key='-NEW-STATUS-', 
+        [sg.Text('Status'), sg.Combo(['Pending', 'In progress', 'Completed', 'Dropped'], key='-NEW-STATUS-', 
                  default_value=default_status, readonly=True)],
         [sg.Text('Owned'), sg.Checkbox('', key='-NEW-OWNED-', default=default_owned)],
         [sg.Text('Rating'), sg.Text(rating_text, key='-RATING-TEXT-', size=(15,1)), 
@@ -297,8 +297,7 @@ def create_main_layout(data_with_indices):
                   justification='left', num_rows=min(25, len(data_with_indices)), key='-TABLE-',
                   enable_events=True, expand_x=True, expand_y=True, col_widths=col_widths,
                   enable_click_events=True, vertical_scroll_only=True,
-                  row_colors=row_colors)],
-        [sg.Combo(['Pending', 'In progress', 'Completed'], key='-STATUS-', readonly=True, visible=False)]
+                  row_colors=row_colors)]
     ]
 
     # Tab 2 - Summary with visualizations (scrollable)
@@ -313,6 +312,7 @@ def create_main_layout(data_with_indices):
         [sg.Frame('Key Metrics', [
             [sg.Text(f"Total Games: {count_total_entries(data_with_indices)}", font=('Helvetica', 12), pad=(10, 5), size=(20, 1)),
              sg.Text(f"Completed: {count_total_completed(data_with_indices)}", font=('Helvetica', 12), pad=(10, 5), size=(15, 1)),
+             sg.Text(f"Dropped: {count_total_dropped(data_with_indices)}", font=('Helvetica', 12), pad=(10, 5), size=(15, 1)),
              sg.Text(f"Completion: {calculate_completion_percentage(count_total_completed(data_with_indices), count_total_entries(data_with_indices)):.1f}%", font=('Helvetica', 12), pad=(10, 5), size=(15, 1))],
             [sg.Text(f"Total Play Time: {calculate_total_time(data_with_indices)}", font=('Helvetica', 12), pad=(10, 5), key='-TOTAL-TIME-')]
         ], font=('Helvetica', 12), expand_x=True)],

@@ -8,14 +8,14 @@ VERSION = "1.10.1"
 _DEBUG = False
 
 # GitHub repository configuration for auto-updater
-GITHUB_OWNER = "yourname"
+GITHUB_OWNER = "DrNefarius"
 GITHUB_REPO = "GameTracker"
 GITHUB_API_BASE = "https://api.github.com"
 
 # Discord Rich Presence configuration
 # SETUP REQUIRED: Replace CLIENT_ID with your actual Discord Application ID
 # See DISCORD_SETUP.md for detailed setup instructions
-DISCORD_CLIENT_ID = "1234567890123456789"  # Placeholder - needs to be replaced with actual Discord app ID
+DISCORD_CLIENT_ID = "1387760989843492947"  # Placeholder - needs to be replaced with actual Discord app ID
 DISCORD_GITHUB_URL = "https://yourname.github.io/GameTracker/"
 
 # Special key constants for different platforms
@@ -37,6 +37,15 @@ RATING_TAGS = NEGATIVE_TAGS + NEUTRAL_TAGS + POSITIVE_TAGS
 
 # Table styling
 COMPLETED_STYLE = ('#000000', '#dff0d8')  # Light green background, black text
+DROPPED_STYLE = ('#000000', '#b7e1b7')  # Slightly deeper green than Completed, black text
 IN_PROGRESS_STYLE = ('#000000', '#fcf8e3')  # Light yellow background, black text
 FUTURE_RELEASE_STYLE = ('#000000', '#b4acff')   # Light purple background, black text
-DEFAULT_STYLE = ('#000000', '#f8d7da')  # Light red background, black text 
+DEFAULT_STYLE = ('#000000', '#f8d7da')  # Light red background, black text
+
+# Canonical game status values. Always import these rather than hard-coding strings
+# so the casing (e.g. 'In progress' vs 'In Progress') stays consistent everywhere.
+STATUS_PENDING = 'Pending'
+STATUS_IN_PROGRESS = 'In progress'
+STATUS_COMPLETED = 'Completed'
+STATUS_DROPPED = 'Dropped'
+VALID_STATUSES = (STATUS_PENDING, STATUS_IN_PROGRESS, STATUS_COMPLETED, STATUS_DROPPED)

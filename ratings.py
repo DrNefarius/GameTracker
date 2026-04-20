@@ -20,7 +20,12 @@ def format_rating(rating):
         return ""
 
 def calculate_session_rating_average(sessions):
-    """Calculate the average rating from sessions that have ratings"""
+    """Calculate the average rating from sessions that have ratings.
+    
+    Prefers a duration-weighted average. If none of the rated sessions have a
+    parseable duration (total_weight == 0), falls back to the unweighted average
+    so a rated library doesn't silently report "no rating".
+    """
     # Look for ratings in the new unified feedback format
     rated_sessions = [s for s in sessions if 'feedback' in s and s['feedback'] and 'rating' in s['feedback'] and s['feedback']['rating'] is not None]
     if not rated_sessions:
@@ -30,10 +35,12 @@ def calculate_session_rating_average(sessions):
     total_weight = 0
     weighted_sum = 0
     
+    unweighted_stars = []
     for session in rated_sessions:
         try:
             # Get the star rating from the unified feedback structure
             stars = session['feedback']['rating'].get('stars', 0)
+            unweighted_stars.append(stars)
             
             # Get duration weight - newer sessions get higher weight
             if 'duration' in session:
@@ -51,6 +58,9 @@ def calculate_session_rating_average(sessions):
     
     if total_weight > 0:
         return round(weighted_sum / total_weight, 1)
+    if unweighted_stars:
+        # All durations were unparseable but we still have star ratings; don't drop them.
+        return round(sum(unweighted_stars) / len(unweighted_stars), 1)
     return None
 
 def get_session_rating_summary(sessions):
@@ -100,7 +110,10 @@ def show_rating_popup(existing_rating=None, parent_window=None):
     layout = [
         [sg.Text(f"{'Edit' if is_edit else 'Enter'} rating (1-5 stars):")],
         [sg.Text(STAR_FILLED * existing_stars + STAR_EMPTY * (5 - existing_stars), key='-STARS-', font=('Arial', 20))],
-        [sg.Slider(range=(1, 5), default_value=existing_stars if existing_stars > 0 else 3, 
+        # When no existing rating, default the slider to 1 so the star display (which
+        # starts empty) matches until the user intentionally moves it. Previously this
+        # defaulted to 3, letting users accidentally save 3★ on a brand-new rating.
+        [sg.Slider(range=(1, 5), default_value=existing_stars if existing_stars > 0 else 1, 
                  orientation='h', size=(30, 15), key='-RATING-', enable_events=True)],
         [sg.Text("Select tags that describe your experience (optional):")],
         [sg.Frame("Negative", [

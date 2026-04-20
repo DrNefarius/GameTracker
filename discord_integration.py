@@ -3,6 +3,8 @@ Discord Rich Presence integration for GamesList Manager.
 Provides dynamic status updates based on app state and current activities.
 """
 
+import os
+import atexit
 import time
 import threading
 from datetime import datetime, timedelta
@@ -44,10 +46,20 @@ class DiscordIntegration:
         self.showing_completion = False  # Flag to prevent overriding completion status
         self.current_tab = "Games List"  # Track current tab for timer return
         self.selected_game_stats = None  # Track selected game in statistics tab
+        # pypresence's socket is not thread-safe; serialize all RPC access so the
+        # session-complete Timer thread cannot race with main-thread updates.
+        self._rpc_lock = threading.Lock()
         
         # Initialize connection if enabled
         if self.enabled:
             self.initialize()
+    
+    def _safe_rpc_update(self, **kwargs):
+        """Thread-safe wrapper around pypresence Presence.update."""
+        if not self.rpc:
+            return
+        with self._rpc_lock:
+            self.rpc.update(**kwargs)
     
     def initialize(self):
         """Initialize Discord RPC connection"""
@@ -56,7 +68,8 @@ class DiscordIntegration:
             
         try:
             self.rpc = Presence(self.CLIENT_ID)
-            self.rpc.connect()
+            with self._rpc_lock:
+                self.rpc.connect()
             self.connected = True
             
             # Set initial presence to browsing Games List
@@ -69,13 +82,42 @@ class DiscordIntegration:
             return False
     
     def disconnect(self):
-        """Disconnect from Discord RPC"""
+        """Disconnect from Discord RPC.
+        
+        Sends an explicit `clear` to wipe the rich presence BEFORE closing the
+        IPC socket. pypresence's `close()` on its own does not remove the last
+        SET_ACTIVITY from Discord, so without the clear the presence stays
+        visible on the user's profile until Discord is restarted.
+        
+        Also cancels the session-complete timer so it can't fire after shutdown
+        and attempt to write on a closed socket, and nulls out ``self.rpc`` so
+        the ``_safe_rpc_update`` guard ignores any late callers.
+        """
+        # Cancel any pending session-complete timer first so it cannot race
+        # with the clear/close below or re-set a presence post-disconnect.
+        if self.session_complete_timer:
+            try:
+                self.session_complete_timer.cancel()
+            except Exception:
+                pass
+            self.session_complete_timer = None
+        self.showing_completion = False
+
         if self.rpc and self.connected:
             try:
-                self.rpc.close()
-            except:
-                pass
+                with self._rpc_lock:
+                    try:
+                        self.rpc.clear(pid=os.getpid())
+                    except Exception as e:
+                        print(f"Error clearing Discord presence: {str(e)}")
+                    try:
+                        self.rpc.close()
+                    except Exception as e:
+                        print(f"Error closing Discord RPC: {str(e)}")
+            except Exception as e:
+                print(f"Error during Discord disconnect: {str(e)}")
             self.connected = False
+            self.rpc = None
     
     def is_connected(self):
         """Check if Discord RPC is connected"""
@@ -140,7 +182,7 @@ class DiscordIntegration:
             }
             icon = activity_icons.get(current_tab, "🎮")
             
-            self.rpc.update(
+            self._safe_rpc_update(
                 details=f"{icon} {details}",  # Activity with icon shows in user list
                 state=f"{self.total_games} games • {self.completed_games} completed",
                 large_image="gameslist_logo",
@@ -176,7 +218,7 @@ class DiscordIntegration:
             
             # Show timer only when actively playing - this tracks the session duration
             # Make the game name more prominent in user list display
-            self.rpc.update(
+            self._safe_rpc_update(
                 details=f"🎮 {display_name}",  # Game name with icon like other statuses
                 state=state_text,  # Playing status with platform
                 large_image="gameslist_logo",
@@ -208,7 +250,7 @@ class DiscordIntegration:
             
             # No timer when paused - paused sessions shouldn't show elapsed time
             # Show paused game name prominently
-            self.rpc.update(
+            self._safe_rpc_update(
                 details=f"⏸️ {display_name}",  # Paused game shows clearly in user list
                 state=state_text,
                 large_image="gameslist_logo",
@@ -234,7 +276,7 @@ class DiscordIntegration:
             return
             
         try:
-            self.rpc.update(
+            self._safe_rpc_update(
                 details="➕ Adding new game",
                 state="Expanding game library", 
                 large_image="gameslist_logo",
@@ -262,7 +304,7 @@ class DiscordIntegration:
         try:
             display_name = game_name[:100] if len(game_name) > 100 else game_name
             
-            self.rpc.update(
+            self._safe_rpc_update(
                 details=f"✏️ {display_name}",
                 state="Editing game details",
                 large_image="gameslist_logo",
@@ -301,7 +343,7 @@ class DiscordIntegration:
                 state = f"{self.total_games} games • {self.completed_games} completed"
                 small_text = "Statistics view"
             
-            self.rpc.update(
+            self._safe_rpc_update(
                 details=details,
                 state=state,
                 large_image="gameslist_logo",
@@ -340,7 +382,7 @@ class DiscordIntegration:
             details = f"Viewing daily activity"
             state = f"For {date_str}"
             
-            self.rpc.update(
+            self._safe_rpc_update(
                 details=details,
                 state=state,
                 large_image="gameslist_logo",
@@ -377,7 +419,7 @@ class DiscordIntegration:
             if self.session_complete_timer:
                 self.session_complete_timer.cancel()
             
-            self.rpc.update(
+            self._safe_rpc_update(
                 details=f"✅ {display_name}",
                 state=state_text,
                 large_image="gameslist_logo",
@@ -419,11 +461,20 @@ class DiscordIntegration:
 
 # Global instance for Discord integration
 _discord_instance = None
+# Only register the atexit handler once per process; initialize_discord can be
+# called again after a toggle-off/on cycle and we don't want duplicate cleanups.
+_atexit_registered = False
 
 def initialize_discord(enabled=True):
     """Initialize global Discord integration"""
-    global _discord_instance
+    global _discord_instance, _atexit_registered
     _discord_instance = DiscordIntegration(enabled=enabled)
+    if not _atexit_registered:
+        # Safety net: if the app exits through a path that bypasses the normal
+        # WIN_CLOSED cleanup (uncaught exception, os._exit, etc.), atexit still
+        # fires on normal interpreter shutdown and wipes the presence.
+        atexit.register(cleanup_discord)
+        _atexit_registered = True
     return _discord_instance
 
 def get_discord_integration():

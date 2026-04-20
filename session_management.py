@@ -582,8 +582,8 @@ def create_github_style_contributions_heatmap(sessions, game_name=None):
                         if len(game_details) > 3:
                             tooltip_lines.extend(game_details[:3])
                             tooltip_lines.append(f"• ... and {len(game_details) - 3} more")
-                    else:
-                        tooltip_lines.extend(game_details)
+                        else:
+                            tooltip_lines.extend(game_details)
                     
                     tooltip_text = "\n".join(tooltip_lines)
                 else:
