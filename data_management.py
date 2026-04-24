@@ -33,7 +33,10 @@ def save_to_gmd(data, filename):
         
         # Get rating for this game if available (element at index 9)
         rating = row[9] if len(row) > 9 else None
-        
+
+        # Get IGDB metadata for this game if available (element at index 10)
+        igdb = row[10] if len(row) > 10 else None
+
         # Ensure values are properly formatted for JSON
         game = {
             'name': row[0] if row[0] else '',
@@ -45,7 +48,8 @@ def save_to_gmd(data, filename):
             'last_played': row[6] if row[6] else None,
             'sessions': sessions,  # Add sessions to the JSON (now includes notes)
             'status_history': status_history,  # Add status history to the JSON
-            'rating': rating  # Add rating to the JSON
+            'rating': rating,  # Add rating to the JSON
+            'igdb': igdb  # IGDB metadata dict (cover, genres, summary, etc.) or None
         }
         games_data.append(game)
     
@@ -106,6 +110,7 @@ def load_from_gmd(filename):
                 sessions = game.get('sessions', [])  # Load sessions from JSON
                 status_history = game.get('status_history', [])  # Load status history from JSON
                 rating = game.get('rating')  # Load rating from JSON
+                igdb = game.get('igdb')  # Load IGDB metadata from JSON (may be None)
                 
                 # Additional validation
                 if status not in VALID_STATUSES:
@@ -121,8 +126,8 @@ def load_from_gmd(filename):
                     elif len(parts) != 3:  # Not HH:MM:SS
                         time_played = "00:00:00"
                 
-                row = [name, release_date, platform, time_played, status, 
-                       '✅' if owned else '', last_played, sessions, status_history, rating]
+                row = [name, release_date, platform, time_played, status,
+                       '✅' if owned else '', last_played, sessions, status_history, rating, igdb]
                 
                 formatted_data.append((i, row))
             except Exception as e:

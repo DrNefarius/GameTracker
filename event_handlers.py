@@ -17,11 +17,11 @@ from constants import QT_ENTER_KEY1, QT_ENTER_KEY2, STAR_FILLED, STAR_EMPTY, VER
 from config import load_config, save_config
 from data_management import load_from_gmd, save_to_gmd, convert_excel_to_gmd, save_data
 from ui_components import (
-    create_entry_popup, validate_entry_form, show_game_actions_dialog,
+    create_entry_popup, validate_entry_form,
     update_table_display, get_display_row_with_rating
 )
 from session_management import (
-    show_popup, extract_all_sessions, calculate_session_statistics,
+    extract_all_sessions, calculate_session_statistics,
     get_game_sessions, format_session_for_display, get_status_history,
     format_status_history_for_display, display_all_game_notes, show_session_feedback_popup,
     migrate_all_game_sessions, create_github_contributions_canvas, setup_contributions_tooltip_callback
@@ -585,6 +585,38 @@ def handle_menu_events(event, window, data_with_indices, fn):
     elif event == 'About':
         show_about_dialog(window)
         
+    elif event == 'IGDB Settings':
+        # Show the IGDB credentials dialog
+        try:
+            from igdb_ui import show_igdb_settings_dialog
+            show_igdb_settings_dialog(window)
+        except Exception as e:
+            print(f"Error showing IGDB settings: {str(e)}")
+            err_loc = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+            sg.popup_error(f"Error opening IGDB settings: {str(e)}",
+                           title="IGDB Error", location=err_loc)
+
+    elif event == 'Enrich Library from IGDB':
+        # Trigger the library-wide enrichment wizard; return updated data to main.
+        try:
+            from igdb_ui import show_library_enrichment_dialog
+            update_count = {'n': 0}
+            def _on_games_updated(n):
+                update_count['n'] = n
+            show_library_enrichment_dialog(data_with_indices, _on_games_updated, window)
+            if update_count['n'] > 0:
+                # Persist the mutated rows (the wizard updated them in place).
+                save_data(data_with_indices, fn)
+                enrich_loc = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+                sg.popup(f"Enriched {update_count['n']} game(s) from IGDB.",
+                         title="IGDB Enrichment", location=enrich_loc)
+                return {'action': 'library_enriched', 'data': data_with_indices}
+        except Exception as e:
+            print(f"Error running IGDB enrichment: {str(e)}")
+            err_loc = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+            sg.popup_error(f"Error enriching library: {str(e)}",
+                           title="IGDB Error", location=err_loc)
+
     elif event == 'Check for Updates':
         # Check for updates manually
         from update_ui import check_for_updates_manual
@@ -686,178 +718,35 @@ def handle_status_change(row_index, data_with_indices, window, data_storage=None
 
 
 def handle_game_action(row_index, data_with_indices, window, data_storage=None, fn=None):
-    """Handle game actions like Track Time, Edit Game, Rate Game"""
-    action = show_game_actions_dialog(row_index, data_with_indices, window)
-    
-    if action == "Track Time":
-        show_popup(row_index, data_with_indices, window, data_storage, save_filename=fn)
-        return {'action': 'time_tracked', 'data': data_with_indices}
-        
-    elif action == "Edit Game":
-        existing_entry = data_with_indices[row_index][1]
-        game_name = existing_entry[0]
-        
-        # Update Discord presence for editing game
-        discord = get_discord_integration()
-        discord.update_presence_editing_game(game_name)
-        
-        popup_values, action_type, rating = create_entry_popup(existing_entry, window)
-        
-        # If action_type is None, the dialog was cancelled - reset Discord presence
-        if action_type is None:
-            discord = get_discord_integration()
-            discord.update_presence_browsing("Games List")
-            return None
-        
-        if action_type == 'Delete':
-            # Confirm deletion
-            delete_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
-            if sg.popup_yes_no(f"Are you sure you want to delete '{existing_entry[0]}'?", 
-                               title="Confirm Deletion", location=delete_location) == 'Yes':
-                # Remove from data_with_indices
-                original_idx = data_with_indices[row_index][0]
-                deleted_game = data_with_indices.pop(row_index)
-                
-                # Also remove from data_storage if filtering is active
-                if data_storage:
-                    # Find and delete from the original dataset
-                    for i, (idx, _) in enumerate(data_storage):
-                        if idx == original_idx:
-                            data_storage.pop(i)
-                            break
-                
-                # Auto-save after deletion
-                if fn:
-                    save_data(data_with_indices, fn, data_storage)
+    """Open the unified Game Hub for the clicked row.
 
-                deletion_complete_location = calculate_popup_center_location(window, popup_width=350, popup_height=120)
-                sg.popup(f"'{existing_entry[0]}' has been deleted.", title="Deletion Complete", location=deletion_complete_location)
-                return {'action': 'game_deleted', 'data': data_with_indices}
-        
-        elif action_type == 'Submit':
-            # Process the submitted values
-            new_release = popup_values['-NEW-RELEASE-']
-            if new_release == '-' or not new_release.strip():
-                new_release_date = '-'  # Use '-' for empty or unknown dates
-            else:
-                # Safe to parse since validation already passed
-                new_release_date = datetime.strptime(new_release, '%Y-%m-%d').strftime('%Y-%m-%d')
-                
-            time_value = popup_values['-NEW-TIME-']
-            if not time_value or time_value in ['00:00:00', '00:00']:
-                time_value = None
-            
-            # Check if status has changed and record if it has
-            old_status = existing_entry[4]
-            new_status = popup_values['-NEW-STATUS-']
-            
-            # Create the updated entry
-            updated_entry = [
-                popup_values['-NEW-NAME-'],
-                new_release_date,
-                popup_values['-NEW-PLATFORM-'],
-                time_value,
-                new_status,
-                '✅' if popup_values['-NEW-OWNED-'] else '',
-                existing_entry[6]
-            ]
-            
-            # Preserve sessions if they exist
-            if len(existing_entry) > 7 and existing_entry[7] is not None:
-                updated_entry.append(existing_entry[7])
-            else:
-                updated_entry.append([])
-                
-            # Preserve or create status history and record change if needed
-            if len(existing_entry) > 8 and existing_entry[8] is not None:
-                updated_entry.append(existing_entry[8])
-            else:
-                updated_entry.append([])
-                
-            # Record status change if it changed
-            if old_status != new_status:
-                record_status_change(updated_entry, old_status, new_status)
-            
-            # Add or update rating if provided
-            if rating is not None:
-                # Make sure there's space for the rating
-                while len(updated_entry) <= 9:
-                    updated_entry.append(None)
-                updated_entry[9] = rating
-            elif len(existing_entry) > 9 and existing_entry[9] is not None:
-                # Preserve existing rating if no new rating provided
-                updated_entry.append(existing_entry[9])
-            
-            data_with_indices[row_index] = (data_with_indices[row_index][0], updated_entry)
-            
-            # Update the full dataset when modifying filtered data
-            if data_storage:
-                original_index = data_with_indices[row_index][0]
-                # Find and update the correct entry in data_storage
-                for i, (idx, _) in enumerate(data_storage):
-                    if idx == original_index:
-                        data_storage[i] = data_with_indices[row_index]
-                        break
+    The hub handles Track Time (inline), Edit, Rate, Add Session, IGDB
+    fetch/rematch/remove, and View Statistics. It returns one of:
+      - {'action': 'game_hub_mutation', ...} for any in-hub mutation
+      - {'action': 'game_deleted', ...} for Edit -> Delete
+      - {'action': 'view_statistics', 'game_name': ..., ...}
+      - None when closed without changes
+    and we pass the result straight through to the main event loop.
+    """
+    if row_index is None or row_index >= len(data_with_indices):
+        return None
+    # Make sure the row has an IGDB slot so the hub can mutate it safely.
+    game_data = data_with_indices[row_index][1]
+    while len(game_data) <= 10:
+        game_data.append(None)
 
-            # Auto-save after editing
-            if fn:
-                save_data(data_with_indices, fn, data_storage)
-
-            return {'action': 'game_edited', 'data': data_with_indices}
-    
-    elif action == "Rate Game":
-        # Get existing rating if any
-        game_data = data_with_indices[row_index][1]
-        existing_rating = game_data[9] if len(game_data) > 9 else None
-        
-        # Show rating popup
-        new_rating = show_rating_popup(existing_rating, window)
-        if new_rating:
-            # Add the rating to the game data
-            while len(game_data) <= 9:
-                game_data.append(None)
-            game_data[9] = new_rating
-            
-            # Save data after rating
-            if fn:
-                save_data(data_with_indices, fn, data_storage)
-            
-            rating_saved_location = calculate_popup_center_location(window, popup_width=350, popup_height=120)
-            sg.popup(f"Rating saved for {game_data[0]}", title="Rating Added", location=rating_saved_location)
-            return {'action': 'game_rated', 'data': data_with_indices}
-    
-    elif action == "Add Session":
-        # Get game data
-        game_data = data_with_indices[row_index][1]
-        game_name = game_data[0]
-        
-        # Show manual session popup
-        from session_management import show_manual_session_popup, add_manual_session_to_game
-        session = show_manual_session_popup(game_name, window)
-        if session:
-            # Add session to game
-            success = add_manual_session_to_game(game_name, session, data_with_indices, data_storage)
-            if success:
-                # Save data after adding session
-                if fn:
-                    save_data(data_with_indices, fn, data_storage)
-                
-                session_added_location = calculate_popup_center_location(window, popup_width=350, popup_height=120)
-                sg.popup(f"Manual session added to {game_name}!", title="Session Added", location=session_added_location)
-                return {'action': 'session_added', 'data': data_with_indices}
-            else:
-                session_error_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
-                sg.popup_error(f"Failed to add session to {game_name}", title="Error", location=session_error_location)
-    
-    elif action == "View Statistics":
-        # Get game data
-        game_data = data_with_indices[row_index][1]
-        game_name = game_data[0]
-        
-        # Switch to Statistics tab and pre-select the game
-        return {'action': 'view_statistics', 'game_name': game_name, 'data': data_with_indices}
-    
-    return None
+    # Local import keeps game_hub out of the event_handlers import graph at
+    # module load time (game_hub itself defers a record_status_change import
+    # back to this module).
+    from game_hub import show_game_hub_popup
+    return show_game_hub_popup(
+        game_row=game_data,
+        row_index=row_index,
+        data_with_indices=data_with_indices,
+        data_storage=data_storage,
+        save_filename=fn,
+        parent_window=window,
+    )
 
 def handle_session_table_click(values, selected_game, data_with_indices, window, fn=None, data_storage=None):
     """Handle clicks on the session table"""
@@ -1057,9 +946,11 @@ def handle_add_entry(data_with_indices, window, fn=None, data_storage=None):
         status_history.append(initial_status_change)
         new_entry.append(status_history)
         
-        # Add rating if provided
-        if rating is not None:
-            new_entry.append(rating)
+        # Add rating if provided (index 9)
+        new_entry.append(rating if rating is not None else None)
+
+        # Reserve slot for IGDB metadata (index 10); populated later via Fetch Metadata
+        new_entry.append(None)
         
         # Handle adding entry properly when filtering is active
         if data_storage is not None:

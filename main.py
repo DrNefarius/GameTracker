@@ -21,7 +21,7 @@ from event_handlers import (
     handle_session_table_click, handle_add_entry
 )
 from visualizations import update_summary_charts
-from session_management import display_all_game_notes, get_game_sessions, migrate_all_game_sessions, show_popup
+from session_management import display_all_game_notes, get_game_sessions, migrate_all_game_sessions
 from ratings import show_rating_popup
 from discord_integration import initialize_discord, get_discord_integration, cleanup_discord
 from auto_updater import initialize_updater, get_updater
@@ -32,6 +32,29 @@ TAB_NAME_MAP = {'-TAB1-': 'Games List', '-TAB2-': 'Summary', '-TAB3-': 'Statisti
 def get_full_dataset(data_with_indices, data_storage):
     """Get the full dataset for statistics - use data_storage if filtering is active, otherwise data_with_indices"""
     return data_storage if data_storage is not None else data_with_indices
+
+def apply_summary_charts(window, charts):
+    """Push every Summary-tab chart image into its corresponding window element.
+
+    Centralised so adding a new chart (e.g. the IGDB genres chart) only requires
+    updating one place instead of every call site that refreshes the Summary tab.
+    """
+    if not charts:
+        return
+    chart_to_key = {
+        'pie_chart': '-PIE-CHART-',
+        'year_chart': '-YEAR-CHART-',
+        'playtime_chart': '-PLAYTIME-CHART-',
+        'rating_chart': '-RATING-CHART-',
+        'genre_chart': '-GENRE-CHART-',
+    }
+    for chart_key, element_key in chart_to_key.items():
+        if chart_key in charts:
+            try:
+                window[element_key].update(filename=charts[chart_key])
+            except Exception as e:
+                print(f"Warning: could not update {element_key}: {e}")
+
 
 def force_scrollable_refresh(window):
     """Force PySimpleGUI to recalculate scrollable areas by temporarily resizing the window"""
@@ -216,7 +239,8 @@ def main():
         elif (event in ['Open', 'Save As', 'Import from Excel', 'User Guide', 
                        'Feature Tour', 'Data Format Info', 'Troubleshooting', 
                        'Check for Updates', 'Update Settings', 'Release Notes', 'Report Bug', 'About',
-                       'View Activity by Date', 'Today\'s Activity', 'Yesterday\'s Activity'] or 
+                       'View Activity by Date', 'Today\'s Activity', 'Yesterday\'s Activity',
+                       'IGDB Settings', 'Enrich Library from IGDB'] or 
               (isinstance(event, str) and event.startswith('Discord:') and event.endswith('::discord_toggle'))):
             result = handle_menu_events(event, window, data_with_indices, fn)
             if result:
@@ -242,10 +266,7 @@ def main():
                     if values['-TABGROUP-'] == '-TAB2-':
                         charts = update_summary_charts(data_with_indices)
                         if charts:
-                            window['-PIE-CHART-'].update(filename=charts['pie_chart'])
-                            window['-YEAR-CHART-'].update(filename=charts['year_chart'])
-                            window['-PLAYTIME-CHART-'].update(filename=charts['playtime_chart'])
-                            window['-RATING-CHART-'].update(filename=charts['rating_chart'])
+                            apply_summary_charts(window, charts)
                             force_scrollable_refresh(window)
                     elif values['-TABGROUP-'] == '-TAB3-':
                         full_dataset = get_full_dataset(data_with_indices, data_storage)
@@ -253,6 +274,17 @@ def main():
                         force_scrollable_refresh(window)
                 elif result.get('action') == 'file_saved':
                     fn = result['filename']
+                elif result.get('action') == 'library_enriched':
+                    # IGDB enrichment mutated rows in place; refresh views.
+                    data_with_indices = result['data']
+                    from ui_components import update_table_display
+                    update_table_display(data_with_indices, window)
+                    update_summary(data_with_indices, window)
+                    if values['-TABGROUP-'] == '-TAB2-':
+                        charts = update_summary_charts(data_with_indices)
+                        if charts:
+                            apply_summary_charts(window, charts)
+                            force_scrollable_refresh(window)
                 elif result.get('action') == 'file_converted':
                     data_with_indices = result['data']
                     fn = result['filename']
@@ -276,10 +308,7 @@ def main():
                     if values['-TABGROUP-'] == '-TAB2-':
                         charts = update_summary_charts(data_with_indices)
                         if charts:
-                            window['-PIE-CHART-'].update(filename=charts['pie_chart'])
-                            window['-YEAR-CHART-'].update(filename=charts['year_chart'])
-                            window['-PLAYTIME-CHART-'].update(filename=charts['playtime_chart'])
-                            window['-RATING-CHART-'].update(filename=charts['rating_chart'])
+                            apply_summary_charts(window, charts)
                             force_scrollable_refresh(window)
                     elif values['-TABGROUP-'] == '-TAB3-':
                         full_dataset = get_full_dataset(data_with_indices, data_storage)
@@ -313,10 +342,7 @@ def main():
                 # First time loading the Summary tab - generate charts
                 charts = update_summary_charts(data_with_indices)
                 if charts:
-                    window['-PIE-CHART-'].update(filename=charts['pie_chart'])
-                    window['-YEAR-CHART-'].update(filename=charts['year_chart'])
-                    window['-PLAYTIME-CHART-'].update(filename=charts['playtime_chart'])
-                    window['-RATING-CHART-'].update(filename=charts['rating_chart'])
+                    apply_summary_charts(window, charts)
                     force_scrollable_refresh(window)
                 tabs_loaded[1] = True
             elif current_tab_key == '-TAB3-' and not tabs_loaded[2]:
@@ -337,10 +363,7 @@ def main():
         elif event == '-REFRESH-CHARTS-':
             charts = update_summary_charts(data_with_indices)
             if charts:
-                window['-PIE-CHART-'].update(filename=charts['pie_chart'])
-                window['-YEAR-CHART-'].update(filename=charts['year_chart'])
-                window['-PLAYTIME-CHART-'].update(filename=charts['playtime_chart'])
-                window['-RATING-CHART-'].update(filename=charts['rating_chart'])
+                apply_summary_charts(window, charts)
                 force_scrollable_refresh(window)
                 
         # Handle statistics refresh
@@ -816,7 +839,7 @@ def main():
                             
                             force_scrollable_refresh(window)
                             
-                        elif action_result.get('action') in ['game_edited', 'game_deleted', 'game_rated', 'time_tracked', 'session_added']:
+                        elif action_result.get('action') in ['game_edited', 'game_deleted', 'game_rated', 'time_tracked', 'session_added', 'game_details_updated', 'game_hub_mutation']:
                             data_with_indices = action_result['data']
                             
                             # Update Discord stats after game actions
@@ -838,10 +861,7 @@ def main():
                             if values['-TABGROUP-'] == '-TAB2-':
                                 charts = update_summary_charts(data_with_indices)
                                 if charts:
-                                    window['-PIE-CHART-'].update(filename=charts['pie_chart'])
-                                    window['-YEAR-CHART-'].update(filename=charts['year_chart'])
-                                    window['-PLAYTIME-CHART-'].update(filename=charts['playtime_chart'])
-                                    window['-RATING-CHART-'].update(filename=charts['rating_chart'])
+                                    apply_summary_charts(window, charts)
                                     force_scrollable_refresh(window)
                             # Update statistics tab if it's currently active
                             elif values['-TABGROUP-'] == '-TAB3-':

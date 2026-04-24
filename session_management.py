@@ -26,9 +26,8 @@ from session_data import (
     find_most_active_period
 )
 from session_ui import (
-    show_popup, 
-    show_session_feedback_popup, 
-    show_manual_session_popup
+    show_session_feedback_popup,
+    show_manual_session_popup,
 )
 from session_display import (
     display_all_game_notes, 

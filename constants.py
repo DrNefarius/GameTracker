@@ -5,7 +5,7 @@ Constants used throughout the GamesList application
 # Application version - update this single location to change version across the entire app
 VERSION = "1.10.1"
 
-_DEBUG = False
+_DEBUG = True
 
 # GitHub repository configuration for auto-updater
 GITHUB_OWNER = "YourName"
@@ -41,6 +41,18 @@ DROPPED_STYLE = ('#000000', '#b7e1b7')  # Slightly deeper green than Completed, 
 IN_PROGRESS_STYLE = ('#000000', '#fcf8e3')  # Light yellow background, black text
 FUTURE_RELEASE_STYLE = ('#000000', '#b4acff')   # Light purple background, black text
 DEFAULT_STYLE = ('#000000', '#f8d7da')  # Light red background, black text
+
+# IGDB API configuration (Twitch OAuth client-credentials flow).
+# Users supply their own client_id / client_secret via Options -> IGDB Settings.
+IGDB_API_BASE = "https://api.igdb.com/v4"
+IGDB_TOKEN_URL = "https://id.twitch.tv/oauth2/token"
+IGDB_IMAGE_BASE = "https://images.igdb.com/igdb/image/upload"
+IGDB_COVER_SIZE = "t_cover_big"  # 264x374, good tradeoff for a details popup
+IGDB_COVER_THUMB_SIZE = "t_cover_small"  # 90x128, for match picker thumbnails
+# IGDB allows up to 4 requests per second; stay a bit below the ceiling.
+IGDB_RATE_LIMIT_PER_SEC = 4
+IGDB_CACHE_SUBDIR = "igdb_cache"
+IGDB_TOKEN_FILE = "igdb_token.json"
 
 # Canonical game status values. Always import these rather than hard-coding strings
 # so the casing (e.g. 'In progress' vs 'In Progress') stays consistent everywhere.

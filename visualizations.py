@@ -267,6 +267,60 @@ def create_rating_distribution_chart(data):
         buf.seek(0)
         return buf
 
+def create_genre_distribution_chart(data):
+    """Create a horizontal bar chart of IGDB genres across the library.
+
+    Only games with an IGDB metadata dict (index 10) contribute; games without
+    IGDB data are ignored (not counted as "Unknown" so the chart stays meaningful
+    even when the library is only partially enriched).
+    """
+    genre_counts = defaultdict(int)
+    games_with_igdb = 0
+
+    for row in iter_game_rows(data):
+        if len(row) <= 10:
+            continue
+        igdb = row[10]
+        if not isinstance(igdb, dict):
+            continue
+        games_with_igdb += 1
+        genres = igdb.get('genres') or []
+        for g in genres:
+            if g and isinstance(g, str):
+                genre_counts[g] += 1
+
+    with chart_rc_scope():
+        fig, ax = new_chart_figure((6, 4))
+        if genre_counts:
+            # Top 12 genres keep the chart readable.
+            top = sorted(genre_counts.items(), key=lambda kv: kv[1], reverse=True)[:12]
+            labels = [k for k, _ in top][::-1]
+            values = [v for _, v in top][::-1]
+            ax.barh(labels, values, color='#17a2b8')
+            ax.set_xlabel('Number of Games', fontsize=10)
+            ax.set_title(
+                f'Genres Distribution ({games_with_igdb} game{"s" if games_with_igdb != 1 else ""} with IGDB data)',
+                fontsize=12,
+            )
+            ax.tick_params(axis='both', which='major', labelsize=8)
+            for i, v in enumerate(values):
+                ax.text(v + 0.1, i, str(v), va='center', fontsize=8)
+        else:
+            ax.text(
+                0.5, 0.5,
+                "No IGDB metadata yet. Use Options -> Enrich Library from IGDB.",
+                ha='center', va='center', fontsize=10, transform=ax.transAxes,
+            )
+            ax.axis('off')
+            ax.set_title('Genres Distribution', fontsize=12)
+        fig.tight_layout()
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight')
+        buf.seek(0)
+        return buf
+
+
 def update_summary_charts(data_with_indices):
     """Update all charts in the Summary tab.
     
@@ -281,6 +335,7 @@ def update_summary_charts(data_with_indices):
         year_chart_file = os.path.join(temp_dir, 'year_chart_temp.png')
         playtime_chart_file = os.path.join(temp_dir, 'playtime_chart_temp.png')
         rating_chart_file = os.path.join(temp_dir, 'rating_chart_temp.png')
+        genre_chart_file = os.path.join(temp_dir, 'genre_chart_temp.png')
         
         pie_data = create_status_pie_chart(data_with_indices)
         with open(pie_chart_file, 'wb') as f:
@@ -297,12 +352,17 @@ def update_summary_charts(data_with_indices):
         rating_data = create_rating_distribution_chart(data_with_indices)
         with open(rating_chart_file, 'wb') as f:
             f.write(rating_data.getvalue())
+
+        genre_data = create_genre_distribution_chart(data_with_indices)
+        with open(genre_chart_file, 'wb') as f:
+            f.write(genre_data.getvalue())
         
         return {
             'pie_chart': pie_chart_file,
             'year_chart': year_chart_file,
             'playtime_chart': playtime_chart_file,
-            'rating_chart': rating_chart_file
+            'rating_chart': rating_chart_file,
+            'genre_chart': genre_chart_file,
         }
             
     except Exception as e:

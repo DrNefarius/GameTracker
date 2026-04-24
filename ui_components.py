@@ -46,7 +46,7 @@ def get_display_row_with_rating(row):
             is_calculated = True
             
             # Store calculated rating in original row for future use
-            while len(row) <= 9:
+            while len(row) <= 10:
                 row.append(None)
             row[9] = game_rating
     
@@ -183,32 +183,6 @@ def create_entry_popup(existing_entry=None, parent_window=None):
     popup_window.close()
     return None, None, None
 
-def show_game_actions_dialog(row_index, data_with_indices, parent_window=None):
-    """Show a dialog with game action options instead of right-click context menu"""
-    if row_index is None or row_index >= len(data_with_indices):
-        return None
-
-    game_data = data_with_indices[row_index][1]
-    game_name = game_data[0]
-    
-    # Calculate center position relative to parent window
-    popup_location = None
-    if parent_window:
-        from utilities import calculate_popup_center_location
-        popup_location = calculate_popup_center_location(parent_window, popup_width=400, popup_height=150)
-    
-    # Create actions popup
-    actions_popup = sg.Window(f"Actions for {game_name}", 
-                            [[sg.Text(f"What would you like to do with '{game_name}'?")],
-                            [sg.Button("Track Time"), sg.Button("Edit Game"), sg.Button("Rate Game"), sg.Button("Add Session")],
-                            [sg.Button("View Statistics"), sg.Button("Cancel")]],
-                            modal=True, icon='gameslisticon.ico', location=popup_location)
-    
-    action, _ = actions_popup.read()
-    actions_popup.close()
-    
-    return action
-
 def update_table_display(data_with_indices, window):
     """Update the table display with the current data"""
     # Get formatted display values
@@ -340,7 +314,13 @@ def create_main_layout(data_with_indices):
         # Ratings distribution chart (full width but smaller)
         [sg.Text("Game Ratings Distribution", font=('Helvetica', 11), justification='center', expand_x=True)],
         [sg.Image(key='-RATING-CHART-', size=(480, 220), pad=(0, (10, 10)))],
-        
+
+        [sg.VPush()],
+
+        # Genres distribution chart (from IGDB metadata)
+        [sg.Text("Genres Distribution (IGDB)", font=('Helvetica', 11), justification='center', expand_x=True)],
+        [sg.Image(key='-GENRE-CHART-', size=(600, 260), pad=(0, (10, 10)))],
+
         [sg.VPush()]  # Add some vertical space
     ]
     
@@ -508,7 +488,7 @@ def create_main_layout(data_with_indices):
     layout = [
         [sg.Menu([['File', ['Open', 'Save As', 'Import from Excel', 'Exit']], 
                   ['View', ['View Activity by Date', '---', 'Today\'s Activity', 'Yesterday\'s Activity']], 
-                  ['Options', [get_discord_menu_text(), '---', 'Check for Updates', 'Update Settings']], 
+                  ['Options', [get_discord_menu_text(), '---', 'IGDB Settings', 'Enrich Library from IGDB', '---', 'Check for Updates', 'Update Settings']], 
                   ['Help', ['User Guide', 'Feature Tour', '---', 'Data Format Info', 
                            'Troubleshooting', '---', 'Release Notes', 'Report Bug', '---', 'About']]], key='-MENU-')],
         [sg.TabGroup([

@@ -32,7 +32,11 @@ def load_config():
         'last_file': None,
         'default_save_dir': os.path.expanduser('~'),
         'notes_enabled': False,
-        'discord_enabled': True
+        'discord_enabled': True,
+        'igdb_client_id': '',
+        'igdb_client_secret': '',
+        'igdb_enabled': False,
+        'igdb_auto_match_on_add': False
     }
     
     if os.path.exists(config_file):

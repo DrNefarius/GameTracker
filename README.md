@@ -60,6 +60,12 @@ GamesList Manager is a comprehensive desktop application for managing your video
 - Tag frequency analysis
 - Gaming habit insights
 
+### 🎨 **IGDB Metadata Integration**
+- Fetch cover art, genres, summaries, aggregated critic ratings, and average completion times from IGDB
+- Per-game **View Details** popup showing cover, genres, summary, and your progress versus the "Main Story" average
+- One-click **Enrich Library from IGDB** to auto-match your whole collection
+- Credentials stored locally; see [IGDB_SETUP.md](IGDB_SETUP.md) for setup
+
 ### 🎪 **Discord Rich Presence Integration**
 - Real-time Discord status updates showing current activity
 - Dynamic status for playing games, browsing library, viewing stats
