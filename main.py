@@ -26,6 +26,16 @@ from ratings import show_rating_popup
 from discord_integration import initialize_discord, get_discord_integration, cleanup_discord
 from auto_updater import initialize_updater, get_updater
 from update_ui import show_update_notification, show_update_settings, handle_update_process, check_for_updates_manual
+from process_watcher import initialize_watcher, get_watcher, cleanup_watcher
+from session_watcher_bridge import SessionWatcherBridge
+from notifications import bind_window as bind_notifications_window
+from tray_icon import initialize_tray, get_tray, cleanup_tray
+from watcher_log import init_watcher_logging, get_logger as get_watcher_logger
+
+# Initialize the watcher's logging early so any module-level imports below
+# that hit a code path through watcher_log already see configured handlers.
+init_watcher_logging()
+_watcher_log = get_watcher_logger('main')
 
 TAB_NAME_MAP = {'-TAB1-': 'Games List', '-TAB2-': 'Summary', '-TAB3-': 'Statistics'}
 
@@ -226,12 +236,83 @@ def main():
     # Heatmap navigation state
     main.heatmap_end_date = None  # Track current heatmap end date for navigation
 
+    # ------------------------------------------------------------------
+    # Process watcher subsystem (Phase D bridge + watcher + tray + toasts)
+    #
+    # The bridge is constructed with zero-arg providers so it always sees the
+    # current values of `data_with_indices`, `data_storage`, `fn` (these get
+    # reassigned in the event loop on file load / convert / etc.).
+    # ------------------------------------------------------------------
+    bridge = SessionWatcherBridge(
+        window_provider=lambda: window,
+        data_provider=lambda: data_with_indices,
+        data_storage_provider=lambda: data_storage,
+        filename_provider=lambda: fn,
+        discord_provider=get_discord_integration,
+    )
+
+    bind_notifications_window(window)
+
+    watcher = initialize_watcher(
+        window,
+        library_provider=bridge.build_library_snapshot,
+        enabled=config.get('watcher_enabled', False),
+    )
+
+    # Hook idle / foreground providers (Phase G).
+    if watcher is not None:
+        try:
+            from idle_detection import get_idle_seconds, get_foreground_pid
+            watcher.idle_seconds_provider = get_idle_seconds
+            watcher.foreground_pid_provider = get_foreground_pid
+        except Exception as _idle_exc:
+            _watcher_log.warning("idle/foreground hooks unavailable: %s",
+                                 _idle_exc)
+
+    # Tray icon (only on user request via config; runs on its own thread).
+    if config.get('tray_icon_enabled', True):
+        def _tray_state():
+            snap = {}
+            if watcher is not None:
+                try:
+                    snap.update(watcher.get_state_snapshot() or {})
+                except Exception as exc:
+                    _watcher_log.warning("state snapshot failed: %s", exc)
+            snap.update(bridge.build_state_snapshot() or {})
+            return snap
+
+        initialize_tray(
+            window,
+            get_state=_tray_state,
+            get_console_games=lambda: bridge.list_recent_console_games(15),
+        )
+
+    # Recover crashed session if active_session_state was left in config.
+    try:
+        recovery = bridge.recover_orphan_session_if_any(window)
+        if recovery and recovery.get('action') == 'session_added':
+            data_with_indices = recovery['data']
+            from ui_components import update_table_display
+            update_table_display(data_with_indices, window)
+            update_summary(data_with_indices, window)
+    except Exception as _rec_exc:
+        _watcher_log.error("session recovery failed: %s", _rec_exc, exc_info=True)
+
     # Event loop
     while True:
         event, values = window.read()
         
         if event == sg.WIN_CLOSED or event == 'Exit':
-            # Cleanup Discord before exiting
+            # Cleanup background subsystems before exiting (order matters:
+            # stop the watcher first so it can flush an open session).
+            try:
+                cleanup_watcher()
+            except Exception as _e:
+                _watcher_log.warning("cleanup_watcher failed: %s", _e)
+            try:
+                cleanup_tray()
+            except Exception as _e:
+                _watcher_log.warning("cleanup_tray failed: %s", _e)
             cleanup_discord()
             break
             
@@ -240,8 +321,10 @@ def main():
                        'Feature Tour', 'Data Format Info', 'Troubleshooting', 
                        'Check for Updates', 'Update Settings', 'Release Notes', 'Report Bug', 'About',
                        'View Activity by Date', 'Today\'s Activity', 'Yesterday\'s Activity',
-                       'IGDB Settings', 'Enrich Library from IGDB'] or 
-              (isinstance(event, str) and event.startswith('Discord:') and event.endswith('::discord_toggle'))):
+                       'IGDB Settings', 'Enrich Library from IGDB',
+                       'Process Watcher Settings', 'Rescan Game Libraries'] or 
+              (isinstance(event, str) and event.startswith('Discord:') and event.endswith('::discord_toggle')) or
+              (isinstance(event, str) and event.startswith('Process Watcher:') and event.endswith('::watcher_toggle'))):
             result = handle_menu_events(event, window, data_with_indices, fn)
             if result:
                 if result.get('action') == 'file_loaded':
@@ -778,7 +861,165 @@ def main():
                 from ui_components import update_table_display
                 update_table_display(data_with_indices, window)
                 update_summary(data_with_indices, window)
-                
+
+        # ----- Process watcher / toast / tray events ------------------
+        elif event in ('-PROCESS-DETECTED-', '-PROCESS-ENDED-',
+                       '-MATCH-AMBIGUOUS-', '-WATCHER-IDLE-PAUSE-',
+                       '-WATCHER-STATUS-', '-TOAST-ACTION-'):
+            try:
+                bridge_result = bridge.handle_event(event, values.get(event) or {})
+            except Exception as _bex:
+                _watcher_log.error("bridge.handle_event(%s) failed: %s",
+                                   event, _bex, exc_info=True)
+                bridge_result = None
+            # Refresh tray label whenever watcher state changes.
+            tray = get_tray()
+            if tray is not None and event in ('-WATCHER-STATUS-', '-PROCESS-DETECTED-',
+                                              '-PROCESS-ENDED-', '-WATCHER-IDLE-PAUSE-'):
+                try:
+                    tray.refresh()
+                except Exception as _trex:
+                    _watcher_log.warning("tray refresh failed: %s", _trex)
+            # Treat session_added the same as a manual session - refresh
+            # everything that depends on the games-data shape.
+            if bridge_result and bridge_result.get('action') == 'session_added':
+                data_with_indices = bridge_result.get('data', data_with_indices)
+                full_dataset = get_full_dataset(data_with_indices, data_storage)
+                total_games = count_total_entries(full_dataset)
+                completed_games = count_total_completed(full_dataset)
+                discord.update_game_library_stats(total_games, completed_games)
+                from ui_components import update_table_display
+                update_table_display(data_with_indices, window)
+                update_summary(data_with_indices, window)
+                if values['-TABGROUP-'] == '-TAB2-':
+                    charts = update_summary_charts(data_with_indices)
+                    if charts:
+                        apply_summary_charts(window, charts)
+                        force_scrollable_refresh(window)
+                elif values['-TABGROUP-'] == '-TAB3-':
+                    from event_handlers import update_statistics_tab
+                    update_statistics_tab(window, data_with_indices,
+                                          selected_game=selected_game_for_stats,
+                                          update_game_list=True,
+                                          full_dataset=full_dataset)
+                    force_scrollable_refresh(window)
+
+        elif event == '-TRAY-ACTION-':
+            tray_payload = values.get(event) or {}
+            tray_action = tray_payload.get('action')
+            if tray_action == 'open_app':
+                try:
+                    window.bring_to_front()
+                except Exception:
+                    try:
+                        window.TKroot.deiconify()
+                        window.TKroot.focus_force()
+                    except Exception:
+                        pass
+            elif tray_action == 'quit':
+                try:
+                    cleanup_watcher()
+                except Exception:
+                    pass
+                try:
+                    cleanup_tray()
+                except Exception:
+                    pass
+                cleanup_discord()
+                break
+            elif tray_action == 'pause_watcher':
+                w = get_watcher()
+                if w is not None:
+                    w.pause()
+            elif tray_action == 'resume_watcher':
+                w = get_watcher()
+                if w is not None:
+                    w.resume()
+            elif tray_action == 'start_watcher':
+                w = get_watcher()
+                if w is not None:
+                    w.start()
+                    cfg = load_config()
+                    cfg['watcher_enabled'] = True
+                    save_config(cfg)
+            elif tray_action == 'stop_session':
+                w = get_watcher()
+                if w is not None:
+                    w.stop_current_session()
+            elif tray_action == 'start_console':
+                game = (tray_payload.get('payload') or {}).get('game')
+                if game:
+                    w = get_watcher()
+                    if w is None:
+                        _watcher_log.warning(
+                            "tray: start console session for %r ignored - "
+                            "watcher not initialized", game)
+                    else:
+                        # Look up the platform from the library so the
+                        # downstream Discord presence + session record
+                        # carry the same metadata an auto-tracked
+                        # session would have.
+                        platform_for_game = None
+                        for _orig_idx, _row in data_with_indices:
+                            if _row and _row[0] == game:
+                                platform_for_game = (
+                                    _row[2] if len(_row) > 2 else None)
+                                break
+                        result = w.start_manual_session(
+                            game, platform=platform_for_game)
+                        if result.get('ok'):
+                            _watcher_log.info(
+                                "tray: started manual console session for "
+                                "%r (session=%s, platform=%r)",
+                                game, result.get('session_id'),
+                                platform_for_game)
+                        elif result.get('reason') == 'already_active':
+                            other = result.get('active_game') or '(unknown)'
+                            try:
+                                location = calculate_popup_center_location(
+                                    window, 460, 200)
+                            except Exception:
+                                location = (None, None)
+                            choice = sg.popup_yes_no(
+                                f"A session for '{other}' is already being "
+                                f"tracked.\n\n"
+                                f"Stop it and start a new console session "
+                                f"for '{game}'?",
+                                title="Session already active",
+                                icon="gameslisticon.ico",
+                                location=location,
+                                keep_on_top=True)
+                            if choice == 'Yes':
+                                w.stop_current_session()
+                                # Now retry. The first stop fires
+                                # -PROCESS-ENDED- through the bridge
+                                # which clears self._active synchronously
+                                # so this second call lands cleanly.
+                                retry = w.start_manual_session(
+                                    game, platform=platform_for_game)
+                                if retry.get('ok'):
+                                    _watcher_log.info(
+                                        "tray: started manual console "
+                                        "session for %r after stopping "
+                                        "%r (session=%s)",
+                                        game, other,
+                                        retry.get('session_id'))
+                                else:
+                                    _watcher_log.warning(
+                                        "tray: retry start_manual_session "
+                                        "for %r failed: %s",
+                                        game, retry.get('reason'))
+                        else:
+                            _watcher_log.warning(
+                                "tray: start_manual_session for %r failed: "
+                                "%s", game, result.get('reason'))
+            tray = get_tray()
+            if tray is not None:
+                try:
+                    tray.refresh()
+                except Exception:
+                    pass
+
         # Handle table events
         elif isinstance(event, tuple) and event[0] == '-TABLE-':
 

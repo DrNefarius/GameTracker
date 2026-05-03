@@ -18,6 +18,19 @@ pypresence>=4.2.0
 # HTTP requests for downloading images
 requests>=2.25.0
 
+# Process watcher: enumerate running processes (cross-platform)
+psutil>=5.9.0
+
+# Process watcher: fast fuzzy string matching for resolver layer 3
+rapidfuzz>=3.0.0
+
+# Process watcher: actionable Windows toast notifications.
+# Soft-imported at runtime; non-Windows installs can omit it.
+windows-toasts>=1.1.0; sys_platform == "win32"
+
+# Process watcher: system-tray icon (cross-platform)
+pystray>=0.19.0
+
 # Standard library modules (included with Python)
 # - datetime
 # - json
@@ -28,4 +41,6 @@ requests>=2.25.0
 # - io
 # - tempfile
 # - collections
-# - re 
+# - re
+# - sqlite3 (used by store_manifests for GOG Galaxy DB)
+# - winreg  (Windows-only, used by store_manifests for GOG registry fallback)

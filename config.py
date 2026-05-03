@@ -36,7 +36,36 @@ def load_config():
         'igdb_client_id': '',
         'igdb_client_secret': '',
         'igdb_enabled': False,
-        'igdb_auto_match_on_add': False
+        'igdb_auto_match_on_add': False,
+        # --- Process watcher (opt-in) ---
+        'watcher_enabled': False,
+        'watcher_strict_mode': True,            # only watch known library roots
+        'watcher_user_roots': [],               # extra folders the user added
+        'watcher_ignore_list': [],              # user-added ignored basenames
+        'watcher_process_map': {},              # learned: exe_path -> game name
+        'watcher_installdir_map': {},           # learned: install_dir -> game name
+        'watcher_store_index': {},              # cached manifest scan results
+        'watcher_idle_pause_minutes': 10,       # 0 disables idle pause
+        'watcher_foreground_only': False,
+        'watcher_per_game_excluded': [],        # game names opted out
+        # --- Notifications ---
+        'notifications_on_start': True,
+        'notifications_on_end': True,
+        'notifications_on_match_needed': True,
+        'notifications_quiet_hours': None,      # e.g. ["23:00", "08:00"]
+        # When True, escalate watcher toasts to the Reminder scenario so
+        # they break through Windows' Focus Assist (which auto-suppresses
+        # popups while a game is in fullscreen). Trade-off: the toast
+        # stays on-screen until the user dismisses it.
+        'notifications_bypass_focus_assist': False,
+        # --- Tray ---
+        'tray_icon_enabled': True,
+        # --- Crash-safe persistence (written by watcher every ~30s) ---
+        'active_session_state': None,
+        # --- Watcher logging ---
+        # One of: DEBUG, INFO, WARNING, ERROR. DEBUG includes per-tick detail
+        # (resolver layers tried, fuzzy scores, idle seconds, candidate ages).
+        'watcher_log_level': 'INFO',
     }
     
     if os.path.exists(config_file):

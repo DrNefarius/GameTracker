@@ -307,7 +307,11 @@ _MATCH_EMPTY_HINT = "(no results - edit the title above and click Search)"
 
 
 def show_match_dialog(game_name: str, candidates: List[Dict[str, Any]],
-                      parent_window=None) -> Optional[Dict[str, Any]]:
+                      parent_window=None,
+                      *,
+                      user_release: Optional[str] = None,
+                      user_platform: Optional[str] = None,
+                      ) -> Optional[Dict[str, Any]]:
     """Ask the user to pick from a list of IGDB search candidates.
 
     The dialog carries its own editable search input (prefilled with
@@ -315,6 +319,12 @@ def show_match_dialog(game_name: str, candidates: List[Dict[str, Any]],
     the flow. This matters for regional releases where the local title differs
     from the IGDB canonical one (e.g. a German retail title vs. the English
     original).
+
+    `user_release` (YYYY-MM-DD-ish) and `user_platform` are passed through to
+    the re-search worker so that user-typed alternate-title searches stay
+    confidence-ranked just like the initial query - the user shouldn't have
+    to scroll past five remakes to find the original release they're looking
+    for after editing the search title.
 
     Returns the chosen candidate dict, `{'_skip': True}` if the user explicitly
     marks the game as not-in-IGDB, or None if they cancel.
@@ -333,7 +343,7 @@ def show_match_dialog(game_name: str, candidates: List[Dict[str, Any]],
          sg.Button("Search", key="-MATCH-SEARCH-", bind_return_key=True)],
         [sg.Text("Tip: edit the title above to try a different spelling or "
                  "the English/original title.",
-                 font=("Helvetica", 9, "italic"), text_color="grey")],
+                 font=("Helvetica", 9, "italic"), text_color="#555555")],
         [sg.Listbox(values=list_values, key="-MATCH-LIST-", size=(70, 8),
                     enable_events=True, select_mode=sg.LISTBOX_SELECT_MODE_SINGLE)],
         [sg.Text("", key="-MATCH-DETAIL-", size=(70, 2))],
@@ -373,10 +383,12 @@ def show_match_dialog(game_name: str, candidates: List[Dict[str, Any]],
                 window["-MATCH-DETAIL-"].update(f"Searching IGDB for '{query}'...")
                 window["-MATCH-LIST-"].update(values=["(searching...)"])
 
-                def _worker(win, q):
-                    win.write_event_value("-MATCH-SEARCH-DONE-",
-                                          search_igdb_candidates(q))
-                _run_async(_worker, window, query)
+                def _worker(win, q, rel, plat):
+                    win.write_event_value(
+                        "-MATCH-SEARCH-DONE-",
+                        search_igdb_candidates(
+                            q, user_release=rel, user_platform=plat))
+                _run_async(_worker, window, query, user_release, user_platform)
                 continue
 
             if event == "-MATCH-SEARCH-DONE-":
@@ -608,6 +620,43 @@ def _parse_user_year(release_date: Optional[str]) -> Optional[int]:
         return None
 
 
+def rank_candidates_by_confidence(
+    candidates: List[Dict[str, Any]],
+    game_name: str,
+    release_date: Optional[str],
+    platform: Optional[str],
+) -> List[Dict[str, Any]]:
+    """Re-order IGDB search candidates by composite-confidence score.
+
+    `sort_search_candidates` only knows about the IGDB `category` field, so a
+    1990 SNES original and a 2020 remake of it both land in the "Main game"
+    bucket and IGDB's raw relevance order decides which is shown first - that
+    relevance often surfaces the newer, more popular release first, even
+    though the user explicitly stored a 1990 release date for the entry.
+
+    Given the user's known year and platform, this function reuses the same
+    `_score_candidate` heuristic that powers `_pick_auto_match` to put the
+    most likely match at the top of the list. Stable on score ties so the
+    original IGDB / category order survives where signals are uninformative.
+
+    No-op (returns the input order) if no context is provided, so callers
+    that don't have year/platform handy don't need to special-case anything.
+    """
+    if not candidates:
+        return candidates
+    if not (game_name or release_date or platform):
+        return candidates
+    user_year = _parse_user_year(release_date)
+    indexed = list(enumerate(candidates))
+    indexed.sort(
+        key=lambda it: (
+            -_score_candidate(it[1], game_name, user_year, platform),
+            it[0],
+        )
+    )
+    return [c for _, c in indexed]
+
+
 def _pick_auto_match(game_name: str, release_date: Optional[str],
                      platform: Optional[str],
                      candidates: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -638,11 +687,21 @@ def _pick_auto_match(game_name: str, release_date: Optional[str],
     return top_cand
 
 
-def search_igdb_candidates(game_name: str, limit: int = 15) -> Dict[str, Any]:
+def search_igdb_candidates(
+    game_name: str,
+    limit: int = 15,
+    *,
+    user_release: Optional[str] = None,
+    user_platform: Optional[str] = None,
+) -> Dict[str, Any]:
     """Network-only search wrapper safe to run on a worker thread.
 
     Returns {'candidates': [...]} on success or {'_error': 'message'} on failure.
-    Results are already re-ordered so main games surface above ports/bundles.
+    Results are already re-ordered so main games surface above ports/bundles;
+    when `user_release` / `user_platform` are supplied, results are further
+    re-ranked by composite confidence (name + year + platform) so the entry
+    that best matches the user's stored data is shown first - critical when
+    the same title spans multiple decades (1993 original vs. 2020 remake).
     Never touches Tk/PySimpleGUI, so it can run from any thread.
     """
     try:
@@ -651,7 +710,10 @@ def search_igdb_candidates(game_name: str, limit: int = 15) -> Dict[str, Any]:
         return {"_error": str(exc)}
     try:
         raw = client.search_games(game_name, limit=limit)
-        return {"candidates": sort_search_candidates(raw)}
+        ordered = sort_search_candidates(raw)
+        ordered = rank_candidates_by_confidence(
+            ordered, game_name, user_release, user_platform)
+        return {"candidates": ordered}
     except IGDBError as exc:
         return {"_error": f"IGDB search failed: {exc}"}
     except Exception as exc:  # noqa: BLE001
@@ -747,7 +809,14 @@ def show_library_enrichment_dialog(data_with_indices: List, on_games_updated: Ca
             platform = row[2] if len(row) > 2 else None
             window.write_event_value("-ENRICH-PROGRESS-", (i, name))
             try:
-                candidates = sort_search_candidates(client.search_games(name, limit=15))
+                candidates = sort_search_candidates(
+                    client.search_games(name, limit=15))
+                # Apply the same confidence-based re-rank used in the
+                # interactive picker so the auto-match heuristic, the
+                # ambiguous-review picker, and the user's eyeballs all see
+                # the same most-likely-match-first ordering.
+                candidates = rank_candidates_by_confidence(
+                    candidates, name, release, platform)
             except IGDBError as exc:
                 print(f"IGDB enrich: search failed for {name}: {exc}")
                 continue
@@ -757,7 +826,8 @@ def show_library_enrichment_dialog(data_with_indices: List, on_games_updated: Ca
             if auto is None:
                 # Skip for now; queue for end-of-run review.
                 ambiguous.append({
-                    "idx": idx, "name": name, "release": release, "candidates": candidates
+                    "idx": idx, "name": name, "release": release,
+                    "platform": platform, "candidates": candidates,
                 })
                 continue
             try:
@@ -793,18 +863,41 @@ def show_library_enrichment_dialog(data_with_indices: List, on_games_updated: Ca
     finally:
         window.close()
 
-    # Walk ambiguous results interactively.
-    if ambiguous and not cancel_flag.is_set():
-        location2 = calculate_popup_center_location(parent_window, 420, 150) if parent_window else None
+    # Walk ambiguous results interactively. Crucially, we also offer this
+    # review when the user cancelled mid-run: the network searches that
+    # already completed produced ambiguous results, and there's no reason
+    # to throw that work away just because the user wanted to stop the
+    # remaining searches.
+    if ambiguous:
+        cancelled_search = cancel_flag.is_set()
+        if cancelled_search:
+            prompt = (
+                f"{len(ambiguous)} game(s) need a manual match.\n"
+                "(Searching was cancelled - these are the ambiguous results "
+                "found before you stopped. You can still review them.)\n\n"
+                "Review now?"
+            )
+        else:
+            prompt = f"{len(ambiguous)} game(s) need a manual match. Review now?"
+        location2 = calculate_popup_center_location(parent_window, 460, 200) if parent_window else None
         proceed = sg.popup_yes_no(
-            f"{len(ambiguous)} game(s) need a manual match. Review now?",
-            title="Review Ambiguous Matches", icon="gameslisticon.ico", location=location2)
+            prompt,
+            title="Review Ambiguous Matches",
+            icon="gameslisticon.ico",
+            location=location2)
         if proceed == "Yes":
             for pending in ambiguous:
-                if cancel_flag.is_set():
+                chosen = show_match_dialog(
+                    pending["name"], pending["candidates"], parent_window,
+                    user_release=pending.get("release"),
+                    user_platform=pending.get("platform"),
+                )
+                if chosen is None:
+                    # User closed the picker without picking and without
+                    # explicitly skipping - treat that as "I'm done
+                    # reviewing" rather than "skip just this one".
                     break
-                chosen = show_match_dialog(pending["name"], pending["candidates"], parent_window)
-                if chosen is None or chosen.get("_skip"):
+                if chosen.get("_skip"):
                     continue
                 try:
                     details = client.get_game_details(int(chosen["id"]))

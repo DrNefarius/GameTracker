@@ -452,7 +452,91 @@ def handle_table_event(event, data_with_indices, window, sort_directions, fn=Non
 
 def handle_menu_events(event, window, data_with_indices, fn):
     """Handle menu events like Open, Save As, Import, etc."""
-    if event.startswith('Discord:') and event.endswith('::discord_toggle'):
+    if event.startswith('Process Watcher:') and event.endswith('::watcher_toggle'):
+        # Toggle process watcher (auto-track) on / off
+        from process_watcher import get_watcher
+        config = load_config()
+        new_enabled = not config.get('watcher_enabled', False)
+        config['watcher_enabled'] = new_enabled
+        save_config(config)
+        watcher = get_watcher()
+        if watcher is not None:
+            try:
+                if new_enabled:
+                    watcher.start()
+                else:
+                    watcher.stop()
+            except Exception as exc:
+                print(f"Watcher toggle failed: {exc}")
+        toggle_loc = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+        sg.popup(
+            ("Process watcher enabled - sessions will be auto-tracked when "
+             "matched games launch.\n\nThe menu label updates after the next "
+             "restart.")
+            if new_enabled else
+            "Process watcher disabled.\n\nThe menu label updates after the next restart.",
+            title="Process Watcher",
+            icon='gameslisticon.ico',
+            location=toggle_loc,
+        )
+        return None
+
+    elif event == 'Process Watcher Settings':
+        try:
+            from process_watcher_settings import show_process_watcher_settings_dialog
+            # Pass library names so the dialog's "Add mapping..." picker
+            # can offer them as a typed-ahead combobox instead of a free
+            # text input - prevents user typos that would silently break
+            # the resolver match.
+            library_names = []
+            try:
+                seen = set()
+                for _idx, _row in (data_with_indices or []):
+                    if not _row:
+                        continue
+                    nm = _row[0] if len(_row) > 0 else None
+                    if nm and nm not in seen:
+                        seen.add(nm)
+                        library_names.append(nm)
+            except Exception:
+                library_names = []
+            show_process_watcher_settings_dialog(
+                window, library_names=library_names)
+        except Exception as exc:
+            err_loc = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+            sg.popup_error(f"Could not open Process Watcher settings: {exc}",
+                           title="Process Watcher", location=err_loc)
+        return None
+
+    elif event == 'Rescan Game Libraries':
+        try:
+            from process_watcher import get_watcher
+            watcher = get_watcher()
+            if watcher is None:
+                from store_manifests import scan_all_stores
+                idx = scan_all_stores()
+                cfg = load_config()
+                cfg['watcher_store_index'] = idx.to_serializable()
+                save_config(cfg)
+                count = len(idx.entries)
+            else:
+                watcher.rescan_stores()
+                snap = watcher.get_state_snapshot()
+                count = snap.get('store_entries')
+                if count is None:
+                    cfg = load_config()
+                    count = len((cfg.get('watcher_store_index') or {}).get('entries', []))
+            scan_loc = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+            sg.popup(f"Library rescan complete. Discovered {count} installed game(s).",
+                     title="Rescan Game Libraries", icon='gameslisticon.ico',
+                     location=scan_loc)
+        except Exception as exc:
+            err_loc = calculate_popup_center_location(window, popup_width=400, popup_height=150)
+            sg.popup_error(f"Library rescan failed: {exc}",
+                           title="Rescan Game Libraries", location=err_loc)
+        return None
+
+    elif event.startswith('Discord:') and event.endswith('::discord_toggle'):
         # Toggle Discord Rich Presence integration
         config = load_config()
         current_enabled = config.get('discord_enabled', True)

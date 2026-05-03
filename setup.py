@@ -4,9 +4,16 @@ from constants import VERSION
 # Dependencies are automatically detected, but it might need
 # fine tuning.
 build_options = {
-    'packages': ['tkinter', 'tkinter.filedialog', 'tkinter.messagebox'], 
-    'excludes': [], 
-    'include_files': ['gameslisticon.ico']
+    'packages': [
+        'tkinter', 'tkinter.filedialog', 'tkinter.messagebox',
+        'psutil', 'rapidfuzz', 'pystray',
+        'PIL', 'PIL.Image',
+    ],
+    'excludes': [],
+    'include_files': ['gameslisticon.ico'],
+    # windows-toasts depends on winrt; cx_Freeze sometimes misses transitive
+    # extension modules. Listing it explicitly keeps the frozen build honest.
+    'includes': ['windows_toasts'],
 }
 
 base = 'gui'

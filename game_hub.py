@@ -237,7 +237,7 @@ def _build_metadata_column(game_row: List[Any],
     if igdb:
         rows.append(
             [sg.Text(f"Fetched: {igdb.get('fetched_at', '--')}",
-                     font=("Helvetica", 8), text_color="gray",
+                     font=("Helvetica", 8), text_color="#555555",
                      key="-HUB-FETCHED-")]
         )
 
@@ -284,7 +284,12 @@ def _build_action_rows(igdb: Optional[Dict[str, Any]]) -> List[List[Any]]:
         [sg.Text("Game:", size=(7, 1)),
          sg.Button("Edit Game", key="-HUB-EDIT-"),
          sg.Button("Add Session", key="-HUB-SESSION-"),
-         sg.Button("View Statistics", key="-HUB-STATS-")],
+         sg.Button("View Statistics", key="-HUB-STATS-"),
+         sg.Button("Link Executable", key="-HUB-LINK-EXE-",
+                   tooltip=("Manually associate this game with an .exe so the\n"
+                            "process watcher can auto-track it. Use this for\n"
+                            "games installed outside Steam / Epic / GOG\n"
+                            "(old games, MMOs like Guild Wars, itch.io games)."))],
         igdb_row,
         [sg.Push(), sg.Button("Close", key="-HUB-CLOSE-")],
     ]
@@ -315,6 +320,7 @@ def _build_hub_layout(game_row: List[Any],
 _NON_TIMER_ACTION_KEYS = (
     "-HUB-EDIT-", "-HUB-SESSION-", "-HUB-STATS-", "-HUB-RATE-",
     "-HUB-IGDB-FETCH-", "-HUB-IGDB-REMATCH-", "-HUB-IGDB-REMOVE-",
+    "-HUB-LINK-EXE-",
 )
 
 
@@ -628,6 +634,26 @@ def _run_hub_window(*, game_row, row_index, data_with_indices, data_storage,
                 ctx["view_stats_bubble"] = True
                 break
 
+            # ---- Link Executable ---------------------------------------
+            # Per-game shortcut to teach the watcher about a game that
+            # isn't installed under any of the auto-discovered launcher
+            # roots (Steam / Epic / GOG). Common cases: old games, MMOs
+            # like Guild Wars, indie itch.io games. The dialog handles
+            # all the persistence; we just need to launch it modally
+            # under the hub's main window so it inherits focus.
+            if event == "-HUB-LINK-EXE-":
+                if timer_state["running"]:
+                    continue
+                from watcher_link_dialog import show_link_executable_dialog
+                game_row_now = data_with_indices[row_index][1]
+                game_name_now = game_row_now[0]
+                platform_now = (game_row_now[2] if len(game_row_now) > 2
+                                else None)
+                _launch_modal(
+                    lambda: show_link_executable_dialog(
+                        game_name_now, platform_now, parent_window=window))
+                continue
+
             # ---- Edit Game ---------------------------------------------
             if event == "-HUB-EDIT-":
                 if timer_state["running"]:
@@ -828,11 +854,15 @@ def _run_hub_window(*, game_row, row_index, data_with_indices, data_storage,
                             load_igdb_details(igdb_id))
                     _run_async(_worker_details, window, int(igdb["igdb_id"]))
                 else:
-                    def _worker_search(win, name):
+                    user_rel = game_row[1] if len(game_row) > 1 else None
+                    user_plat = game_row[2] if len(game_row) > 2 else None
+                    def _worker_search(win, name, rel, plat):
                         win.write_event_value(
                             "-HUB-IGDB-SEARCH-DONE-",
-                            search_igdb_candidates(name))
-                    _run_async(_worker_search, window, game_row[0])
+                            search_igdb_candidates(
+                                name, user_release=rel, user_platform=plat))
+                    _run_async(_worker_search, window, game_row[0],
+                               user_rel, user_plat)
                 continue
 
             # ---- IGDB: search done (main-thread UI work) ---------------
@@ -857,9 +887,11 @@ def _run_hub_window(*, game_row, row_index, data_with_indices, data_storage,
                 if auto is not None:
                     chosen_id = int(auto["id"])
                 else:
+                    user_rel = game_row[1] if len(game_row) > 1 else None
                     chosen = _launch_modal(
                         lambda: show_match_dialog(
-                            game_row[0], candidates, parent_window or window)
+                            game_row[0], candidates, parent_window or window,
+                            user_release=user_rel, user_platform=user_platform)
                     )
                     if chosen is None or (isinstance(chosen, dict) and chosen.get("_skip")):
                         fetching = False

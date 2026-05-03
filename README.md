@@ -38,6 +38,15 @@ GamesList Manager is a comprehensive desktop application for managing your video
 - Detailed session history with timestamps
 - Session feedback system with notes and ratings
 
+### 🛰️ **Auto Session Tracking (Windows Process Watcher)**
+- Detects when a known game launches and records the session automatically
+- Layered matcher: learned mappings → Steam / Epic / GOG manifests → fuzzy match
+- OS-native Windows toast notifications on session start / end with cover art
+- System-tray icon with pause / resume / stop controls and console-game shortcuts
+- Idle pause and foreground-only modes with quiet-hours support
+- Crash-safe: partial sessions are recovered on restart
+- See [docs/PROCESS_WATCHER.md](docs/PROCESS_WATCHER.md) for details
+
 ### 🌟 **Dual Rating System**
 - Rate individual gaming sessions (1-5 stars)
 - Rate games overall with comprehensive feedback

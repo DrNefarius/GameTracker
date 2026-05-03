@@ -19,6 +19,14 @@ def get_discord_menu_text():
     discord_enabled = config.get('discord_enabled', True)
     return f"Discord: {'Enabled' if discord_enabled else 'Disabled'}::discord_toggle"
 
+
+def get_watcher_menu_text():
+    """Process Watcher menu label - mirrors Discord toggle pattern."""
+    from config import load_config
+    config = load_config()
+    enabled = config.get('watcher_enabled', False)
+    return f"Process Watcher: {'On' if enabled else 'Off'}::watcher_toggle"
+
 def get_display_row_with_rating(row):
     """Process a data row to add rating display formatting and arrange for table display"""
     # The table expects 8 columns: Name, Release, Platform, Time, Status, Owned, Last Played, Rating
@@ -488,7 +496,7 @@ def create_main_layout(data_with_indices):
     layout = [
         [sg.Menu([['File', ['Open', 'Save As', 'Import from Excel', 'Exit']], 
                   ['View', ['View Activity by Date', '---', 'Today\'s Activity', 'Yesterday\'s Activity']], 
-                  ['Options', [get_discord_menu_text(), '---', 'IGDB Settings', 'Enrich Library from IGDB', '---', 'Check for Updates', 'Update Settings']], 
+                  ['Options', [get_discord_menu_text(), '---', 'IGDB Settings', 'Enrich Library from IGDB', '---', get_watcher_menu_text(), 'Process Watcher Settings', 'Rescan Game Libraries', '---', 'Check for Updates', 'Update Settings']], 
                   ['Help', ['User Guide', 'Feature Tour', '---', 'Data Format Info', 
                            'Troubleshooting', '---', 'Release Notes', 'Report Bug', '---', 'About']]], key='-MENU-')],
         [sg.TabGroup([

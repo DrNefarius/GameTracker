@@ -61,3 +61,98 @@ STATUS_IN_PROGRESS = 'In progress'
 STATUS_COMPLETED = 'Completed'
 STATUS_DROPPED = 'Dropped'
 VALID_STATUSES = (STATUS_PENDING, STATUS_IN_PROGRESS, STATUS_COMPLETED, STATUS_DROPPED)
+
+# ---------------------------------------------------------------------------
+# Process watcher defaults
+# ---------------------------------------------------------------------------
+
+# How often the watcher polls the process table. 3s is a reasonable balance:
+# users perceive session start within one toast worth of latency, and the cost
+# is negligible thanks to PID-set diffing (only NEW pids get attribute fetches).
+WATCHER_POLL_INTERVAL_SEC = 3
+
+# A new process must remain alive this long before we attribute a session to
+# it. Filters out launchers that spawn the real game and exit, plus crash
+# dialogs / installers that briefly appear under a game's install dir.
+WATCHER_START_DEBOUNCE_SEC = 10
+
+# When a tracked process disappears, wait this long for a sibling under the
+# same install dir to appear before ending the session. Handles the common
+# "launcher.exe -> game.exe" handoff without ending and re-starting sessions.
+WATCHER_END_GRACE_SEC = 15
+
+# Persist active session state every N seconds for crash recovery.
+WATCHER_STATE_PERSIST_SEC = 30
+
+# Default idle threshold (minutes of no input) before pausing a session.
+# 0 disables idle pausing.
+WATCHER_DEFAULT_IDLE_MINUTES = 10
+
+# Fuzzy match threshold (rapidfuzz token_set_ratio, 0-100). Below this we ask
+# the user to confirm rather than guess.
+WATCHER_FUZZY_THRESHOLD = 85
+
+# Auto-pauses (idle / foreground-only) shorter than this duration that were
+# still open when the session ended are treated as transient artifacts of the
+# user's exit gesture (e.g. clicking outside the game window before closing
+# it) and discarded from the recorded session. Manual pauses are always kept.
+WATCHER_TRAILING_AUTO_PAUSE_DROP_SEC = 8
+
+# Process basenames the watcher should always ignore. Lowercased for matching.
+# Includes platform launchers, anti-cheat services, common helpers and
+# installers, browser/IDE noise, and storefronts whose own .exe is sometimes
+# installed under steamapps/common (Steam Linux runtime, Proton, etc.).
+IGNORED_PROCESS_NAMES = (
+    # Storefronts / launchers
+    'steam.exe', 'steamwebhelper.exe', 'steamservice.exe',
+    'epicgameslauncher.exe', 'epicwebhelper.exe', 'epicgameslauncher-win32-shipping.exe',
+    'galaxyclient.exe', 'galaxyclient-helper.exe', 'galaxyclienthelper.exe',
+    'galaxycommunication.exe', 'galaxyoverlay.exe',
+    'origin.exe', 'eadesktop.exe', 'easteamproxy.exe', 'eaconnect_microsoft.exe',
+    'eabackgroundservice.exe',
+    'ubisoftconnect.exe', 'upc.exe', 'uplay.exe', 'uplaywebcore.exe',
+    'battle.net.exe', 'agent.exe', 'blizzarderror.exe',
+    'riotclient.exe', 'riotclientservices.exe', 'riotclientux.exe',
+    'rockstar games launcher.exe', 'launcherpatcher.exe',
+    # Anti-cheat
+    'easyanticheat.exe', 'easyanticheat_eos.exe', 'easyanticheat_setup.exe',
+    'be_service.exe', 'beservice.exe', 'beservice_x64.exe',
+    'vguardbooter.exe', 'vanguard.exe',
+    'faceit.exe', 'faceitclient.exe',
+    # Helpers / crash handlers
+    'crashpad_handler.exe', 'crashreporter.exe', 'crashsender.exe',
+    'unitycrashhandler64.exe', 'unitycrashhandler32.exe', 'ueprereqsetup_x64.exe',
+    'unrealcefsubprocess.exe', 'cefshare.exe',
+    'directx_setup.exe', 'vc_redist.x64.exe', 'vc_redist.x86.exe',
+    'unins000.exe', 'setup.exe', 'install.exe', 'uninstall.exe',
+)
+
+# Path-fragment ignores: any process whose exe path contains one of these
+# (case-insensitive) is skipped. Useful for installer/redist directories
+# that often live under steamapps/common.
+IGNORED_PATH_FRAGMENTS = (
+    '\\_commonredist\\', '\\directx\\', '\\vcredist\\',
+    '\\redist\\', '\\dotnetfx\\',
+)
+
+# Default install-root prefixes scanned in strict mode. The store-manifest
+# scanners discover real roots at startup and override these with the
+# canonical paths from each launcher's metadata, but these defaults give the
+# strict-mode resolver something to work with on first run.
+WATCHER_DEFAULT_ROOTS = (
+    'C:\\Program Files (x86)\\Steam\\steamapps\\common\\',
+    'C:\\Program Files\\Epic Games\\',
+    'C:\\Program Files (x86)\\GOG Galaxy\\Games\\',
+    'C:\\Program Files\\GOG Galaxy\\Games\\',
+)
+
+# Console platform names. Games marked with one of these platforms are
+# excluded from PC process matching and surfaced in the tray's
+# "Start Console Session" submenu instead.
+CONSOLE_PLATFORM_KEYWORDS = (
+    'playstation', 'ps5', 'ps4', 'ps3', 'ps2', 'psx', 'psp', 'vita',
+    'xbox', 'series x', 'series s', 'one s', 'one x', '360',
+    'switch', 'wii', 'gamecube', 'gba', '3ds', 'ds', 'nes', 'snes', 'n64',
+    'sega', 'genesis', 'dreamcast', 'saturn',
+)
+
