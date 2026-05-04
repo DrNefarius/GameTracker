@@ -98,6 +98,14 @@ WATCHER_FUZZY_THRESHOLD = 85
 # it) and discarded from the recorded session. Manual pauses are always kept.
 WATCHER_TRAILING_AUTO_PAUSE_DROP_SEC = 8
 
+# Default grace window (seconds) before "watcher_foreground_only" pauses
+# a session whose tracked process lost window focus. Anything shorter
+# than this - quick alt-tab to read a message, glance at a browser, etc.
+# - is treated as part of normal play and not recorded as a pause.
+# Set the corresponding config key to 0 to fall back to the legacy
+# instant-pause behaviour.
+WATCHER_DEFAULT_FOREGROUND_GRACE_SEC = 30
+
 # Process basenames the watcher should always ignore. Lowercased for matching.
 # Includes platform launchers, anti-cheat services, common helpers and
 # installers, browser/IDE noise, and storefronts whose own .exe is sometimes
@@ -145,14 +153,3 @@ WATCHER_DEFAULT_ROOTS = (
     'C:\\Program Files (x86)\\GOG Galaxy\\Games\\',
     'C:\\Program Files\\GOG Galaxy\\Games\\',
 )
-
-# Console platform names. Games marked with one of these platforms are
-# excluded from PC process matching and surfaced in the tray's
-# "Start Console Session" submenu instead.
-CONSOLE_PLATFORM_KEYWORDS = (
-    'playstation', 'ps5', 'ps4', 'ps3', 'ps2', 'psx', 'psp', 'vita',
-    'xbox', 'series x', 'series s', 'one s', 'one x', '360',
-    'switch', 'wii', 'gamecube', 'gba', '3ds', 'ds', 'nes', 'snes', 'n64',
-    'sega', 'genesis', 'dreamcast', 'saturn',
-)
-

@@ -150,9 +150,28 @@ Disable it via **Process Watcher Settings -> System tray -> Show tray icon**.
 
 ### Manual console sessions
 
-The **Start Console Session ->** submenu lists up to 15 of your most
-recently played console titles (sorted by last-played descending; only
-entries whose platform string matches a known console keyword qualify).
+The **Start Console Session ->** submenu lists up to 15 console titles,
+ordered to surface what you're most likely to want to launch next:
+
+1. **Recently played and active** - status ``In progress`` or
+   ``Pending`` *and* last played within the last 30 days. Within this
+   group, ``In progress`` games come before ``Pending`` ones, and
+   inside each status the newest play is first. Completed and Dropped
+   games are deliberately *excluded* from this bucket regardless of
+   how recently you played them - a game you finished last week
+   shouldn't outrank an active backlog title.
+2. **In progress backlog** - any other ``In progress`` console title
+   (never played, or last played longer than 30 days ago), ordered by
+   release date *ascending* so older games surface first.
+3. **Pending backlog** - same shape as #2 but for ``Pending``.
+4. **Other** - completed / dropped console titles, in library order,
+   so they're still reachable from the menu.
+
+Any entry whose platform string is anything other than ``PC`` is
+treated as a console for the purposes of this menu - we don't try to
+keep a list of known consoles, so PlayStation, Switch, Atari, MSX,
+arcade cabinets, your homebrew system, and everything else all
+qualify automatically.
 Pick one and the watcher starts a *manual* session for it: same toast,
 same Discord rich-presence, same tray "Tracking: ..." line, same
 games-file output as a Steam session - just kicked off by your click
@@ -182,7 +201,12 @@ never overlap.
   next input event. Set to 0 to disable.
 - **Foreground only.** When on, the session is only counted while the game's
   window is in the foreground. Useful if you tend to leave games running in
-  the background.
+  the background. To avoid logging a phantom pause every time you alt-tab
+  for a few seconds (replying to a message, glancing at a wiki, etc.) the
+  watcher waits *Pause after focus has been away for* seconds (default 30)
+  before it actually begins a pause. If focus returns to the game inside
+  that window, nothing is recorded. Set the grace to 0 for legacy
+  instant-pause behaviour.
 
 A pause does not split the session into multiple entries - it adds a pause
 record to the same session, just like the manual timer's pause feature.

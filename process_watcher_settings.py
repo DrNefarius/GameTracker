@@ -63,6 +63,16 @@ def show_process_watcher_settings_dialog(
             [sg.Checkbox("Only count time when the game window is in the foreground",
                          default=config.get('watcher_foreground_only', False),
                          key='-WATCHER-FOREGROUND-')],
+            [sg.Text("    Pause after focus has been away for (seconds, 0 = instant):",
+                     text_color='#555555'),
+             sg.Spin([i for i in range(0, 301)],
+                     initial_value=int(config.get(
+                         'watcher_foreground_pause_grace_seconds', 30)),
+                     key='-WATCHER-FG-GRACE-', size=(5, 1),
+                     tooltip=("Quick alt-tabs shorter than this aren't\n"
+                              "logged as a pause. Useful for replying to\n"
+                              "messages or peeking at a wiki without\n"
+                              "polluting the session log."))],
             [sg.Text("Pause after this many idle minutes (0 = never):"),
              sg.Spin([i for i in range(0, 121)],
                      initial_value=int(config.get('watcher_idle_pause_minutes', 10)),
@@ -275,6 +285,8 @@ def show_process_watcher_settings_dialog(
                 'watcher_enabled': bool(values['-WATCHER-ENABLED-']),
                 'watcher_strict_mode': bool(values['-WATCHER-STRICT-']),
                 'watcher_foreground_only': bool(values['-WATCHER-FOREGROUND-']),
+                'watcher_foreground_pause_grace_seconds':
+                    int(values['-WATCHER-FG-GRACE-']),
                 'watcher_idle_pause_minutes': int(values['-WATCHER-IDLE-']),
                 'notifications_on_start': bool(values['-NOTIF-START-']),
                 'notifications_on_end': bool(values['-NOTIF-END-']),

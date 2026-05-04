@@ -42,6 +42,34 @@ def _get_font_measurer(font):
     _pixel_width_font_cache[key] = measurer
     return measurer
 
+def is_console_platform(platform):
+    """Return True if ``platform`` is anything other than PC.
+
+    The app treats the platform string as the source of truth for "is
+    this a desktop game we can auto-track?" - if it's PC, the watcher
+    looks for a matching process; if it's anything else (PlayStation,
+    Switch, an emulator, an arcade cabinet, an unrecognized handheld,
+    a homebrew system the keyword list never knew about, ...) the
+    title is surfaced in the tray's manual "Start Console Session"
+    flow instead.
+
+    We deliberately don't try to enumerate every console - the prior
+    keyword list missed plenty (PS1 via "psx", Atari, MSX, anything
+    new) and gained nothing for it. A "platform contains 'pc'" check
+    catches the only case the watcher actually needs to special-case.
+
+    Empty / missing platform returns False so an unannotated entry
+    isn't surfaced in console-only menus by default; the user can
+    correct the platform if they want it to appear there.
+    """
+    if not platform:
+        return False
+    pl = platform.strip().lower()
+    if not pl:
+        return False
+    return 'pc' not in pl
+
+
 def iter_game_rows(data):
     """Yield the inner game row (list) from each entry in ``data`` regardless of shape.
     

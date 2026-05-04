@@ -47,6 +47,10 @@ def load_config():
         'watcher_store_index': {},              # cached manifest scan results
         'watcher_idle_pause_minutes': 10,       # 0 disables idle pause
         'watcher_foreground_only': False,
+        # Grace window (seconds) before a foreground change actually
+        # triggers a pause. Quick alt-tabs (e.g. answering a message)
+        # under this threshold are not recorded; 0 = pause instantly.
+        'watcher_foreground_pause_grace_seconds': 30,
         'watcher_per_game_excluded': [],        # game names opted out
         # --- Notifications ---
         'notifications_on_start': True,

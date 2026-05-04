@@ -32,10 +32,13 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
 
 from config import load_config, save_config
-from constants import CONSOLE_PLATFORM_KEYWORDS
+from constants import (
+    STATUS_IN_PROGRESS,
+    STATUS_PENDING,
+)
 from data_management import save_data
 from session_data import add_manual_session_to_game
-from utilities import format_timedelta_with_seconds
+from utilities import format_timedelta_with_seconds, is_console_platform
 from watcher_log import bridge_logger
 
 _log = bridge_logger()
@@ -115,24 +118,124 @@ class SessionWatcherBridge:
         }
 
     def list_recent_console_games(self, limit: int = 10) -> List[str]:
-        """Console-platform games, sorted by last-played descending."""
-        scored: List = []
-        for _idx, row in self._data() or []:
-            if len(row) < 3:
+        """Console-platform games, ordered for the tray's quick-launch menu.
+
+        Priority groups, applied in order:
+
+        1. **Recently played and still active** - status is either
+           ``In progress`` or ``Pending`` *and* ``last_played`` is
+           within the last :data:`_RECENT_CONSOLE_DAYS` days.
+           ``In progress`` titles come before ``Pending`` ones (the
+           user is more likely to resume something they're already
+           working on); within each status, newest play first.
+           Completed / Dropped games are deliberately excluded from
+           this bucket regardless of how recently they were played -
+           a game you finished last week still belongs in "Other",
+           not at the top of the quick-launch menu.
+        2. **In progress backlog** - everything else with status
+           ``In progress`` (never played, or last played longer than
+           the recent window ago), ordered by release date *ascending*
+           so older games surface first.
+        3. **Pending backlog** - same shape as #2 but for ``Pending``.
+        4. **Everything else** - completed / dropped / unknown-status
+           console titles, in stable library order.
+
+        Within each group, ties (e.g. several games with no release
+        date) fall back to alphabetical ordering by name. Casing is
+        preserved for display.
+        """
+        # Indices match the table headings defined in ui_components.get_table_column_widths
+        # (Name, Release, Platform, Time, Status, Owned, Last Played, Rating).
+        IDX_NAME, IDX_RELEASE, IDX_PLATFORM = 0, 1, 2
+        IDX_STATUS, IDX_LAST_PLAYED = 4, 6
+
+        # 30-day cutoff for the "recently played" bucket. Re-evaluated
+        # per call so leaving the app open across day boundaries
+        # doesn't freeze the menu's idea of "recent".
+        recent_cutoff = datetime.now() - timedelta(days=_RECENT_CONSOLE_DAYS)
+
+        # Sort key for the recent bucket: (status_rank, -timestamp,
+        # name_lower). status_rank 0 = In progress, 1 = Pending, so
+        # ascending sort puts In progress first, then within each
+        # status the newest play floats to the top.
+        STATUS_RANK = {STATUS_IN_PROGRESS: 0, STATUS_PENDING: 1}
+
+        recent: List = []          # (status_rank, -timestamp, name_lower, name)
+        in_progress: List = []     # (release_dt, name_lower, name)
+        pending: List = []         # (release_dt, name_lower, name)
+        other: List = []           # (library_order, name)
+
+        for library_order, (_idx, row) in enumerate(self._data() or []):
+            if len(row) <= IDX_PLATFORM:
                 continue
-            name = row[0]
-            platform = row[2] or ''
-            if not _is_console_platform(platform):
+            name = row[IDX_NAME]
+            platform = row[IDX_PLATFORM] or ''
+            if not is_console_platform(platform):
                 continue
-            last_played = row[6] if len(row) > 6 else None
-            try:
-                ts = (datetime.strptime(last_played, '%Y-%m-%d %H:%M:%S')
-                      if isinstance(last_played, str) else None)
-            except Exception:
-                ts = None
-            scored.append((ts or datetime.min, name))
-        scored.sort(reverse=True)
-        return [n for _, n in scored[:limit]]
+
+            last_played_raw = row[IDX_LAST_PLAYED] if len(row) > IDX_LAST_PLAYED else None
+            release_raw = row[IDX_RELEASE] if len(row) > IDX_RELEASE else None
+            status = (row[IDX_STATUS] if len(row) > IDX_STATUS else '') or ''
+
+            last_played_dt = _parse_last_played(last_played_raw)
+            release_dt = _parse_release_date(release_raw)
+
+            # Recent only matters for In progress / Pending titles
+            # played inside the cutoff window. Anything older or in a
+            # different status falls through to its status backlog (or
+            # "other").
+            is_recent = (
+                last_played_dt is not None
+                and last_played_dt >= recent_cutoff
+                and status in STATUS_RANK
+            )
+            if is_recent:
+                recent.append((
+                    STATUS_RANK[status],
+                    -last_played_dt.timestamp(),
+                    name.lower(),
+                    name,
+                ))
+                continue
+
+            if status == STATUS_IN_PROGRESS:
+                in_progress.append((release_dt or datetime.max, name.lower(), name))
+            elif status == STATUS_PENDING:
+                pending.append((release_dt or datetime.max, name.lower(), name))
+            else:
+                # Completed / Dropped / unknown - kept at the bottom
+                # in stable library order so they're still reachable
+                # without crowding out actionable items.
+                other.append((library_order, name))
+
+        recent.sort()
+        in_progress.sort()
+        pending.sort()
+        other.sort()
+
+        ordered: List[str] = []
+        seen = set()  # case-insensitive de-dupe in case the library has duplicates
+
+        def _extend(items, name_index: int) -> bool:
+            for entry in items:
+                n = entry[name_index]
+                k = n.lower()
+                if k in seen:
+                    continue
+                seen.add(k)
+                ordered.append(n)
+                if len(ordered) >= limit:
+                    return True
+            return False
+
+        if _extend(recent, 3):
+            return ordered
+        if _extend(in_progress, 2):
+            return ordered
+        if _extend(pending, 2):
+            return ordered
+        _extend(other, 1)
+        return ordered
 
     # ------------------------------------------------------------------
     # Event handling
@@ -1140,11 +1243,53 @@ class SessionWatcherBridge:
 # ---------------------------------------------------------------------------
 
 
-def _is_console_platform(platform: Optional[str]) -> bool:
-    if not platform:
-        return False
-    pl = platform.lower()
-    return any(kw in pl for kw in CONSOLE_PLATFORM_KEYWORDS)
+# How fresh a console game's last_played has to be to count as
+# "Recently played" in the tray's quick-launch menu. Anything older
+# than this falls through to the status backlog buckets so the menu's
+# top entries are always things the user is actively engaging with.
+_RECENT_CONSOLE_DAYS = 30
+
+
+
+
+def _parse_last_played(raw) -> Optional[datetime]:
+    """Best-effort ``last_played`` parser tolerant of historical formats.
+
+    Older library rows may carry the timestamp as ``YYYY-MM-DD HH:MM:SS``,
+    ISO-8601 with a ``T`` separator, or just a date. Anything we can't
+    interpret returns ``None`` so the caller can demote that game to a
+    later sort group rather than crash.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    s = raw.strip()
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%d'):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _parse_release_date(raw) -> Optional[datetime]:
+    """Parse the library's ``Release`` column, which is stored as YYYY-MM-DD.
+
+    Some entries carry a partial date ("1998") or "TBA" / blank; those
+    fail strict parsing and we return ``None``, which our sort uses as
+    "treat as the far future" so released-and-known titles always
+    sort before unknown ones within the same status group.
+    """
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    for fmt in ('%Y-%m-%d', '%Y-%m', '%Y'):
+        try:
+            return datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
 
 
 def _humanize_duration(duration_str: str) -> str:

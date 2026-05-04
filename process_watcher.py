@@ -62,10 +62,10 @@ except ImportError:
 
 from config import load_config, save_config
 from constants import (
-    CONSOLE_PLATFORM_KEYWORDS,
     IGNORED_PATH_FRAGMENTS,
     IGNORED_PROCESS_NAMES,
     WATCHER_DEFAULT_IDLE_MINUTES,
+    WATCHER_DEFAULT_FOREGROUND_GRACE_SEC,
     WATCHER_DEFAULT_ROOTS,
     WATCHER_END_GRACE_SEC,
     WATCHER_FUZZY_THRESHOLD,
@@ -129,6 +129,14 @@ class _ActiveSession:
     # the idle/foreground auto-pause to them - the user is by definition
     # playing on a different device and may be entirely away from the PC.
     manual: bool = False
+    # Monotonic timestamp at which the foreground window first stopped
+    # being our tracked pid. Used to debounce "user alt-tabs to read a
+    # message and tabs back" so we don't log a phantom 5-second pause
+    # for every quick context switch. Stays None while the game holds
+    # focus; reset to None whenever it does. The pause is only actually
+    # begun once (now_mono - foreground_away_since_mono) crosses the
+    # configured grace window.
+    foreground_away_since_mono: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -1188,6 +1196,14 @@ class ProcessWatcher:
         cfg = load_config()
         idle_min = int(cfg.get('watcher_idle_pause_minutes', WATCHER_DEFAULT_IDLE_MINUTES) or 0)
         foreground_only = bool(cfg.get('watcher_foreground_only', False))
+        # Grace window before a foreground change actually triggers a
+        # pause. Lets the user briefly check Discord / a browser tab /
+        # an inventory wiki without polluting their session log with a
+        # 4-second pause entry every time. 0 disables debouncing (legacy
+        # behaviour: pause the instant focus shifts).
+        fg_grace_sec = int(cfg.get(
+            'watcher_foreground_pause_grace_seconds',
+            WATCHER_DEFAULT_FOREGROUND_GRACE_SEC) or 0)
 
         idle_s: Optional[float] = None
         if idle_min > 0 and self.idle_seconds_provider is not None:
@@ -1218,11 +1234,31 @@ class ProcessWatcher:
                     reasons.append(f"idle({int(idle_s)}s)")
 
             if foreground_only:
-                _state_log.debug("foreground_pid=%s tracked_pid=%s",
-                                 fg_pid, active.pid)
-                if fg_pid is None or fg_pid != active.pid:
-                    should_pause = True
-                    reasons.append(f"foreground({fg_pid})")
+                fg_away = (fg_pid is None or fg_pid != active.pid)
+                _state_log.debug(
+                    "foreground_pid=%s tracked_pid=%s away=%s grace=%ds",
+                    fg_pid, active.pid, fg_away, fg_grace_sec)
+                if fg_away:
+                    # Start the grace clock the first poll we see focus
+                    # leave the game; once it's been held away for the
+                    # configured window, escalate to an actual pause.
+                    if active.foreground_away_since_mono is None:
+                        active.foreground_away_since_mono = now_mono
+                    away_for = now_mono - active.foreground_away_since_mono
+                    if away_for >= fg_grace_sec:
+                        should_pause = True
+                        reasons.append(
+                            f"foreground({fg_pid},away={int(away_for)}s)")
+                    else:
+                        _state_log.debug(
+                            "foreground away for %.1fs (grace=%ds), "
+                            "deferring pause",
+                            away_for, fg_grace_sec)
+                else:
+                    # Game has focus again: reset the grace clock so a
+                    # later alt-tab gets a fresh debounce window rather
+                    # than triggering immediately.
+                    active.foreground_away_since_mono = None
 
             if should_pause and not active.paused:
                 self._begin_pause(
@@ -1466,13 +1502,6 @@ def _name_in_library(game_name: str, library: List[Dict]) -> bool:
             if alias and alias.casefold() == target:
                 return True
     return False
-
-
-def is_console_platform(platform_name: Optional[str]) -> bool:
-    if not platform_name:
-        return False
-    pl = platform_name.lower()
-    return any(kw in pl for kw in CONSOLE_PLATFORM_KEYWORDS)
 
 
 def _format_short_duration(seconds: int) -> str:

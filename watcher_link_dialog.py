@@ -31,31 +31,10 @@ from typing import Any, Optional
 
 import PySimpleGUI as sg
 
-from utilities import calculate_popup_center_location
+from utilities import calculate_popup_center_location, is_console_platform
 from watcher_log import bridge_logger
 
 _log = bridge_logger()
-
-
-def _is_console_platform(platform: Optional[str]) -> bool:
-    """Best-effort 'is this a console game?' check.
-
-    We surface a friendly warning when the user tries to link an .exe to
-    a game whose stored platform is a console - chances are they meant
-    to use the tray's "Start Console Session" instead, since linking an
-    emulator's .exe to e.g. "Super Mario 64" would mistakenly track
-    every emulator launch as that one game.
-    """
-    if not platform:
-        return False
-    pl = platform.lower()
-    keywords = (
-        'switch', 'playstation', 'ps1', 'ps2', 'ps3', 'ps4', 'ps5',
-        'xbox', 'wii', 'gamecube', 'n64', 'nintendo', 'sega', 'genesis',
-        'dreamcast', 'saturn', 'gameboy', 'game boy', 'gba', 'ds ',
-        '3ds', 'snes', 'nes ', 'atari', 'commodore', 'arcade',
-    )
-    return any(k in pl for k in keywords)
 
 
 def show_link_executable_dialog(
@@ -161,7 +140,7 @@ def show_link_executable_dialog(
             # the same emulator launches every game on the platform, so
             # the mapping would mis-attribute every future emulator
             # session to whichever title the user happened to link.
-            if _is_console_platform(game_platform):
+            if is_console_platform(game_platform):
                 proceed = sg.popup_yes_no(
                     f"'{game_name}' is stored as a console game "
                     f"({game_platform}).\n\n"
