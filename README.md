@@ -1,7 +1,7 @@
 # GamesList Manager
 
 ![Python](https://badgen.net/badge/python/3.7%2B/blue?icon=python)
-![Version](https://badgen.net/badge/version/v1.10.0/orange?icon=github)
+![Version](https://badgen.net/badge/version/v1.11.0/orange?icon=github)
 ![License](https://badgen.net/badge/license/GPL-3.0/green?icon=github)
 
 ## Table of Contents
@@ -73,7 +73,7 @@ GamesList Manager is a comprehensive desktop application for managing your video
 - Fetch cover art, genres, summaries, aggregated critic ratings, and average completion times from IGDB
 - Per-game **View Details** popup showing cover, genres, summary, and your progress versus the "Main Story" average
 - One-click **Enrich Library from IGDB** to auto-match your whole collection
-- Credentials stored locally; see [IGDB_SETUP.md](IGDB_SETUP.md) for setup
+- Credentials stored locally; see [IGDB_SETUP.md](docs/IGDB_SETUP.md) for setup
 
 ### 🎪 **Discord Rich Presence Integration**
 - Real-time Discord status updates showing current activity
@@ -220,7 +220,7 @@ python main.py
   - **Linux**: `~/.config/GamesListManager/`
 
 ### Discord Rich Presence Setup (Optional)
-Want to show your gaming library management activity on Discord? See [DISCORD_SETUP.md](DISCORD_SETUP.md) for detailed instructions on setting up Discord Rich Presence integration.
+Want to show your gaming library management activity on Discord? See [DISCORD_SETUP.md](docs/DISCORD_SETUP.md) for detailed instructions on setting up Discord Rich Presence integration.
 
 ## Building Executable with cx_Freeze
 

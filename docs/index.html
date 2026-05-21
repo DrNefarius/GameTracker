@@ -706,7 +706,7 @@
             <p>A comprehensive desktop application for managing your video game collection and tracking your gaming sessions</p>
             <div class="badges">
                 <span class="badge">Python 3.7+</span>
-                <span class="badge">Version 1.10.0</span>
+                <span class="badge">Version 1.11.0</span>
                 <span class="badge">GPL-3.0 License</span>
                 <span class="badge">Discord Integration</span>
             </div>
@@ -739,9 +739,20 @@
                     <h3>Advanced Time Tracking</h3>
                     <ul>
                         <li>Built-in session timer with controls</li>
-                        <li>Automatic time tracking and recording</li>
+                        <li>Windows process watcher for hands-free sessions</li>
                         <li>Detailed session history with timestamps</li>
                         <li>Session feedback system with notes</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🎨</div>
+                    <h3>IGDB Metadata</h3>
+                    <ul>
+                        <li>Cover art, genres, summaries, and critic scores</li>
+                        <li>Average completion times from IGDB</li>
+                        <li>Per-game View Details popup</li>
+                        <li>One-click bulk library enrichment</li>
                     </ul>
                 </div>
 
@@ -821,45 +832,90 @@
         </div>
     </div>
 
-    <!-- Daily Activity View Section -->
+    <!-- Process Watcher & IGDB (v1.11) -->
     <div class="section">
         <div class="container">
-            <h2 class="section-title">📅 Daily Activity View</h2>
+            <h2 class="section-title">🛰️ Auto Session Tracking & IGDB</h2>
             <div class="feature-highlight">
-                <div class="highlight-badge">New in v1.10.0</div>
-                <h3>View Gaming Activity by Date</h3>
-                <p>Explore your gaming history with detailed daily activity views. See exactly what you played, when, and for how long on any specific date.</p>
+                <div class="highlight-badge">New in v1.11.0</div>
+                <h3>Play Without Pressing Start</h3>
+                <p>On Windows, the process watcher records sessions when you launch a game. IGDB brings covers, metadata, and completion averages into your library.</p>
             </div>
-            
+
             <div class="features-grid">
                 <div class="feature-card">
+                    <div class="feature-icon">🛰️</div>
+                    <h3>Process Watcher</h3>
+                    <p>Detects game launches and tracks playtime automatically. Toggle via Options → Process Watcher.</p>
+                </div>
+
+                <div class="feature-card">
                     <div class="feature-icon">🎯</div>
-                    <h3>Date-Based Navigation</h3>
-                    <p>Browse through any date to see chronologically sorted gaming sessions with detailed timing information.</p>
+                    <h3>Smart Matching</h3>
+                    <p>Learned exe mappings, Steam/Epic/GOG manifests, and fuzzy match—with a toast when confirmation is needed.</p>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">📊</div>
-                    <h3>Daily Summaries</h3>
-                    <p>Get instant insights with total time played, session count, and list of games for each day.</p>
+                    <div class="feature-icon">🔔</div>
+                    <h3>Toasts & Tray Controls</h3>
+                    <p>Session start/end notifications with cover art, system-tray pause/stop, and in-place wrong-game remap.</p>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">🌐</div>
-                    <h3>Multiple Access Points</h3>
-                    <p>Quick access via View menu for Today/Yesterday, plus date picker for any specific date.</p>
-                </div>
-
-                <div class="feature-card">
-                    <div class="feature-icon">💬</div>
-                    <h3>Discord Integration</h3>
-                    <p>Discord Rich Presence shows which date you're currently reviewing to friends.</p>
+                    <div class="feature-icon">🎨</div>
+                    <h3>IGDB Integration</h3>
+                    <p>Fetch covers, genres, summaries, and critic scores. View Details per game or enrich the whole library in one pass.</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Auto-Updater Section -->
+    <!-- Daily Activity View (v1.10) -->
+    <div class="section">
+        <div class="container">
+            <div class="collapsible-section">
+                <div class="collapsible-header" onclick="toggleCollapsible('v110-section')">
+                    <div class="highlight-badge clickable">New in v1.10.0</div>
+                    <span class="collapse-arrow" id="v110-arrow">▼</span>
+                </div>
+                <div class="collapsible-content" id="v110-section">
+                    <h2 class="section-title">📅 Daily Activity View</h2>
+                    <div class="feature-highlight">
+                        <h3>View Gaming Activity by Date</h3>
+                        <p>Explore your gaming history with detailed daily activity views. See exactly what you played, when, and for how long on any specific date.</p>
+                    </div>
+
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">🎯</div>
+                            <h3>Date-Based Navigation</h3>
+                            <p>Browse through any date to see chronologically sorted gaming sessions with detailed timing information.</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">📊</div>
+                            <h3>Daily Summaries</h3>
+                            <p>Get instant insights with total time played, session count, and list of games for each day.</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">🌐</div>
+                            <h3>Multiple Access Points</h3>
+                            <p>Quick access via View menu for Today/Yesterday, plus date picker for any specific date.</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">💬</div>
+                            <h3>Discord Integration</h3>
+                            <p>Discord Rich Presence shows which date you're currently reviewing to friends.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Auto-Updater (v1.9) -->
     <div class="section">
         <div class="container">
             <div class="collapsible-section">
