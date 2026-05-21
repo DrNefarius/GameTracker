@@ -43,6 +43,16 @@ executable lives under a known install root (Steam / Epic / GOG / any folder
 you added to `watcher_user_roots`). This is the recommended setting because
 it strictly limits what the watcher looks at and minimizes false positives.
 
+If an exe path *looks* like a real store install (for example under
+`...\steamapps\common\...`) but is not yet under any whitelisted root—often
+because you launched the game right after Steam finished installing it while
+GamesList was already running—the watcher runs an **opportunistic manifest
+rescan** (throttled to a few seconds apart), then re-checks. If it still
+cannot whitelist the path, it temporarily forgets that process ID so the next
+poll treats the game as newly seen again after the index updates. You do not
+need to restart the app for that case; *Options → Rescan Game Libraries* is
+still available if you want to force a full refresh immediately.
+
 ### Tracking games outside the auto-discovered launchers
 
 Plenty of titles aren't installed by Steam / Epic / GOG: standalone old
@@ -88,12 +98,13 @@ handoffs from creating two sessions.
 Three categories, each toggleable independently in Process Watcher Settings:
 
 - **Session started** - "Now tracking: \<game\>" with cover art (when IGDB
-  cover is cached). Buttons: *Open*, *Wrong game?*, *Don't track this
-  session*. The last button immediately discards the just-started session
-  so it's never written to disk - use it when the watcher fired on
-  something you don't want recorded.
-- **Session ended** - "\<game\> - 2h 13m" with a *Rate it* button that opens
-  the existing feedback / rating dialog the next time you focus the app.
+  cover is cached). Buttons: *Dismiss* (clears the toast only), *Wrong game?*,
+  *Don't track this session*. The last button immediately discards the
+  just-started session so it's never written to disk - use it when the
+  watcher fired on something you don't want recorded.
+- **Session ended** - "\<game\> - 2h 13m" with *Rate it* (opens the feedback /
+  rating dialog when you next focus the app) and *Dismiss* (clears the toast
+  only; does not switch to GamesList).
 - **Match needed** - When the watcher detects something it can't confidently
   attribute, it asks you to confirm or ignore the executable. Buttons:
   *Yes, that's it* (commits the best guess as a learned mapping),

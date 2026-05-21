@@ -67,6 +67,8 @@ from constants import (
     WATCHER_DEFAULT_IDLE_MINUTES,
     WATCHER_DEFAULT_FOREGROUND_GRACE_SEC,
     WATCHER_DEFAULT_ROOTS,
+    WATCHER_OPPORTUNISTIC_RESCAN_MIN_INTERVAL_SEC,
+    WATCHER_STRICT_STORE_RETRY_MAX,
     WATCHER_END_GRACE_SEC,
     WATCHER_FUZZY_THRESHOLD,
     WATCHER_POLL_INTERVAL_SEC,
@@ -163,6 +165,14 @@ class ProcessWatcher:
 
         self._store_index: StoreIndex = StoreIndex()
         self._index_lock = threading.Lock()
+
+        # Opportunistic store rescan (strict mode): when an exe looks like it
+        # lives under Steam/Epic/GOG but isn't under whitelisted roots yet,
+        # we rescan manifests and evict the pid from _known_pids so the next
+        # poll re-runs the resolver. Without the eviction, the process would
+        # never be seen as "new" again after the first skip.
+        self._strict_store_retry: Dict[int, int] = {}
+        self._last_opportunistic_rescan_mono: float = 0.0
 
         # Pluggable hooks (set by Phase G to handle idle/foreground).
         self.idle_seconds_provider: Optional[Callable[[], float]] = None
@@ -402,6 +412,22 @@ class ProcessWatcher:
             save_config(cfg)
         except Exception as exc:  # noqa: BLE001
             _log.warning("failed to persist store index: %s", exc)
+
+    def _maybe_opportunistic_store_rescan(self, now_mono: float) -> bool:
+        """Re-scan Steam/Epic/GOG manifests if the throttle window allows.
+
+        Returns True when a scan actually ran. Used when strict mode
+        rejects an exe whose path still looks like a legitimate store
+        install (e.g. user launched a game right after Steam finished
+        downloading it, before our cached index listed that folder).
+        """
+        min_gap = float(WATCHER_OPPORTUNISTIC_RESCAN_MIN_INTERVAL_SEC)
+        if now_mono - self._last_opportunistic_rescan_mono < min_gap:
+            return False
+        self._last_opportunistic_rescan_mono = now_mono
+        _resolver_log.info("opportunistic store rescan (strict path miss)")
+        self.rescan_stores()
+        return True
 
     def get_state_snapshot(self) -> Dict:
         """Return a tray-friendly summary of the current state."""
@@ -681,10 +707,14 @@ class ProcessWatcher:
         gone_pids = self._known_pids - current_pids
         self._known_pids = current_pids
 
+        if self._strict_store_retry and gone_pids:
+            for pid in gone_pids:
+                self._strict_store_retry.pop(pid, None)
+
         # 2. Resolve any new processes (only if watcher not paused and no
         #    active session - we don't start a second session until the first ends).
         if not self.is_paused():
-            self._consider_new_processes(new_procs)
+            self._consider_new_processes(new_procs, now_mono)
 
         # 3. Promote candidates whose debounce has expired and process still alive.
         self._promote_candidates(now_mono, current_pids)
@@ -709,7 +739,11 @@ class ProcessWatcher:
     # Resolver pipeline
     # ------------------------------------------------------------------
 
-    def _consider_new_processes(self, new_procs: List["psutil.Process"]) -> None:
+    def _consider_new_processes(
+        self,
+        new_procs: List["psutil.Process"],
+        now_mono: float,
+    ) -> None:
         if not new_procs:
             return
         cfg = load_config()
@@ -728,6 +762,7 @@ class ProcessWatcher:
         with self._lock:
             already_active = self._active is not None
 
+        opportunistic_pass_done = False
         for proc in new_procs:
             try:
                 name = (proc.name() or '').lower()
@@ -760,10 +795,40 @@ class ProcessWatcher:
                                     proc.pid, exe_norm, ignored_frag)
                 continue
             if strict and not _path_under_any(exe_norm, roots):
-                _resolver_log.debug(
-                    "skip pid=%s exe=%s reason=strict_outside_roots",
-                    proc.pid, exe_norm)
-                continue
+                skip = True
+                store_like = _looks_like_store_install_path(exe_norm)
+                if store_like:
+                    attempts = self._strict_store_retry.get(proc.pid, 0)
+                    if attempts < WATCHER_STRICT_STORE_RETRY_MAX:
+                        if not opportunistic_pass_done:
+                            ran = self._maybe_opportunistic_store_rescan(now_mono)
+                            if ran:
+                                with self._index_lock:
+                                    store_idx = self._store_index
+                                roots = self._effective_roots(store_idx, user_roots)
+                            opportunistic_pass_done = True
+                        if _path_under_any(exe_norm, roots):
+                            self._strict_store_retry.pop(proc.pid, None)
+                            skip = False
+                        else:
+                            self._strict_store_retry[proc.pid] = attempts + 1
+                            self._known_pids.discard(proc.pid)
+                            _resolver_log.info(
+                                "strict_outside_roots: evict pid=%s for retry "
+                                "after store rescan (attempt %d/%d) exe=%s",
+                                proc.pid, attempts + 1,
+                                WATCHER_STRICT_STORE_RETRY_MAX, exe_norm)
+                    else:
+                        _resolver_log.debug(
+                            "skip pid=%s exe=%s reason=strict_outside_roots "
+                            "(store-like path, retry budget exhausted)",
+                            proc.pid, exe_norm)
+                if skip:
+                    if not store_like:
+                        _resolver_log.debug(
+                            "skip pid=%s exe=%s reason=strict_outside_roots",
+                            proc.pid, exe_norm)
+                    continue
 
             # Layer 1: learned exact-path mapping.
             layer = None
@@ -802,9 +867,11 @@ class ProcessWatcher:
                         store, store_id = entry.store, entry.store_id
                         layer = f'L2_{entry.store}_path'
 
-            # If we matched via store but the user has multiple entries with
-            # similar names, try to align with their library spelling.
-            if game_name is not None and library:
+            # Store manifests may use different spelling than the library.
+            # Skip when the resolved name is already a library title (learned
+            # mappings, exact store hits, etc.).
+            if (game_name is not None and library
+                    and not _name_in_library(game_name, library)):
                 aligned = _align_to_library(game_name, library)
                 if aligned and aligned != game_name:
                     _resolver_log.debug("aligned '%s' -> '%s' to library spelling",
@@ -1415,6 +1482,24 @@ def _path_under_any(path: str, roots: List[str]) -> bool:
     return False
 
 
+def _looks_like_store_install_path(exe_norm: str) -> bool:
+    """Heuristic: exe path resembles a Steam/Epic/GOG game install.
+
+    Used only when strict mode rejects the path - triggers an
+    opportunistic manifest rescan and a one-tick pid eviction so a
+    freshly installed game can be picked up without restarting the app.
+    """
+    p = exe_norm.lower().replace('/', '\\')
+    return any(
+        marker in p
+        for marker in (
+            '\\steamapps\\common\\',
+            '\\epic games\\',
+            '\\gog galaxy\\games\\',
+        )
+    )
+
+
 def _guess_install_dir(exe_path: str, roots: List[str]) -> str:
     """Best-effort install dir for an exe: the matching root + first subfolder."""
     pl = exe_path.lower()
@@ -1474,19 +1559,31 @@ def _align_to_library(name: str, library: List[Dict]) -> Optional[str]:
     if not _RAPIDFUZZ_AVAILABLE or not library:
         return None
     target = _clean_for_fuzz(name)
-    best_name = None
+    name_fold = name.casefold()
+    best_name: Optional[str] = None
     best_score = 0
     for entry in library:
         n = entry.get('name')
         if not n:
             continue
         s = int(fuzz.token_set_ratio(target, _clean_for_fuzz(n)))
+        if s < WATCHER_FUZZY_THRESHOLD:
+            continue
+        if best_name is None:
+            best_score = s
+            best_name = n
+            continue
         if s > best_score:
             best_score = s
             best_name = n
-    if best_score >= WATCHER_FUZZY_THRESHOLD:
-        return best_name
-    return None
+        elif s == best_score:
+            n_exact = n.casefold() == name_fold
+            best_exact = best_name.casefold() == name_fold
+            if n_exact and not best_exact:
+                best_name = n
+            elif n_exact == best_exact and len(n) > len(best_name):
+                best_name = n
+    return best_name
 
 
 def _name_in_library(game_name: str, library: List[Dict]) -> bool:

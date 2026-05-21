@@ -449,8 +449,14 @@ class SessionWatcherBridge:
             # play won't be saved") matches what we actually do.
             if action in ('discard', 'stop'):
                 self._discard_session_via_user(payload.get('session_id'))
-            elif action == 'open':
-                self._focus_main_window()
+            elif action in ('dismiss', 'close', 'open', 'default'):
+                # `close` / `open` = older toasts. `default` = body tap when
+                # the shell does not forward ``toast.launch`` as ``arguments``.
+                try:
+                    from notifications import dismiss_live_toast
+                    dismiss_live_toast(payload.get('session_id') or '')
+                except Exception:
+                    pass
             elif action == 'remap':
                 self._focus_main_window()
                 self._open_remap_dialog()
@@ -458,8 +464,14 @@ class SessionWatcherBridge:
             if action == 'rate':
                 self._focus_main_window()
                 self._launch_feedback_for_last_session(payload.get('game'))
-            elif action == 'open':
-                self._focus_main_window()
+            elif action in ('dismiss', 'close', 'open'):
+                # `close` / `open` are older toasts; all three only clear the
+                # notification (no app focus).
+                try:
+                    from notifications import dismiss_live_toast
+                    dismiss_live_toast(payload.get('session_id') or '')
+                except Exception:
+                    pass
         elif kind == 'match_confirmation':
             return self.confirm_pending_match(
                 payload.get('detection_id') or '',

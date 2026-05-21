@@ -203,9 +203,9 @@ def notify_session_started(
                 toast.images = [_ToastDisplayImage.fromPath(cover_path)]  # type: ignore[attr-defined]
             except Exception:
                 pass
-        # Body-click activation argument; bridge maps 'open|...' -> focus app.
-        toast.launch = f"open|{session_id}"
-        toast.AddAction(_ToastButton("Open", arguments=f"open|{session_id}"))
+        # Body-click and "Dismiss" only clear the toast (no app focus).
+        toast.launch = f"dismiss|{session_id}"
+        toast.AddAction(_ToastButton("Dismiss", arguments=f"dismiss|{session_id}"))
         toast.AddAction(_ToastButton("Wrong game?", arguments=f"remap|{session_id}"))
         toast.AddAction(_ToastButton("Don't track this session",
                                      arguments=f"discard|{session_id}"))
@@ -257,7 +257,7 @@ def notify_session_retitled(
     Hides the old (mistitled) start-toast and pops a fresh one for the
     corrected title with the same action buttons - so the user gets
     visible confirmation that tracking is now under the right name and
-    can immediately use Open / Wrong game? / Don't track this session
+    can immediately use Dismiss / Wrong game? / Don't track this session
     against the corrected session.
     """
     dismiss_live_toast(session_id)
@@ -279,8 +279,8 @@ def notify_session_retitled(
                 toast.images = [_ToastDisplayImage.fromPath(cover_path)]  # type: ignore[attr-defined]
             except Exception:
                 pass
-        toast.launch = f"open|{session_id}"
-        toast.AddAction(_ToastButton("Open", arguments=f"open|{session_id}"))
+        toast.launch = f"dismiss|{session_id}"
+        toast.AddAction(_ToastButton("Dismiss", arguments=f"dismiss|{session_id}"))
         toast.AddAction(_ToastButton("Wrong game?", arguments=f"remap|{session_id}"))
         toast.AddAction(_ToastButton("Don't track this session",
                                      arguments=f"discard|{session_id}"))
@@ -330,7 +330,6 @@ def notify_session_ended(
         # Body-click defaults to opening the rating dialog.
         toast.launch = f"rate|{session_id}"
         toast.AddAction(_ToastButton("Rate it", arguments=f"rate|{session_id}"))
-        toast.AddAction(_ToastButton("Open", arguments=f"open|{session_id}"))
         toast.AddAction(_ToastButton("Dismiss", arguments=f"dismiss|{session_id}"))
         toast.on_activated = _make_activation_callback({
             'kind': 'session_ended',

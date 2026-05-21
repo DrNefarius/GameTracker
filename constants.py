@@ -3,9 +3,9 @@ Constants used throughout the GamesList application
 """
 
 # Application version - update this single location to change version across the entire app
-VERSION = "1.10.1"
+VERSION = "1.11.0"
 
-_DEBUG = True
+_DEBUG = False
 
 # GitHub repository configuration for auto-updater
 GITHUB_OWNER = "YourName"
@@ -105,6 +105,17 @@ WATCHER_TRAILING_AUTO_PAUSE_DROP_SEC = 8
 # Set the corresponding config key to 0 to fall back to the legacy
 # instant-pause behaviour.
 WATCHER_DEFAULT_FOREGROUND_GRACE_SEC = 30
+
+# When strict mode rejects an exe whose path still looks like a real
+# Steam/Epic/GOG install layout, re-run the store-manifest scan at most
+# once per this many seconds (avoids hammering disk if something is
+# genuinely not in the index).
+WATCHER_OPPORTUNISTIC_RESCAN_MIN_INTERVAL_SEC = 3
+
+# After this many "strict denied but path looks like a store game"
+# attempts for the same pid (each attempt evicts the pid so the next
+# tick re-sees it), give up so we don't spin forever on a bogus path.
+WATCHER_STRICT_STORE_RETRY_MAX = 12
 
 # Process basenames the watcher should always ignore. Lowercased for matching.
 # Includes platform launchers, anti-cheat services, common helpers and
