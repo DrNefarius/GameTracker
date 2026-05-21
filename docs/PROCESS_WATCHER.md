@@ -95,6 +95,11 @@ handoffs from creating two sessions.
 
 ## Notifications
 
+On first use, GamesList Manager registers a Windows toast identity (`GITHUB_OWNER.GITHUB_REPO`
+from `constants.py`, e.g. `DrNefarius.GameTracker`) and creates a Start Menu shortcut so
+notifications show **GamesList Manager** with the app icon instead of the default Command
+Prompt branding.
+
 Three categories, each toggleable independently in Process Watcher Settings:
 
 - **Session started** - "Now tracking: \<game\>" with cover art (when IGDB
@@ -103,8 +108,7 @@ Three categories, each toggleable independently in Process Watcher Settings:
   just-started session so it's never written to disk - use it when the
   watcher fired on something you don't want recorded.
 - **Session ended** - "\<game\> - 2h 13m" with *Rate it* (opens the feedback /
-  rating dialog when you next focus the app) and *Dismiss* (clears the toast
-  only; does not switch to GamesList).
+  rating dialog when you next focus the app) and *Dismiss* (clears the toast).
 - **Match needed** - When the watcher detects something it can't confidently
   attribute, it asks you to confirm or ignore the executable. Buttons:
   *Yes, that's it* (commits the best guess as a learned mapping),

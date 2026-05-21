@@ -23,6 +23,7 @@ from datetime import datetime, time as dtime
 from typing import Any, Callable, Dict, Optional
 
 from config import load_config
+from toast_aumid import TOAST_APP_NAME, ensure_toast_registration
 from watcher_log import toast_logger
 
 _log = toast_logger()
@@ -86,8 +87,12 @@ def _get_toaster():
     with _TOASTER_LOCK:
         if _TOASTER is None:
             try:
-                _TOASTER = _InteractableToaster("GamesList Manager")  # type: ignore[misc]
-                _log.debug("InteractableWindowsToaster constructed")
+                aumid = ensure_toast_registration()
+                _TOASTER = _InteractableToaster(  # type: ignore[misc]
+                    TOAST_APP_NAME,
+                    notifierAUMID=aumid,
+                )
+                _log.debug("InteractableWindowsToaster constructed aumid=%s", aumid)
             except Exception as exc:  # noqa: BLE001
                 _log.error("failed to construct InteractableWindowsToaster: %s", exc)
                 _TOASTER = None

@@ -246,7 +246,7 @@ The `setup.py` file configures:
 - **Executable Name**: `GameTracker.exe` (Windows) or `GameTracker` (Unix)
 - **Version**: Automatically set from `constants.py`
 - **Icon**: `gameslisticon.ico`
-- **Dependencies**: Automatically detected
+- **Dependencies**: Automatically detected; Windows builds also bundle `windows-toasts` and pywinrt (`winrt._winrt_*.pyd`) for toast notifications
 - **Included Files**: Application icon
 
 ### Platform-Specific Build Notes
@@ -304,6 +304,9 @@ python setup.py build
 - Verify cx_Freeze is installed: `pip install cx_Freeze`
 - Ensure `gameslisticon.ico` is in the project directory
 - Check for missing dependencies in the build output
+
+#### Process watcher toasts missing in frozen build
+If logs show `winrt.windows.foundation.collections has no attribute '_IMap'`, rebuild with the current `setup.py` (it explicitly includes pywinrt native modules). Optional: `pip install "cx_Freeze>=8.5"` adds automatic winrt packaging via cx_Freeze's module hook.
 
 #### Data Issues  
 - .gmd files are JSON format - can be opened in text editor for manual recovery
