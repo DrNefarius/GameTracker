@@ -96,9 +96,8 @@ handoffs from creating two sessions.
 ## Notifications
 
 On first use, GamesList Manager registers a Windows toast identity (`GITHUB_OWNER.GITHUB_REPO`
-from `constants.py`, e.g. `DrNefarius.GameTracker`) and creates a Start Menu shortcut so
-notifications show **GamesList Manager** with the app icon instead of the default Command
-Prompt branding.
+from `constants.py`, e.g. `DrNefarius.GameTracker`) so notifications show **GamesList
+Manager** with the app icon instead of the default Command Prompt branding.
 
 Three categories, each toggleable independently in Process Watcher Settings:
 
