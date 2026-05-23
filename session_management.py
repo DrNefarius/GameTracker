@@ -41,6 +41,7 @@ from session_visualizations import (
     create_comments_word_cloud_visualization,
     calculate_gaming_streak
 )
+from pause_utils import normalize_session_pauses, session_pause_periods
 
 
 def migrate_pauses_to_integrated_structure(session_pauses):
@@ -148,7 +149,8 @@ def migrate_all_game_sessions(data_with_indices):
             migrated_sessions = []
             for session in new_game_data[7]:
                 migrated_session = migrate_session_to_unified_feedback(session)
-                
+                migrated_session = normalize_session_pauses(migrated_session)
+
                 if 'pauses' in migrated_session and migrated_session['pauses']:
                     needs_pause_migration = False
                     for pause_event in migrated_session['pauses']:
@@ -239,22 +241,10 @@ def create_session_heatmap(sessions, game_name=None, window_months=1, end_date=N
     
     for session in windowed_sessions:
         try:
-            if 'start' in session and 'end' in session and 'pauses' in session:
+            if 'start' in session and 'end' in session:
                 start_time = datetime.fromisoformat(session['start'])
                 end_time = datetime.fromisoformat(session['end'])
-                
-                pause_periods = []
-                if session['pauses']:
-                    for pause in session['pauses']:
-                        if 'paused_at' in pause and 'resumed_at' in pause:
-                            pause_time = datetime.fromisoformat(pause['paused_at'])
-                            resume_time = datetime.fromisoformat(pause['resumed_at'])
-                            pause_length = (resume_time - pause_time).total_seconds() / 60
-                            pause_periods.append({
-                                'start': pause_time,
-                                'end': resume_time,
-                                'duration': pause_length
-                            })
+                pause_periods = session_pause_periods(session)
                 
                 current_time = start_time
                 original_session_id = id(session)

@@ -10,32 +10,10 @@ from utilities import format_timedelta_with_seconds, calculate_popup_center_loca
 
 
 def calculate_total_pause_time(session):
-    """Calculate total pause time for a session"""
-    if 'pauses' not in session or not session['pauses']:
-        return timedelta()
-    
-    total_pause_time = timedelta()
-    for pause in session['pauses']:
-        if 'pause_duration' in pause:
-            # Parse pause_duration format (HH:MM:SS)
-            try:
-                duration_str = pause['pause_duration']
-                parts = duration_str.split(':')
-                if len(parts) == 3:
-                    h, m, s = map(int, parts)
-                    total_pause_time += timedelta(hours=h, minutes=m, seconds=s)
-            except (ValueError, TypeError):
-                continue
-        elif 'paused_at' in pause and 'resumed_at' in pause:
-            # Calculate pause duration from timestamps
-            try:
-                pause_start = datetime.fromisoformat(pause['paused_at'])
-                pause_end = datetime.fromisoformat(pause['resumed_at'])
-                total_pause_time += (pause_end - pause_start)
-            except (ValueError, TypeError):
-                continue
-    
-    return total_pause_time
+    """Calculate total pause time for a session (manual + watcher pause shapes)."""
+    from pause_utils import total_session_pause_timedelta
+
+    return total_session_pause_timedelta(session)
 
 
 def get_sessions_for_date(data, target_date):
