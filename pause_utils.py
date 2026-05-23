@@ -38,8 +38,18 @@ def _parse_hms_duration(value: str) -> Optional[timedelta]:
         return None
 
 
-def pause_interval(pause: Dict) -> Optional[PauseInterval]:
-    """Return (start, end) for a single pause dict, or None if not drawable."""
+def pause_interval(
+    pause: Dict,
+    *,
+    session_end: Optional[datetime] = None,
+) -> Optional[PauseInterval]:
+    """Return (start, end) for a single pause dict, or None if not drawable.
+
+    Incomplete pauses (session ended while still paused) have no resume time.
+    When ``session_end`` is provided, use it as the pause end so charts can
+    show the break through session stop. Watcher sessions often set ``end`` on
+    finalize already; manual timer pauses typically only have ``paused_at``.
+    """
     if not isinstance(pause, dict):
         return None
 
@@ -52,14 +62,20 @@ def pause_interval(pause: Dict) -> Optional[PauseInterval]:
         duration = _parse_hms_duration(pause["pause_duration"])
         if duration is not None:
             end = start + duration
+    if end is None and pause.get("incomplete") and session_end is not None:
+        end = session_end
 
     if end is None or end <= start:
         return None
     return start, end
 
 
-def pause_duration_timedelta(pause: Dict) -> timedelta:
-    interval = pause_interval(pause)
+def pause_duration_timedelta(
+    pause: Dict,
+    *,
+    session_end: Optional[datetime] = None,
+) -> timedelta:
+    interval = pause_interval(pause, session_end=session_end)
     if interval is None:
         return timedelta()
     return interval[1] - interval[0]
@@ -67,9 +83,10 @@ def pause_duration_timedelta(pause: Dict) -> timedelta:
 
 def session_pause_periods(session: Dict) -> List[Dict]:
     """Pause intervals as {start, end, duration} with duration in minutes (heatmap)."""
+    session_end = _parse_iso(session.get("end"))
     periods: List[Dict] = []
     for pause in session.get("pauses") or []:
-        interval = pause_interval(pause)
+        interval = pause_interval(pause, session_end=session_end)
         if interval is None:
             continue
         start, end = interval
@@ -77,14 +94,16 @@ def session_pause_periods(session: Dict) -> List[Dict]:
             "start": start,
             "end": end,
             "duration": (end - start).total_seconds() / 60,
+            "incomplete": bool(pause.get("incomplete")),
         })
     return periods
 
 
 def total_session_pause_timedelta(session: Dict) -> timedelta:
+    session_end = _parse_iso(session.get("end"))
     total = timedelta()
     for pause in session.get("pauses") or []:
-        total += pause_duration_timedelta(pause)
+        total += pause_duration_timedelta(pause, session_end=session_end)
     return total
 
 
