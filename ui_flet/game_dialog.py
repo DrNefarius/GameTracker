@@ -70,7 +70,7 @@ def open_game_dialog(page, service, orig_idx=None, on_saved=None):
     status = ft.Dropdown(
         label="Status",
         value=(existing[4] if is_edit else STATUS_PENDING),
-        options=[ft.dropdown.Option(s) for s in VALID_STATUSES],
+        options=[ft.dropdown.Option(key=s, text=s) for s in VALID_STATUSES],
     )
     owned = ft.Checkbox(label="Owned", value=(existing[5] == "✅") if is_edit else False)
     error_text = ft.Text("", color=ft.Colors.ERROR, visible=False)
