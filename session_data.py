@@ -221,10 +221,86 @@ def add_manual_session_to_game(game_name, session, data_with_indices, data_stora
                     if storage_idx == original_idx:
                         data_storage[i] = (original_idx, game_data)
                         break
-            
+
             return True
-    
+
     return False
+
+
+def delete_session_from_game(game_name, session_index, data_with_indices, data_storage=None):
+    """Remove a session from a game and roll back its aggregate stats.
+
+    This is the inverse of ``add_manual_session_to_game``: it pops the session
+    at ``session_index`` and subtracts that session's duration from the game's
+    stored total time (``game_data[3]``). Without this, deleting a session left
+    the total play time unchanged because the total is a cumulative value that
+    was only ever incremented on add.
+
+    The total is floored at zero so an oversized/corrupt duration can never push
+    it negative (the total may also include a manual baseline the user entered
+    before tracking). The last-played date (``game_data[6]``) is recomputed from
+    the remaining sessions; if no sessions remain it is left untouched, since the
+    original value may predate session tracking and we have nothing to derive it
+    from.
+
+    Returns the removed session dict on success, or ``None`` if the game or the
+    session index could not be found.
+    """
+    for idx, (original_idx, game_data) in enumerate(data_with_indices):
+        if game_data[0] != game_name:
+            continue
+
+        sessions = game_data[7] if len(game_data) > 7 else None
+        if not sessions or not (0 <= session_index < len(sessions)):
+            return None
+
+        removed_session = sessions.pop(session_index)
+
+        # Roll back the game's total time by the removed session's duration.
+        try:
+            duration_str = removed_session.get('duration', '00:00:00')
+            session_duration = timedelta()
+            if isinstance(duration_str, str):
+                parts = duration_str.split(':')
+                if len(parts) == 3:
+                    h, m, s = map(int, parts)
+                    session_duration = timedelta(hours=h, minutes=m, seconds=s)
+
+            # Parse the current stored total (mirrors add_manual_session_to_game).
+            current_time_str = game_data[3]
+            if isinstance(current_time_str, timedelta):
+                current_time = current_time_str
+            elif current_time_str:
+                try:
+                    h2, m2, s2 = map(int, current_time_str.split(':'))
+                    current_time = timedelta(hours=h2, minutes=m2, seconds=s2)
+                except ValueError:
+                    current_time = timedelta()
+            else:
+                current_time = timedelta()
+
+            # Subtract, flooring at zero so the total never goes negative.
+            new_total_time = max(timedelta(), current_time - session_duration)
+            game_data[3] = format_timedelta_with_seconds(new_total_time)
+
+            # Roll the last-played date back to the newest remaining session.
+            latest_end_time = get_latest_session_end_time(game_data[7])
+            if latest_end_time:
+                game_data[6] = latest_end_time.strftime('%Y-%m-%d %H:%M:%S')
+
+        except Exception as e:
+            print(f"Error updating game time after deleting session: {str(e)}")
+
+        # Update the full dataset when modifying filtered data.
+        if data_storage:
+            for i, (storage_idx, _) in enumerate(data_storage):
+                if storage_idx == original_idx:
+                    data_storage[i] = (original_idx, game_data)
+                    break
+
+        return removed_session
+
+    return None
 
 
 def find_most_active_period(sessions, window_months=1):

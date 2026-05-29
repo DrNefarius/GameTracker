@@ -23,6 +23,7 @@ from ui_components import (
 from session_management import (
     extract_all_sessions, calculate_session_statistics,
     get_game_sessions, format_session_for_display, get_status_history,
+    delete_session_from_game,
     format_status_history_for_display, display_all_game_notes, show_session_feedback_popup,
     migrate_all_game_sessions, create_github_contributions_canvas, setup_contributions_tooltip_callback
 )
@@ -934,10 +935,9 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                             elif delete_choice == "Delete Entire Session":
                                 session_delete_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
                                 if sg.popup_yes_no("Are you sure you want to delete this session?", title="Confirm Deletion", icon='gameslisticon.ico', location=session_delete_location) == "Yes":
-                                    # Get the game's sessions
-                                    game_sessions = get_game_sessions(data_with_indices, selected_game)
-                                    # Remove the session using the original index
-                                    game_sessions.pop(original_session_index)
+                                    # Remove the session and roll back the game's total
+                                    # play time (and last-played date) by its duration.
+                                    delete_session_from_game(selected_game, original_session_index, data_with_indices, data_storage)
                                     # Update the sessions table
                                     update_statistics_tab(window, data_with_indices, selected_game, update_game_list=False)
                                     # Save changes
@@ -968,10 +968,9 @@ def handle_session_table_click(values, selected_game, data_with_indices, window,
                         elif feedback_action == "Delete":
                             final_delete_location = calculate_popup_center_location(window, popup_width=400, popup_height=150)
                             if sg.popup_yes_no("Are you sure you want to delete this session?", title="Confirm Deletion", icon='gameslisticon.ico', location=final_delete_location) == "Yes":
-                                # Get the game's sessions
-                                game_sessions = get_game_sessions(data_with_indices, selected_game)
-                                # Remove the session using the original index
-                                game_sessions.pop(original_session_index)
+                                # Remove the session and roll back the game's total
+                                # play time (and last-played date) by its duration.
+                                delete_session_from_game(selected_game, original_session_index, data_with_indices, data_storage)
                                 # Update the sessions table
                                 update_statistics_tab(window, data_with_indices, selected_game, update_game_list=False)
                                 # Save changes

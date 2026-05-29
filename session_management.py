@@ -20,9 +20,10 @@ from session_data import (
     get_latest_session_end_time, 
     extract_all_sessions, 
     calculate_session_statistics, 
-    get_game_sessions, 
-    get_status_history, 
-    add_manual_session_to_game, 
+    get_game_sessions,
+    get_status_history,
+    add_manual_session_to_game,
+    delete_session_from_game,
     find_most_active_period
 )
 from session_ui import (
