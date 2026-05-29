@@ -13,7 +13,7 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 import numpy as np
 from datetime import timedelta, datetime
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 from utilities import format_timedelta_with_seconds, iter_game_rows
 
@@ -47,6 +47,34 @@ def new_chart_figure(figsize):
     FigureCanvasAgg(fig)
     ax = fig.add_subplot(1, 1, 1)
     return fig, ax
+
+
+def _unique_chart_labels(names, max_len=20):
+    """Shorten long names for a chart axis without two entries colliding.
+
+    Games that share a long common prefix - e.g. 'The Legend of Zelda: Breath
+    of the Wild' and 'The Legend of Zelda: Tears of the Kingdom', or several
+    'Xenoblade Chronicles ...' titles - head-truncate to identical strings.
+    Identical labels are a problem on a categorical bar axis: matplotlib maps
+    equal labels to the SAME position, stacking the bars (and their value
+    labels) on top of each other. When a head-truncation collides we fall back
+    to a head+tail (middle ellipsis) form that keeps the distinguishing end of
+    the name.
+    """
+    def head(n):
+        return n if len(n) <= max_len else n[:max_len] + '...'
+
+    def middle(n):
+        if len(n) <= max_len:
+            return n
+        head_len = max(1, max_len * 2 // 3)
+        tail_len = max(1, max_len - head_len)
+        return n[:head_len] + '...' + n[-tail_len:]
+
+    labels = [head(n) for n in names]
+    collisions = {lab for lab, count in Counter(labels).items() if count > 1}
+    return [middle(orig) if lab in collisions else lab
+            for orig, lab in zip(names, labels)]
 
 
 # Legacy helper: still used by session_visualizations.py and session_management.py
@@ -200,9 +228,17 @@ def create_playtime_distribution(data):
     with chart_rc_scope():
         fig, ax = new_chart_figure((5, 4))
         if top_games:
-            names = [item[0][:20] + '...' if len(item[0]) > 20 else item[0] for item in top_games]
+            names = _unique_chart_labels([item[0] for item in top_games], max_len=20)
             times = [item[1] / 3600 for item in top_games]
-            bars = ax.barh(names, times, color='#6f42c1')
+            # Plot against explicit numeric y-positions rather than the names.
+            # matplotlib treats bar labels as categories, so two games whose
+            # (truncated) names are equal would be drawn at the SAME y-position,
+            # stacking the bars and their value labels on top of each other.
+            # Explicit positions guarantee exactly one row per game.
+            y_pos = list(range(len(top_games)))
+            bars = ax.barh(y_pos, times, color='#6f42c1')
+            ax.set_yticks(y_pos)
+            ax.set_yticklabels(names)
             ax.set_xlabel('Hours Played', fontsize=10)
             ax.set_title('Top Games by Playtime', fontsize=12)
             ax.tick_params(axis='both', which='major', labelsize=8)
