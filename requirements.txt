@@ -1,6 +1,14 @@
 # Games List Manager Dependencies
 
-# Core GUI framework (version 4.x only - version 5.x has breaking changes)
+# --- Version2 GUI framework: Flet (Flutter). Pinned: the 0.8x API differs
+#     significantly between minor releases, so keep this narrow.
+flet>=0.85,<0.86
+# Prebuilt Flutter desktop client - required for `flet run` / `python app_flet.py`
+# to open a native window (not pulled in automatically by `flet`).
+flet-desktop>=0.85,<0.86
+
+# Legacy GUI framework (deprecated). Still imported by the old PySimpleGUI UI
+# during the Version2 migration; removed once the Flet UI reaches parity.
 PySimpleGUI>=4.60.0,<5.0.0
 
 # Data visualization
