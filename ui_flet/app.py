@@ -8,8 +8,11 @@ import flet as ft
 from config import save_config
 from core.services import GameLibraryService
 from ui_flet import theme
+from ui_flet import help_view
 from ui_flet.games_view import GamesView
 from ui_flet.game_dialog import open_game_dialog, confirm_delete
+from ui_flet.summary_view import SummaryView
+from ui_flet.igdb_view import open_igdb_settings_dialog
 
 
 def _placeholder(icon, title):
@@ -76,6 +79,7 @@ def main(page: ft.Page):
                        on_done=lambda: (games_view.refresh(), snack("Game deleted")))
 
     games_view = GamesView(page, service, on_edit=do_edit, on_delete=do_delete, on_add=do_add)
+    summary_view = SummaryView(page, service)
 
     # ---- file operations (FilePicker methods are async) -----------------
     def _picked_path(result):
@@ -158,6 +162,29 @@ def main(page: ft.Page):
                 ft.IconButton(ft.Icons.FOLDER_OPEN, tooltip="Open .gmd", on_click=do_open),
                 ft.IconButton(ft.Icons.SAVE_AS, tooltip="Save As", on_click=do_save_as),
                 ft.IconButton(ft.Icons.UPLOAD_FILE, tooltip="Import Excel", on_click=do_import),
+                ft.IconButton(ft.Icons.CLOUD_SYNC, tooltip="IGDB Settings",
+                              on_click=lambda e: open_igdb_settings_dialog(page, service)),
+                ft.PopupMenuButton(
+                    icon=ft.Icons.HELP_OUTLINE,
+                    tooltip="Help",
+                    items=[
+                        ft.PopupMenuItem(content=ft.Text("User Guide"),
+                                         on_click=lambda e: help_view.open_user_guide(page)),
+                        ft.PopupMenuItem(content=ft.Text("Feature Tour"),
+                                         on_click=lambda e: help_view.open_feature_tour(page)),
+                        ft.PopupMenuItem(content=ft.Text("Data Format"),
+                                         on_click=lambda e: help_view.open_data_format_info(page)),
+                        ft.PopupMenuItem(content=ft.Text("Troubleshooting"),
+                                         on_click=lambda e: help_view.open_troubleshooting(page)),
+                        ft.PopupMenuItem(content=ft.Text("Release Notes"),
+                                         on_click=lambda e: help_view.open_release_notes(page)),
+                        ft.PopupMenuItem(content=ft.Text("Report a Bug"),
+                                         on_click=lambda e: help_view.open_bug_report_info(page)),
+                        ft.PopupMenuItem(),
+                        ft.PopupMenuItem(content=ft.Text("About GameTracker"),
+                                         on_click=lambda e: help_view.open_about_dialog(page)),
+                    ],
+                ),
                 theme_btn,
             ],
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -167,13 +194,16 @@ def main(page: ft.Page):
     # ---- navigation + content swap --------------------------------------
     pages = [
         games_view.control,
-        _placeholder(ft.Icons.INSIGHTS, "Summary"),
+        summary_view.control,
         _placeholder(ft.Icons.BAR_CHART, "Statistics"),
     ]
     content_area = ft.Container(content=pages[0], expand=True, padding=12)
 
     def on_nav_change(e):
-        content_area.content = pages[e.control.selected_index]
+        idx = e.control.selected_index
+        content_area.content = pages[idx]
+        if idx == 1:
+            summary_view.refresh()   # regenerate charts from current data
         page.update()
 
     # Stretch the games table to fill the width, and keep it responsive.
