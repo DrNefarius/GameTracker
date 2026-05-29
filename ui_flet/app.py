@@ -176,6 +176,18 @@ def main(page: ft.Page):
         content_area.content = pages[e.control.selected_index]
         page.update()
 
+    # Stretch the games table to fill the width, and keep it responsive.
+    # Subtract the nav rail + divider + content padding + scrollbar slack.
+    _CHROME_W = 120
+
+    def apply_table_width(total_width):
+        games_view.set_table_width(max(420, (total_width or 1200) - _CHROME_W))
+
+    def on_resize(e):
+        apply_table_width(e.width)
+
+    page.on_resize = on_resize
+
     rail = ft.NavigationRail(
         selected_index=0,
         label_type=ft.NavigationRailLabelType.ALL,
@@ -202,3 +214,6 @@ def main(page: ft.Page):
             spacing=0,
         )
     )
+
+    # Initial table width (page.width may not be known until the first resize).
+    apply_table_width(getattr(page, "width", None) or 1200)

@@ -316,6 +316,19 @@ class GamesView:
         if self._is_mounted():
             self.page.update()
 
+    def set_table_width(self, width):
+        """Stretch the DataTable to fill the available horizontal space.
+
+        Without an explicit width the table is laid out with unbounded width and
+        shrinks to its content; giving it a bounded width makes it span the area
+        and distribute the columns. Called on first layout and on window resize.
+        """
+        if not width or width <= 0:
+            return
+        self.table.width = width
+        if self._is_mounted():
+            self.table.update()
+
     def _is_mounted(self):
         if self.page is None:
             return False
