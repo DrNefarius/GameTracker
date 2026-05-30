@@ -47,6 +47,7 @@ refreshes. Delete is terminal: it closes everything and only calls
 Public entry point: ``open_game_hub(page, service, orig_idx, on_changed=None)``.
 """
 
+import asyncio
 import threading
 import time
 from datetime import datetime, timedelta
@@ -58,7 +59,11 @@ from utilities import format_timedelta_with_seconds
 from session_data import add_manual_session_to_game
 from ui_flet import theme
 from ui_flet.game_dialog import open_game_dialog, confirm_delete
-from ui_flet.session_dialogs import open_manual_session_dialog, open_feedback_dialog
+from ui_flet.session_dialogs import (
+    open_manual_session_dialog,
+    open_feedback_dialog,
+    open_session_actions_dialog,
+)
 
 # ``cover_cache_path`` is a pure local-path resolver (no network); we only show
 # a cover when its PNG already exists on disk. Imported defensively so the hub
@@ -227,8 +232,7 @@ class GameHub:
         self._timer_elapsed = timedelta(0)     # accumulated play time
         self._timer_start_monotonic = 0.0      # time.time() baseline when running
         self._session_start_iso = None         # ISO of the first Play
-        self._timer_thread = None
-        self._timer_stop_event = None
+        self._ticker_active = False            # an async tick loop is running
 
         # ---- controls referenced by refresh()/timer ----------------------
         self.header_holder = ft.Container()
@@ -469,14 +473,16 @@ class GameHub:
             except (ValueError, TypeError):
                 return datetime.min
 
-        self.sessions_table.rows = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(_format_session_start(s))),
-                ft.DataCell(ft.Text(str(s.get("duration", "00:00:00")))),
-                ft.DataCell(ft.Text(_session_feedback_summary(s))),
-            ])
-            for s in sorted(sessions, key=_skey, reverse=True)
-        ]
+        session_rows = []
+        for s in sorted(sessions, key=_skey, reverse=True):
+            def _open(e, sess=s):
+                self._on_session_tap(sess)
+            session_rows.append(ft.DataRow(cells=[
+                ft.DataCell(ft.Text(_format_session_start(s)), on_tap=_open),
+                ft.DataCell(ft.Text(str(s.get("duration", "00:00:00"))), on_tap=_open),
+                ft.DataCell(ft.Text(_session_feedback_summary(s)), on_tap=_open),
+            ]))
+        self.sessions_table.rows = session_rows
 
         # status-history table (chronological)
         history = self.row[8] if len(self.row) > 8 and self.row[8] else []
@@ -510,27 +516,32 @@ class GameHub:
     def _render_elapsed(self):
         self.elapsed_text.value = format_timedelta_with_seconds(self._current_elapsed())
 
-    def _timer_loop(self, stop_event):
-        """Background thread: repaint the elapsed label ~once a second."""
-        while not stop_event.is_set():
-            self._render_elapsed()
-            self._update()
-            stop_event.wait(1.0)
+    async def _ticker(self):
+        """Repaint the elapsed label ~once a second on Flet's event loop.
+
+        This MUST run via ``page.run_task`` (not a plain thread): in Flet 0.85
+        ``page.update()`` only propagates from the event loop, which is why the
+        previous background-thread timer updated the display only on Pause/Stop.
+        """
+        try:
+            while self._ticker_active and self._timer_running:
+                self._render_elapsed()
+                try:
+                    self.page.update()
+                except Exception:  # pragma: no cover - defensive
+                    pass
+                await asyncio.sleep(1)
+        finally:
+            self._ticker_active = False
 
     def _start_timer_thread(self):
-        if self._timer_thread and self._timer_thread.is_alive():
+        if self._ticker_active or self.page is None:
             return
-        self._timer_stop_event = threading.Event()
-        self._timer_thread = threading.Thread(
-            target=self._timer_loop, args=(self._timer_stop_event,), daemon=True
-        )
-        self._timer_thread.start()
+        self._ticker_active = True
+        self.page.run_task(self._ticker)
 
     def _stop_timer_thread(self):
-        if self._timer_stop_event:
-            self._timer_stop_event.set()
-        self._timer_thread = None
-        self._timer_stop_event = None
+        self._ticker_active = False
 
     def _on_play(self, _):
         with self._timer_lock:
@@ -665,6 +676,14 @@ class GameHub:
         self._close()
         if self.on_view_statistics and name:
             self.on_view_statistics(name)
+
+    def _on_session_tap(self, session):
+        # Single-dialog model: pop the hub, manage the session, then re-open a
+        # fresh hub so the sessions table + totals reflect any change.
+        self.page.pop_dialog()
+        self._stop_timer_thread()
+        open_session_actions_dialog(self.page, self.service, self.game_name, session,
+                                    on_done=self._reopen_after_child)
 
     def _on_remove_metadata(self, _):
         row = list(self.service.get_game(self.orig_idx) or [])

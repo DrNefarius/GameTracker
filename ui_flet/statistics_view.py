@@ -41,6 +41,7 @@ from session_visualizations import (
 from utilities import format_timedelta_with_seconds
 from pause_utils import total_session_pause_timedelta
 from core.ratings_logic import format_rating, get_session_rating_summary
+from ui_flet.session_dialogs import open_session_actions_dialog
 
 ALL_GAMES = "__all__"
 _HEATMAP_WEEKS = 53
@@ -286,6 +287,8 @@ class StatisticsView:
             options=[],
             on_select=self._on_game_select,
             width=360,
+            editable=True,        # type to filter (searchable, like the legacy list)
+            enable_filter=True,
         )
 
         # ---- contributions heatmap ----------------------------------------
@@ -705,14 +708,17 @@ class StatisticsView:
             except (ValueError, TypeError):
                 return datetime.min
 
-        self.sessions_table.rows = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(_format_session_start(s))),
-                ft.DataCell(ft.Text(str(s.get("duration", "00:00:00")))),
-                ft.DataCell(ft.Text(_session_details_summary(s))),
-            ])
-            for s in sorted(sessions, key=_sort_key, reverse=True)
-        ]
+        session_rows = []
+        for s in sorted(sessions, key=_sort_key, reverse=True):
+            def _open(e, sess=s):
+                open_session_actions_dialog(self.page, self.service, self.selected_game,
+                                            sess, on_done=self.refresh)
+            session_rows.append(ft.DataRow(cells=[
+                ft.DataCell(ft.Text(_format_session_start(s)), on_tap=_open),
+                ft.DataCell(ft.Text(str(s.get("duration", "00:00:00"))), on_tap=_open),
+                ft.DataCell(ft.Text(_session_details_summary(s)), on_tap=_open),
+            ]))
+        self.sessions_table.rows = session_rows
         self.status_table.rows = [
             ft.DataRow(cells=[
                 ft.DataCell(ft.Text(_format_status_timestamp(c))),

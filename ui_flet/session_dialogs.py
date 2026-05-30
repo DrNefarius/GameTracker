@@ -38,7 +38,11 @@ from constants import (
     POSITIVE_TAGS,
 )
 from utilities import format_timedelta_with_seconds
-from session_data import add_manual_session_to_game
+from session_data import (
+    add_manual_session_to_game,
+    get_game_sessions,
+    delete_session_from_game,
+)
 
 
 def _safe_update(control):
@@ -459,3 +463,99 @@ def open_manual_session_dialog(page, service, game_name, on_saved=None):
     )
     page.show_dialog(dialog)
     return dialog
+
+
+# --------------------------------------------------------------------------- #
+# Public: per-session actions (view / edit feedback / delete) - mirrors the
+# legacy session-table click popup.
+# --------------------------------------------------------------------------- #
+def open_session_actions_dialog(page, service, game_name, session, on_done=None):
+    """Manage one session: view its feedback, edit/remove feedback, or delete it.
+
+    Designed to never stack two dialogs at once (Flet 0.85 shows one at a time):
+    every terminal path pops its own dialog and then calls ``on_done()`` exactly
+    once, so the caller (e.g. the Game Hub) can restore its own view afterwards.
+    ``session`` is the live dict inside the game's session list (mutated in place
+    for feedback edits); deletion is by identity via ``delete_session_from_game``.
+    """
+    def _finish():
+        if on_done:
+            on_done()
+
+    fb = session.get("feedback") or {}
+    rating = fb.get("rating") or {}
+    stars = rating.get("stars")
+    star_str = ("★" * int(stars) + "☆" * (5 - int(stars))) if stars else ""
+
+    info = [
+        ft.Text(f"Start: {session.get('start', '—')}", size=13),
+        ft.Text(f"Duration: {session.get('duration', '00:00:00')}", size=13),
+    ]
+    if star_str:
+        info.append(ft.Text(f"Rating: {star_str}", size=13))
+    if rating.get("tags"):
+        info.append(ft.Text("Tags: " + ", ".join(rating["tags"]), size=12,
+                            color=ft.Colors.ON_SURFACE_VARIANT))
+    info.append(ft.Text("Feedback: " + (fb.get("text") or "—"), size=12,
+                        color=ft.Colors.ON_SURFACE_VARIANT))
+
+    def _edit_feedback(_):
+        page.pop_dialog()
+
+        def _res(new_fb):
+            if new_fb is not None:
+                session["feedback"] = new_fb
+                service.save()
+            _finish()
+
+        open_feedback_dialog(page, existing=(fb or None), on_result=_res)
+
+    def _remove_feedback(_):
+        session.pop("feedback", None)
+        service.save()
+        page.pop_dialog()
+        _finish()
+
+    def _delete_session(_):
+        page.pop_dialog()
+        sessions = get_game_sessions(service.data, game_name) or []
+        index = next((i for i, s in enumerate(sessions) if s is session), None)
+
+        def _confirm(_):
+            page.pop_dialog()
+            if index is not None:
+                delete_session_from_game(game_name, index, service.data)
+                service.save()
+            _finish()
+
+        page.show_dialog(ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Delete session"),
+            content=ft.Text("Delete this session? This also reduces the game's "
+                            "recorded total play time."),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: (page.pop_dialog(), _finish())),
+                ft.ElevatedButton("Delete", icon=ft.Icons.DELETE_OUTLINE,
+                                  color=ft.Colors.WHITE, bgcolor=ft.Colors.RED,
+                                  on_click=_confirm),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        ))
+
+    buttons = [ft.ElevatedButton("Edit feedback", icon=ft.Icons.EDIT,
+                                 on_click=_edit_feedback)]
+    if fb:
+        buttons.append(ft.OutlinedButton("Remove feedback", icon=ft.Icons.CLEAR,
+                                         on_click=_remove_feedback))
+    buttons.append(ft.OutlinedButton("Delete session", icon=ft.Icons.DELETE_OUTLINE,
+                                     on_click=_delete_session))
+
+    page.show_dialog(ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Session"),
+        content=ft.Container(width=480, content=ft.Column(
+            [*info, ft.Divider(), ft.Row(buttons, wrap=True, spacing=8)],
+            tight=True, spacing=8)),
+        actions=[ft.TextButton("Close", on_click=lambda e: (page.pop_dialog(), _finish()))],
+        actions_alignment=ft.MainAxisAlignment.END,
+    ))
