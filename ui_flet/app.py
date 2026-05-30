@@ -12,7 +12,9 @@ from ui_flet import help_view
 from ui_flet.games_view import GamesView
 from ui_flet.game_dialog import open_game_dialog, confirm_delete
 from ui_flet.summary_view import SummaryView
+from ui_flet.statistics_view import StatisticsView
 from ui_flet.igdb_view import open_igdb_settings_dialog
+from ui_flet.watcher_view import open_watcher_settings_dialog
 
 
 def _placeholder(icon, title):
@@ -80,6 +82,7 @@ def main(page: ft.Page):
 
     games_view = GamesView(page, service, on_edit=do_edit, on_delete=do_delete, on_add=do_add)
     summary_view = SummaryView(page, service)
+    statistics_view = StatisticsView(page, service)
 
     # ---- file operations (FilePicker methods are async) -----------------
     def _picked_path(result):
@@ -164,6 +167,8 @@ def main(page: ft.Page):
                 ft.IconButton(ft.Icons.UPLOAD_FILE, tooltip="Import Excel", on_click=do_import),
                 ft.IconButton(ft.Icons.CLOUD_SYNC, tooltip="IGDB Settings",
                               on_click=lambda e: open_igdb_settings_dialog(page, service)),
+                ft.IconButton(ft.Icons.SETTINGS, tooltip="Process Watcher settings",
+                              on_click=lambda e: open_watcher_settings_dialog(page, service)),
                 ft.PopupMenuButton(
                     icon=ft.Icons.HELP_OUTLINE,
                     tooltip="Help",
@@ -195,7 +200,7 @@ def main(page: ft.Page):
     pages = [
         games_view.control,
         summary_view.control,
-        _placeholder(ft.Icons.BAR_CHART, "Statistics"),
+        statistics_view.control,
     ]
     content_area = ft.Container(content=pages[0], expand=True, padding=12)
 
@@ -203,7 +208,9 @@ def main(page: ft.Page):
         idx = e.control.selected_index
         content_area.content = pages[idx]
         if idx == 1:
-            summary_view.refresh()   # regenerate charts from current data
+            summary_view.refresh()      # regenerate charts from current data
+        elif idx == 2:
+            statistics_view.refresh()   # recompute stats + repopulate pickers
         page.update()
 
     # Stretch the games table to fill the width, and keep it responsive.
