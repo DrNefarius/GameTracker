@@ -155,6 +155,20 @@ def _sessions_for_day(data, target_date, game_name=None):
     return out
 
 
+def _normalize_picked_date(value):
+    """Recover the calendar date a DatePicker user selected.
+
+    Flet's DatePicker returns a UTC-based datetime, so e.g. picking Apr 30 in a
+    UTC+2 locale arrives as Apr 29 22:00. Rounding to the nearest day fixes the
+    off-by-one for any timezone offset under 12h.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return (value + timedelta(hours=12)).date()
+    return value
+
+
 def _intensity_color(count):
     if count <= 0:
         return ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE)
@@ -253,7 +267,7 @@ def open_date_activity_dialog(page, data, target_date, game_name=None):
         actions=[
             ft.TextButton("◀ Previous day", on_click=lambda e: _go(-1)),
             ft.TextButton("Next day ▶", on_click=lambda e: _go(1)),
-            ft.ElevatedButton("Close", on_click=lambda e: page.pop_dialog()),
+            ft.Button("Close", on_click=lambda e: page.pop_dialog()),
         ],
         actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
     )
@@ -623,10 +637,11 @@ class StatisticsView:
 
         def on_pick(e):
             value = e.control.value
-            if value:
-                day = value.date() if hasattr(value, "date") else value
-                open_date_activity_dialog(self.page, self.service.data, day,
-                                          self.selected_game)
+            if not value:
+                return
+            day = _normalize_picked_date(value)
+            open_date_activity_dialog(self.page, self.service.data, day,
+                                      self.selected_game)
 
         self.page.show_dialog(
             ft.DatePicker(

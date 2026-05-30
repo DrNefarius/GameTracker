@@ -137,7 +137,7 @@ def _build_editable_list(values, hint_text, empty_text):
         _safe_update(add_field)
         _rebuild()
 
-    add_button = ft.ElevatedButton("Add", icon=ft.Icons.ADD, on_click=_add)
+    add_button = ft.Button("Add", icon=ft.Icons.ADD, on_click=_add)
     add_field.on_submit = _add
 
     _rebuild()
@@ -402,7 +402,7 @@ def open_watcher_settings_dialog(page, service, on_saved=None):
         content=content,
         actions=[
             ft.TextButton("Cancel", on_click=lambda _: page.pop_dialog()),
-            ft.ElevatedButton("Save", icon=ft.Icons.SAVE, on_click=on_save),
+            ft.Button("Save", icon=ft.Icons.SAVE, on_click=on_save),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )

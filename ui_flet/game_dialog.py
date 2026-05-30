@@ -124,7 +124,7 @@ def open_game_dialog(page, service, orig_idx=None, on_saved=None):
         ),
         actions=[
             ft.TextButton("Cancel", on_click=lambda _: page.pop_dialog()),
-            ft.ElevatedButton("Save", icon=ft.Icons.SAVE, on_click=on_save),
+            ft.Button("Save", icon=ft.Icons.SAVE, on_click=on_save),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )
@@ -154,7 +154,7 @@ def open_status_dialog(page, service, orig_idx, on_done=None):
         content=ft.Container(width=260, content=dd),
         actions=[
             ft.TextButton("Cancel", on_click=lambda _: page.pop_dialog()),
-            ft.ElevatedButton("OK", on_click=_save),
+            ft.Button("OK", on_click=_save),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     ))
@@ -178,7 +178,7 @@ def confirm_delete(page, service, orig_idx, on_done=None):
         content=ft.Text(f"Are you sure you want to delete '{game_name}'?"),
         actions=[
             ft.TextButton("Cancel", on_click=lambda _: page.pop_dialog()),
-            ft.ElevatedButton(
+            ft.Button(
                 "Delete",
                 icon=ft.Icons.DELETE,
                 color=ft.Colors.WHITE,

@@ -178,7 +178,7 @@ def open_igdb_settings_dialog(page, service, on_saved=None):
         if on_saved:
             on_saved()
 
-    test_button = ft.ElevatedButton(
+    test_button = ft.Button(
         "Test connection",
         icon=ft.Icons.WIFI_TETHERING,
         on_click=on_test,
@@ -191,7 +191,7 @@ def open_igdb_settings_dialog(page, service, on_saved=None):
         actions=[
             test_button,
             ft.TextButton("Cancel", on_click=lambda _: page.pop_dialog()),
-            ft.ElevatedButton("Save", icon=ft.Icons.SAVE, on_click=on_save),
+            ft.Button("Save", icon=ft.Icons.SAVE, on_click=on_save),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )

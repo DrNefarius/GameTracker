@@ -716,7 +716,7 @@ def _build_bug_report_info_content() -> ft.Control:
                     selectable=True,
                     on_tap_link=lambda e: webbrowser.open(e.data),
                 ),
-                ft.ElevatedButton(
+                ft.Button(
                     "Open GitHub Repository",
                     icon=ft.Icons.OPEN_IN_NEW,
                     on_click=lambda _: webbrowser.open(GITHUB_URL),

@@ -240,11 +240,11 @@ class GameHub:
         self.elapsed_text = ft.Text("00:00:00", size=34, weight=ft.FontWeight.BOLD,
                                     font_family="monospace")
         self.total_time_text = ft.Text("", size=13, color=ft.Colors.ON_SURFACE_VARIANT)
-        self.play_btn = ft.ElevatedButton("Play", icon=ft.Icons.PLAY_ARROW,
+        self.play_btn = ft.Button("Play", icon=ft.Icons.PLAY_ARROW,
                                           on_click=self._on_play)
-        self.pause_btn = ft.ElevatedButton("Pause", icon=ft.Icons.PAUSE,
+        self.pause_btn = ft.Button("Pause", icon=ft.Icons.PAUSE,
                                            on_click=self._on_pause, disabled=True)
-        self.stop_btn = ft.ElevatedButton("Stop", icon=ft.Icons.STOP,
+        self.stop_btn = ft.Button("Stop", icon=ft.Icons.STOP,
                                           on_click=self._on_stop, disabled=True)
 
         self.sessions_table = ft.DataTable(
