@@ -260,6 +260,8 @@ class StatisticsView:
         self.service = service
         self.selected_game = None            # None == All games
         self.selected_chart = _CHART_OPTIONS[0][0]
+        self.heatmap_year = None             # None == rolling last 12 months
+        self.dist_type = "line"              # line / scatter / box / histogram
         self._tmp_dir = tempfile.gettempdir()
 
         # ---- overall stats header -----------------------------------------
@@ -289,12 +291,18 @@ class StatisticsView:
         # ---- contributions heatmap ----------------------------------------
         self.heatmap_caption = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         self.heatmap_host = ft.Container(content=ft.Text("…"))
+        self.year_dd = ft.Dropdown(
+            label="Period", value="rolling", width=170, dense=True,
+            options=[ft.dropdown.Option(key="rolling", text="Last 12 months")],
+            on_select=self._on_year_select,
+        )
         heatmap_section = ft.Column(
             [
                 ft.Row(
                     [
                         ft.Text("Contributions", size=16, weight=ft.FontWeight.W_600,
                                 expand=True),
+                        self.year_dd,
                         ft.OutlinedButton("View date activity…", icon=ft.Icons.EVENT,
                                           on_click=self._open_date_picker),
                     ],
@@ -349,10 +357,12 @@ class StatisticsView:
             [
                 self.game_totals,
                 ft.Text("Activity log (sessions)", size=15, weight=ft.FontWeight.W_600),
-                ft.Column([self.sessions_table], scroll=ft.ScrollMode.AUTO),
+                ft.Container(height=300,
+                             content=ft.Column([self.sessions_table], scroll=ft.ScrollMode.AUTO)),
                 ft.Divider(height=1),
                 ft.Text("Status history", size=15, weight=ft.FontWeight.W_600),
-                ft.Column([self.status_table], scroll=ft.ScrollMode.AUTO),
+                ft.Container(height=200,
+                             content=ft.Column([self.status_table], scroll=ft.ScrollMode.AUTO)),
             ],
             spacing=10, visible=False,
         )
@@ -369,6 +379,13 @@ class StatisticsView:
             options=[ft.dropdown.Option(key=k, text=label) for k, label, _ in _CHART_OPTIONS],
             on_select=self._on_chart_select,
             width=360,
+        )
+        self.dist_type_dd = ft.Dropdown(
+            label="Distribution type", value="line", width=190, dense=True,
+            options=[ft.dropdown.Option(key=k, text=t) for k, t in
+                     (("line", "Line Chart"), ("scatter", "Scatter Plot"),
+                      ("box", "Box Plot"), ("histogram", "Histogram"))],
+            on_select=self._on_dist_type_select,
         )
         self._chart_host = ft.Container(
             content=self._chart_placeholder("Loading chart…"),
@@ -389,7 +406,8 @@ class StatisticsView:
                 self._game_detail,
                 ft.Divider(height=1),
                 ft.Text("Charts", size=16, weight=ft.FontWeight.W_600),
-                self.chart_dd,
+                ft.Row([self.chart_dd, self.dist_type_dd], spacing=12, wrap=True,
+                       vertical_alignment=ft.CrossAxisAlignment.END),
                 self._chart_host,
             ],
             expand=True, scroll=ft.ScrollMode.AUTO, spacing=12,
@@ -478,6 +496,26 @@ class StatisticsView:
         if self._is_mounted():
             self.page.update()
 
+    def _on_year_select(self, _):
+        value = self.year_dd.value
+        self.heatmap_year = None if value in (None, "rolling") else int(value)
+        self._render_contributions()
+        if self._is_mounted():
+            self.page.update()
+
+    def _on_dist_type_select(self, _):
+        self.dist_type = self.dist_type_dd.value or "line"
+        if self.selected_chart in ("all_distribution", "game_distribution"):
+            self._render_chart()
+            if self._is_mounted():
+                self.page.update()
+
+    def select_game(self, name):
+        """Programmatically focus a game (used by Game Hub's 'View Statistics')."""
+        self.selected_game = name
+        self.game_dd.value = name
+        self.refresh()
+
     def _open_date_picker(self, _):
         """Pick any date and open its daily-activity dialog (current scope)."""
         if self.page is None:
@@ -540,6 +578,7 @@ class StatisticsView:
     def _render_contributions(self):
         sessions = _sessions_for_scope(self.service.data, self.selected_game)
         by_day = defaultdict(lambda: [0, 0.0])
+        years = set()
         for s in sessions:
             start = s.get("start")
             if not start:
@@ -550,19 +589,34 @@ class StatisticsView:
                 continue
             by_day[d][0] += 1
             by_day[d][1] += _duration_to_timedelta(s.get("duration")).total_seconds()
+            years.add(d.year)
 
-        end = date.today()
-        start_day = end - timedelta(days=_HEATMAP_WEEKS * 7 - 1)
-        start_day -= timedelta(days=start_day.weekday())  # align to Monday
+        # Year picker: "Last 12 months" + each year with data (preserve selection).
+        self.year_dd.options = [ft.dropdown.Option(key="rolling", text="Last 12 months")] + [
+            ft.dropdown.Option(key=str(y), text=str(y)) for y in sorted(years, reverse=True)
+        ]
+        if self.heatmap_year is not None and self.heatmap_year not in years:
+            self.heatmap_year = None
+            self.year_dd.value = "rolling"
 
+        if self.heatmap_year is None:
+            window_end = date.today()
+            window_start = window_end - timedelta(days=_HEATMAP_WEEKS * 7 - 1)
+            period = "last 12 months"
+        else:
+            window_start = date(self.heatmap_year, 1, 1)
+            window_end = date(self.heatmap_year, 12, 31)
+            period = str(self.heatmap_year)
+
+        grid_start = window_start - timedelta(days=window_start.weekday())  # align Monday
         week_cols = []
-        cur = start_day
-        while cur <= end:
+        cur = grid_start
+        while cur <= window_end:
             cells = []
             for wd in range(7):
                 day = cur + timedelta(days=wd)
-                if day > end:
-                    cells.append(ft.Container(width=13, height=13))
+                if day < window_start or day > window_end:
+                    cells.append(ft.Container(width=13, height=13))  # padding
                 else:
                     cnt, secs = by_day.get(day, [0, 0.0])
                     cells.append(self._day_cell(day, cnt, secs))
@@ -571,11 +625,11 @@ class StatisticsView:
 
         self.heatmap_host.content = ft.Row(week_cols, spacing=3, tight=True)
         scope = self.selected_game or "All games"
-        active_days = sum(1 for v in by_day.values() if v[0] > 0)
+        active_days = sum(1 for d, v in by_day.items()
+                          if v[0] > 0 and window_start <= d <= window_end)
         self.heatmap_caption.value = (
-            f"{scope} · {start_day.isoformat()} → {end.isoformat()} · "
-            f"{active_days} active day{'s' if active_days != 1 else ''} "
-            f"(click a day for details)"
+            f"{scope} · {period} · {active_days} active day"
+            f"{'s' if active_days != 1 else ''} (click a day for details)"
         )
 
     def _render_rating_comparison(self):
@@ -685,7 +739,7 @@ class StatisticsView:
                 buf = create_session_timeline_chart(extract_all_sessions(self.service.data))
             elif kind == "all_distribution":
                 buf = create_session_distribution_chart(
-                    extract_all_sessions(self.service.data), chart_type="histogram")
+                    extract_all_sessions(self.service.data), chart_type=self.dist_type)
             elif kind == "game_timeline":
                 buf = create_session_timeline_chart(
                     get_game_sessions(self.service.data, self.selected_game),
@@ -693,7 +747,7 @@ class StatisticsView:
             elif kind == "game_distribution":
                 buf = create_session_distribution_chart(
                     get_game_sessions(self.service.data, self.selected_game),
-                    game_name=self.selected_game, chart_type="histogram")
+                    game_name=self.selected_game, chart_type=self.dist_type)
             elif kind == "game_status":
                 buf = create_status_timeline_chart(
                     get_status_history(self.service.data, self.selected_game),

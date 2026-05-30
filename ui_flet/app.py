@@ -73,10 +73,20 @@ def main(page: ft.Page):
         open_game_dialog(page, service, None,
                          on_saved=lambda: (games_view.refresh(), snack("Game added")))
 
+    def show_in_statistics(game_name):
+        # Switch to the Statistics tab and focus the given game (used by the
+        # Game Hub's "View Statistics" action). rail/pages/content_area are
+        # defined later in main(); resolved at call time.
+        rail.selected_index = 2
+        content_area.content = pages[2]
+        statistics_view.select_game(game_name)
+        page.update()
+
     def do_edit(orig_idx):
         # A row click / edit icon opens the full Game Hub (which itself offers
-        # Edit, Add session, Rate, Delete, and an inline timer).
-        open_game_hub(page, service, orig_idx, on_changed=games_view.refresh)
+        # Edit, Add session, Rate, View Statistics, Delete, and an inline timer).
+        open_game_hub(page, service, orig_idx, on_changed=games_view.refresh,
+                      on_view_statistics=show_in_statistics)
 
     def do_delete(orig_idx):
         confirm_delete(page, service, orig_idx,

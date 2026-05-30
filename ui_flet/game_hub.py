@@ -210,11 +210,12 @@ def _format_status_timestamp(change):
 class GameHub:
     """Owns one Game Hub dialog instance (its content + timer + refresh)."""
 
-    def __init__(self, page, service, orig_idx, on_changed=None):
+    def __init__(self, page, service, orig_idx, on_changed=None, on_view_statistics=None):
         self.page = page
         self.service = service
         self.orig_idx = orig_idx
         self.on_changed = on_changed
+        self.on_view_statistics = on_view_statistics
 
         # Current row snapshot (re-read from the service on every refresh()).
         self.row = service.get_game(orig_idx) or []
@@ -305,6 +306,8 @@ class GameHub:
                 ft.OutlinedButton("Add session", icon=ft.Icons.ADD,
                                   on_click=self._on_add_session),
                 ft.OutlinedButton("Rate", icon=ft.Icons.STAR, on_click=self._on_rate),
+                ft.OutlinedButton("View Statistics", icon=ft.Icons.BAR_CHART,
+                                  on_click=self._on_view_statistics),
                 ft.OutlinedButton("Delete", icon=ft.Icons.DELETE_OUTLINE,
                                   on_click=self._on_delete),
             ],
@@ -320,10 +323,12 @@ class GameHub:
                 actions_row,
                 ft.Divider(height=1),
                 ft.Text("Sessions", size=15, weight=ft.FontWeight.W_600),
-                ft.Column([self.sessions_table], scroll=ft.ScrollMode.AUTO),
+                ft.Container(height=240,
+                             content=ft.Column([self.sessions_table], scroll=ft.ScrollMode.AUTO)),
                 ft.Divider(height=1),
                 ft.Text("Status history", size=15, weight=ft.FontWeight.W_600),
-                ft.Column([self.status_table], scroll=ft.ScrollMode.AUTO),
+                ft.Container(height=160,
+                             content=ft.Column([self.status_table], scroll=ft.ScrollMode.AUTO)),
             ],
             spacing=14,
             scroll=ft.ScrollMode.AUTO,
@@ -604,7 +609,8 @@ class GameHub:
         guarantees the new row shape is reflected) and re-show it.
         """
         self._notify_changed()
-        GameHub(self.page, self.service, self.orig_idx, self.on_changed).open()
+        GameHub(self.page, self.service, self.orig_idx, self.on_changed,
+                self.on_view_statistics).open()
 
     def _on_edit(self, _):
         # Closing the hub first keeps a single dialog visible; the edit dialog
@@ -637,7 +643,8 @@ class GameHub:
                 self.service.update_game(self.orig_idx, row)
                 self.service.save()
                 self._notify_changed()
-            GameHub(self.page, self.service, self.orig_idx, self.on_changed).open()
+            GameHub(self.page, self.service, self.orig_idx, self.on_changed,
+                    self.on_view_statistics).open()
 
         self.page.pop_dialog()
         self._stop_timer_thread()
@@ -650,6 +657,14 @@ class GameHub:
         # an actual delete. We deliberately do NOT re-open the hub here.
         confirm_delete(self.page, self.service, self.orig_idx,
                        on_done=self._notify_changed)
+
+    def _on_view_statistics(self, _):
+        # Close the hub and hand off to the shell, which switches to the
+        # Statistics tab and selects this game.
+        name = self.game_name
+        self._close()
+        if self.on_view_statistics and name:
+            self.on_view_statistics(name)
 
     def _on_remove_metadata(self, _):
         row = list(self.service.get_game(self.orig_idx) or [])
@@ -701,13 +716,16 @@ class GameHub:
 # --------------------------------------------------------------------------- #
 # Public entry point
 # --------------------------------------------------------------------------- #
-def open_game_hub(page, service, orig_idx, on_changed=None):
+def open_game_hub(page, service, orig_idx, on_changed=None, on_view_statistics=None):
     """Open the Game Hub modal for ``orig_idx``.
 
     ``on_changed`` (optional) is called whenever the hub mutates the library
     (timer-stop session, edit, add-session, rate, delete, remove-metadata) so
-    the caller can refresh its games list. Returns the ``GameHub`` controller.
+    the caller can refresh its games list. ``on_view_statistics`` (optional) is
+    called with the game name when the user clicks "View Statistics". Returns
+    the ``GameHub`` controller.
     """
-    hub = GameHub(page, service, orig_idx, on_changed=on_changed)
+    hub = GameHub(page, service, orig_idx, on_changed=on_changed,
+                  on_view_statistics=on_view_statistics)
     hub.open()
     return hub
