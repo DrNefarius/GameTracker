@@ -131,6 +131,35 @@ def open_game_dialog(page, service, orig_idx=None, on_saved=None):
     page.show_dialog(dialog)
 
 
+def open_status_dialog(page, service, orig_idx, on_done=None):
+    """Quick 'Change Status' popup (mirrors clicking the legacy Status cell)."""
+    row = service.get_game(orig_idx)
+    current = row[4] if row and len(row) > 4 else STATUS_PENDING
+    dd = ft.Dropdown(
+        label="Status",
+        value=current,
+        options=[ft.dropdown.Option(key=s, text=s) for s in VALID_STATUSES],
+        width=240,
+    )
+
+    def _save(_):
+        service.set_status(orig_idx, dd.value)
+        page.pop_dialog()
+        if on_done:
+            on_done()
+
+    page.show_dialog(ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Change status"),
+        content=ft.Container(width=260, content=dd),
+        actions=[
+            ft.TextButton("Cancel", on_click=lambda _: page.pop_dialog()),
+            ft.ElevatedButton("OK", on_click=_save),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    ))
+
+
 def confirm_delete(page, service, orig_idx, on_done=None):
     """Confirm and delete a game; calls on_done() after deletion."""
     row = service.get_game(orig_idx)

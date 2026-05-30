@@ -106,15 +106,22 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
 
 ---
 
-## Phase-2 gaps to close before removing PySimpleGUI (Phase 5)
-1. ❌ Games list **Status-cell quick-change** popup.
-2. ❌ Statistics **"Gaming Heatmap" chart** + window-size & period navigation (`create_session_heatmap`).
-3. ❌ Statistics **"Add Session"** button for the selected game.
-4. ⚠️ Statistics **"View Activity Log"** dedicated notes view (decide: keep inline, or add the popup).
-5. ⚠️ **Word cloud** — confirm if it's a real surfaced feature; port or drop.
-6. ❌ Summary **"Total Play Time"** text (minor).
-7. ❌ View menu **Today's / Yesterday's Activity** quick entries (minor).
-8. ❌ Games list **row numbers** (cosmetic; optional).
+## Phase-2 gaps — STATUS (all closed)
+1. ✅ Games list **Status-cell quick-change** popup (click the Status badge).
+2. ✅ Statistics **"Gaming Heatmap" chart** + window-size (1/3/6/12 mo) & Prev/Next/Latest/Most-active nav.
+3. ✅ Statistics **"Add Session"** button for the selected game.
+4. ✅ Statistics **"View Activity Log"** — journal-style popup (all notes + status changes, chronological,
+   readable text). Inline/per-session feedback kept too.
+5. ⛔ **Word cloud** — dropped (confirmed unused in the legacy UI).
+6. ✅ Summary **"Total Play Time"** text.
+7. ✅ View menu **Today's / Yesterday's Activity** quick entries (Statistics contributions header).
+8. ✅ Games list **row numbers** ("#" column).
+
+### Phase-5 cleanup carried from these fixes
+- Relocate `create_session_heatmap` (and `create_github_contributions_canvas`) out of
+  `session_management.py` (which imports PySimpleGUI) into a GUI-free chart module. The new UI
+  currently reaches `create_session_heatmap` via a localized lazy import; this is the only place
+  `ui_flet` touches an sg-importing module, and it must be cut before sg is removed.
 
 ## Correctly deferred to Phase 3
 Discord toggle/presence · Watcher on/off + Rescan + detection/toasts/match-confirm + Link Executable ·

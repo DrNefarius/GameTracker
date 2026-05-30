@@ -41,6 +41,7 @@ from utilities import format_timedelta_with_seconds
 from session_data import (
     add_manual_session_to_game,
     get_game_sessions,
+    get_status_history,
     delete_session_from_game,
 )
 
@@ -557,5 +558,72 @@ def open_session_actions_dialog(page, service, game_name, session, on_done=None)
             [*info, ft.Divider(), ft.Row(buttons, wrap=True, spacing=8)],
             tight=True, spacing=8)),
         actions=[ft.TextButton("Close", on_click=lambda e: (page.pop_dialog(), _finish()))],
+        actions_alignment=ft.MainAxisAlignment.END,
+    ))
+
+
+# --------------------------------------------------------------------------- #
+# Public: read-only activity-log journal (all notes + status changes)
+# --------------------------------------------------------------------------- #
+def open_activity_log_dialog(page, service, game_name):
+    """Show a chronological, journal-style log of a game's sessions (with their
+    notes/ratings) interleaved with status changes - readable like a diary."""
+    sessions = get_game_sessions(service.data, game_name) or []
+    history = get_status_history(service.data, game_name) or []
+
+    def _parse(ts):
+        try:
+            return datetime.fromisoformat(ts) if ts else None
+        except (ValueError, TypeError):
+            return None
+
+    entries = []  # (sort_dt, control)
+
+    for s in sessions:
+        dt = _parse(s.get("start"))
+        when = dt.strftime("%Y-%m-%d %H:%M") if dt else (s.get("start") or "—")
+        fb = s.get("feedback") or {}
+        rating = fb.get("rating") or {}
+        stars = rating.get("stars")
+        star_str = ("★" * int(stars) + "☆" * (5 - int(stars))) if stars else ""
+        lines = [ft.Text(f"{when}  ·  played {s.get('duration', '00:00:00')}",
+                         weight=ft.FontWeight.W_600, size=13, selectable=True)]
+        meta = []
+        if star_str:
+            meta.append(star_str)
+        if rating.get("tags"):
+            meta.append(", ".join(rating["tags"]))
+        if meta:
+            lines.append(ft.Text("  ·  ".join(meta), size=12,
+                                 color=ft.Colors.ON_SURFACE_VARIANT, selectable=True))
+        if fb.get("text"):
+            lines.append(ft.Text(fb["text"], size=12, selectable=True))
+        entries.append((dt or datetime.min,
+                        ft.Container(content=ft.Column(lines, spacing=2, tight=True),
+                                     padding=ft.Padding(10, 8, 10, 8), border_radius=8,
+                                     bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE))))
+
+    for c in history:
+        dt = _parse(c.get("timestamp"))
+        when = dt.strftime("%Y-%m-%d %H:%M") if dt else (c.get("timestamp") or "—")
+        entries.append((dt or datetime.min,
+                        ft.Row([ft.Icon(ft.Icons.SWAP_HORIZ, size=16,
+                                        color=ft.Colors.ON_SURFACE_VARIANT),
+                                ft.Text(f"{when}  ·  status: {c.get('from') or '—'} → "
+                                        f"{c.get('to') or '—'}", size=12, selectable=True)],
+                               spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER)))
+
+    entries.sort(key=lambda e: e[0])
+    body_controls = [e[1] for e in entries] or [
+        ft.Text("No activity recorded yet.", color=ft.Colors.ON_SURFACE_VARIANT)
+    ]
+
+    page.show_dialog(ft.AlertDialog(
+        modal=True,
+        title=ft.Text(f"Activity log — {game_name}"),
+        content=ft.Container(width=600, height=460,
+                             content=ft.Column(body_controls, spacing=8,
+                                               scroll=ft.ScrollMode.AUTO, tight=True)),
+        actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())],
         actions_alignment=ft.MainAxisAlignment.END,
     ))

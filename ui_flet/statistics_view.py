@@ -32,6 +32,7 @@ from session_data import (
     calculate_session_statistics,
     get_game_sessions,
     get_status_history,
+    find_most_active_period,
 )
 from session_visualizations import (
     create_session_timeline_chart,
@@ -41,7 +42,11 @@ from session_visualizations import (
 from utilities import format_timedelta_with_seconds
 from pause_utils import total_session_pause_timedelta
 from core.ratings_logic import format_rating, get_session_rating_summary
-from ui_flet.session_dialogs import open_session_actions_dialog
+from ui_flet.session_dialogs import (
+    open_session_actions_dialog,
+    open_manual_session_dialog,
+    open_activity_log_dialog,
+)
 
 ALL_GAMES = "__all__"
 _HEATMAP_WEEKS = 53
@@ -52,6 +57,8 @@ _CHART_OPTIONS = [
     ("game_timeline", "Selected game: session timeline", "game_timeline"),
     ("game_distribution", "Selected game: length distribution", "game_distribution"),
     ("game_status", "Selected game: status timeline", "game_status"),
+    ("all_heatmap", "All sessions: gaming heatmap", "all_heatmap"),
+    ("game_heatmap", "Selected game: gaming heatmap", "game_heatmap"),
 ]
 
 
@@ -263,6 +270,8 @@ class StatisticsView:
         self.selected_chart = _CHART_OPTIONS[0][0]
         self.heatmap_year = None             # None == rolling last 12 months
         self.dist_type = "line"              # line / scatter / box / histogram
+        self.heatmap_window_months = 1       # gaming-heatmap chart window
+        self.heatmap_end_date = None         # None == latest
         self._tmp_dir = tempfile.gettempdir()
 
         # ---- overall stats header -----------------------------------------
@@ -306,10 +315,15 @@ class StatisticsView:
                         ft.Text("Contributions", size=16, weight=ft.FontWeight.W_600,
                                 expand=True),
                         self.year_dd,
-                        ft.OutlinedButton("View date activity…", icon=ft.Icons.EVENT,
+                        ft.OutlinedButton("Today", on_click=lambda e: open_date_activity_dialog(
+                            self.page, self.service.data, date.today(), self.selected_game)),
+                        ft.OutlinedButton("Yesterday", on_click=lambda e: open_date_activity_dialog(
+                            self.page, self.service.data, date.today() - timedelta(days=1),
+                            self.selected_game)),
+                        ft.OutlinedButton("Pick date…", icon=ft.Icons.EVENT,
                                           on_click=self._open_date_picker),
                     ],
-                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER, wrap=True,
                 ),
                 self.heatmap_caption,
                 ft.Column([self.heatmap_host], scroll=ft.ScrollMode.AUTO),
@@ -359,7 +373,16 @@ class StatisticsView:
         self._game_detail = ft.Column(
             [
                 self.game_totals,
-                ft.Text("Activity log (sessions)", size=15, weight=ft.FontWeight.W_600),
+                ft.Row(
+                    [
+                        ft.FilledButton("Add session", icon=ft.Icons.ADD,
+                                        on_click=self._on_add_session),
+                        ft.OutlinedButton("View activity log", icon=ft.Icons.HISTORY_EDU,
+                                          on_click=self._on_view_activity_log),
+                    ],
+                    spacing=10, wrap=True,
+                ),
+                ft.Text("Sessions", size=15, weight=ft.FontWeight.W_600),
                 ft.Container(height=300,
                              content=ft.Column([self.sessions_table], scroll=ft.ScrollMode.AUTO)),
                 ft.Divider(height=1),
@@ -390,6 +413,25 @@ class StatisticsView:
                       ("box", "Box Plot"), ("histogram", "Histogram"))],
             on_select=self._on_dist_type_select,
         )
+        # Gaming-heatmap window controls (shown only when a heatmap chart is picked).
+        self.hm_window_dd = ft.Dropdown(
+            label="Window", value="1", width=130, dense=True,
+            options=[ft.dropdown.Option(key=k, text=t) for k, t in
+                     (("1", "1 Month"), ("3", "3 Months"), ("6", "6 Months"), ("12", "1 Year"))],
+            on_select=self._on_hm_window,
+        )
+        self.hm_period = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        self._heatmap_controls = ft.Row(
+            [
+                self.hm_window_dd,
+                ft.IconButton(ft.Icons.CHEVRON_LEFT, tooltip="Earlier", on_click=self._hm_prev),
+                ft.IconButton(ft.Icons.CHEVRON_RIGHT, tooltip="Later", on_click=self._hm_next),
+                ft.OutlinedButton("Latest", on_click=self._hm_latest),
+                ft.OutlinedButton("Most active", on_click=self._hm_most_active),
+                self.hm_period,
+            ],
+            wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER, visible=False,
+        )
         self._chart_host = ft.Container(
             content=self._chart_placeholder("Loading chart…"),
             alignment=ft.Alignment(0, 0), padding=ft.Padding(0, 8, 0, 8),
@@ -411,6 +453,7 @@ class StatisticsView:
                 ft.Text("Charts", size=16, weight=ft.FontWeight.W_600),
                 ft.Row([self.chart_dd, self.dist_type_dd], spacing=12, wrap=True,
                        vertical_alignment=ft.CrossAxisAlignment.END),
+                self._heatmap_controls,
                 self._chart_host,
             ],
             expand=True, scroll=ft.ScrollMode.AUTO, spacing=12,
@@ -512,6 +555,54 @@ class StatisticsView:
             self._render_chart()
             if self._is_mounted():
                 self.page.update()
+
+    # ---- gaming-heatmap window navigation ----
+    def _hm_sessions(self):
+        if self.selected_game:
+            return get_game_sessions(self.service.data, self.selected_game) or []
+        return extract_all_sessions(self.service.data)
+
+    def _on_hm_window(self, _):
+        self.heatmap_window_months = int(self.hm_window_dd.value or "1")
+        self._render_chart()
+        if self._is_mounted():
+            self.page.update()
+
+    def _hm_shift(self, months):
+        base = self.heatmap_end_date or date.today()
+        self.heatmap_end_date = min(base + timedelta(days=months * 30), date.today())
+        self._render_chart()
+        if self._is_mounted():
+            self.page.update()
+
+    def _hm_prev(self, _):
+        self._hm_shift(-self.heatmap_window_months)
+
+    def _hm_next(self, _):
+        self._hm_shift(self.heatmap_window_months)
+
+    def _hm_latest(self, _):
+        self.heatmap_end_date = None
+        self._render_chart()
+        if self._is_mounted():
+            self.page.update()
+
+    def _hm_most_active(self, _):
+        self.heatmap_end_date = find_most_active_period(
+            self._hm_sessions(), self.heatmap_window_months)
+        self._render_chart()
+        if self._is_mounted():
+            self.page.update()
+
+    # ---- per-game actions ----
+    def _on_add_session(self, _):
+        if self.selected_game:
+            open_manual_session_dialog(self.page, self.service, self.selected_game,
+                                       on_saved=self.refresh)
+
+    def _on_view_activity_log(self, _):
+        if self.selected_game:
+            open_activity_log_dialog(self.page, self.service, self.selected_game)
 
     def select_game(self, name):
         """Programmatically focus a game (used by Game Hub's 'View Statistics')."""
@@ -736,7 +827,9 @@ class StatisticsView:
 
     def _render_chart(self):
         kind = next((k for key, _, k in _CHART_OPTIONS if key == self.selected_chart), None)
-        if kind in ("game_timeline", "game_distribution", "game_status") and not self.selected_game:
+        self._heatmap_controls.visible = kind in ("all_heatmap", "game_heatmap")
+        if (kind in ("game_timeline", "game_distribution", "game_status", "game_heatmap")
+                and not self.selected_game):
             self._chart_host.content = self._chart_placeholder(
                 "Select a game above to view this chart.")
             return
@@ -758,6 +851,21 @@ class StatisticsView:
                 buf = create_status_timeline_chart(
                     get_status_history(self.service.data, self.selected_game),
                     game_name=self.selected_game)
+            elif kind in ("all_heatmap", "game_heatmap"):
+                # create_session_heatmap currently lives in session_management
+                # (imports PySimpleGUI); lazy-import keeps it off ui_flet's import
+                # graph. Phase 5 relocates it to a GUI-free module.
+                from session_management import create_session_heatmap
+                hm_sessions = (get_game_sessions(self.service.data, self.selected_game)
+                               if kind == "game_heatmap"
+                               else extract_all_sessions(self.service.data))
+                buf = create_session_heatmap(
+                    hm_sessions,
+                    self.selected_game if kind == "game_heatmap" else None,
+                    self.heatmap_window_months, self.heatmap_end_date)
+                end = self.heatmap_end_date or date.today()
+                start = end - timedelta(days=self.heatmap_window_months * 30)
+                self.hm_period.value = f"{start.isoformat()} → {end.isoformat()}"
             else:
                 buf = None
 

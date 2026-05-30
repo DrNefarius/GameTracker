@@ -15,6 +15,7 @@ import flet as ft
 
 from constants import STAR_FILLED, STAR_EMPTY
 from ui_flet import theme
+from ui_flet.game_dialog import open_status_dialog
 
 PAGE_SIZE_OPTIONS = ["25", "50", "100", "200", "All"]
 DEFAULT_PAGE_SIZE = 50
@@ -44,35 +45,35 @@ def _format_rating(rating):
     return prefix + STAR_FILLED * stars + STAR_EMPTY * (5 - stars)
 
 
-# Display columns: (header, sortable). Index in this list == DataColumn index
-# reported by the on_sort event, and is mapped to a sort key by _sort_value().
+# Display columns: (header, sort_data_index | None). The list position is the
+# DataColumn index reported by the on_sort event; ``sort_data_index`` maps it to
+# the game-row field used as the sort key (None == not sortable).
 _COLUMNS = [
-    ("Name", True),
-    ("Released", True),
-    ("Platform", True),
-    ("Time", True),
-    ("Status", True),
-    ("Owned", False),
-    ("Last Played", True),
-    ("Rating", False),
-    ("", False),  # actions
+    ("#", None),
+    ("Name", 0),
+    ("Released", 1),
+    ("Platform", 2),
+    ("Time", 3),
+    ("Status", 4),
+    ("Owned", None),
+    ("Last Played", 6),
+    ("Rating", None),
+    ("", None),  # actions
 ]
+_NAME_COL = 1  # default sort (display index of the Name column)
 
 
-def _sort_value(col_index, row):
-    if col_index == 1:
+def _sort_value(data_idx, row):
+    if data_idx == 1:
         rel = row[1] or ""
         return (rel == "-", rel)            # unknown dates last
-    if col_index == 2:
-        return (row[2] or "").lower()
-    if col_index == 3:
+    if data_idx == 3:
         return _time_to_seconds(row[3])
-    if col_index == 4:
-        return (row[4] or "").lower()
-    if col_index == 6:
+    if data_idx == 6:
         lp = row[6] or ""
         return (lp == "", lp)               # never-played last
-    # default / col 0
+    if data_idx in (0, 2, 4):
+        return (row[data_idx] or "").lower()
     return (row[0] or "").lower()
 
 
@@ -85,7 +86,7 @@ class GamesView:
         self.on_add = on_add
 
         self.query = ""
-        self.sort_col = 0          # DataColumn index currently sorted by
+        self.sort_col = _NAME_COL  # DataColumn (display) index currently sorted by
         self.sort_asc = True
         self.page_size = DEFAULT_PAGE_SIZE   # int, or None for "All"
         self.page_index = 0
@@ -178,12 +179,12 @@ class GamesView:
     # ------------------------------------------------------------------ #
     def _build_columns(self):
         cols = []
-        for label, sortable in _COLUMNS:
+        for label, data_idx in _COLUMNS:
             cols.append(
                 ft.DataColumn(
                     label=ft.Text(label, weight=ft.FontWeight.BOLD),
                     numeric=(label == "Time"),
-                    on_sort=self._on_sort if sortable else None,
+                    on_sort=self._on_sort if data_idx is not None else None,
                 )
             )
         return cols
@@ -227,7 +228,10 @@ class GamesView:
                 or q in str(row[2] or "").lower()
                 or q in str(row[4] or "").lower()
             ]
-        return sorted(items, key=lambda it: _sort_value(self.sort_col, it[1]),
+        data_idx = _COLUMNS[self.sort_col][1] if 0 <= self.sort_col < len(_COLUMNS) else 0
+        if data_idx is None:
+            data_idx = 0
+        return sorted(items, key=lambda it: _sort_value(data_idx, it[1]),
                       reverse=not self.sort_asc)
 
     def _page_count(self, total=None):
@@ -246,19 +250,23 @@ class GamesView:
     # ------------------------------------------------------------------ #
     # rendering
     # ------------------------------------------------------------------ #
-    def _build_row(self, orig_idx, row):
+    def _build_row(self, orig_idx, row, number):
         def edit(_):
             self.on_edit(orig_idx)
 
         def delete(_):
             self.on_delete(orig_idx)
 
+        def change_status(_):
+            open_status_dialog(self.page, self.service, orig_idx, on_done=self.refresh)
+
         cells = [
+            ft.DataCell(ft.Text(str(number), color=ft.Colors.ON_SURFACE_VARIANT)),
             ft.DataCell(ft.Text(row[0] or "", weight=ft.FontWeight.W_500), on_tap=edit),
             ft.DataCell(ft.Text(row[1] or "-")),
             ft.DataCell(ft.Text(row[2] or "")),
             ft.DataCell(ft.Text(row[3] or "—")),
-            ft.DataCell(theme.status_badge(row)),
+            ft.DataCell(theme.status_badge(row), on_tap=change_status),
             ft.DataCell(
                 ft.Icon(ft.Icons.CHECK_CIRCLE, color=ft.Colors.GREEN, size=18)
                 if row[5] == "✅" else ft.Text("")
@@ -290,7 +298,11 @@ class GamesView:
         self.page_index = max(0, min(self.page_index, page_count - 1))
         page_items = self._page_slice(items)
 
-        self.table.rows = [self._build_row(idx, row) for idx, row in page_items]
+        start_num = (self.page_index * self.page_size + 1) if self.page_size else 1
+        self.table.rows = [
+            self._build_row(idx, row, start_num + n)
+            for n, (idx, row) in enumerate(page_items)
+        ]
         self.table.sort_column_index = self.sort_col
         self.table.sort_ascending = self.sort_asc
 

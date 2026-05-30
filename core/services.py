@@ -150,6 +150,29 @@ class GameLibraryService:
         self.data = [(idx, row) for idx, row in self.data if idx != orig_idx]
         return len(self.data) != before
 
+    def set_status(self, orig_idx, new_status):
+        """Quick status change: update status, append a status-history entry, save.
+
+        Returns True if the status actually changed.
+        """
+        row = self.get_game(orig_idx)
+        if not row or len(row) <= 4:
+            return False
+        old_status = row[4]
+        if new_status == old_status or new_status not in VALID_STATUSES:
+            return False
+        new_row = list(row)
+        while len(new_row) <= 8:
+            new_row.append(None)
+        history = list(new_row[8]) if isinstance(new_row[8], list) else []
+        history.append({"from": old_status, "to": new_status,
+                        "timestamp": datetime.now().isoformat()})
+        new_row[8] = history
+        new_row[4] = new_status
+        self.update_game(orig_idx, new_row)
+        self.save()
+        return True
+
 
 def new_game_row(name, release, platform, time_value, status, owned):
     """Build a fresh 11-element game row with an initial status-history entry."""

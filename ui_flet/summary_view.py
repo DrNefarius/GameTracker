@@ -11,9 +11,12 @@ change), Flet would otherwise keep showing the cached first render. To force a
 reload we rebuild the ``ft.Image`` controls from scratch on every refresh.
 """
 
+from datetime import timedelta
+
 import flet as ft
 
 from visualizations import update_summary_charts
+from utilities import format_timedelta_with_seconds
 
 # (dict key returned by update_summary_charts, section title) in display order.
 _CHARTS = [
@@ -46,9 +49,12 @@ class SummaryView:
             icon=ft.Icons.REFRESH,
             on_click=lambda _: self.refresh(),
         )
+        self.total_time_text = ft.Text("", size=13, color=ft.Colors.ON_SURFACE_VARIANT)
         header = ft.Row(
             [
                 ft.Text("Summary", size=20, weight=ft.FontWeight.BOLD),
+                ft.Container(width=16),
+                self.total_time_text,
                 ft.Container(expand=True),
                 self.refresh_btn,
             ],
@@ -142,8 +148,27 @@ class SummaryView:
         cards = [self._build_card(title, charts.get(key)) for key, title in _CHARTS]
         return ft.ResponsiveRow(cards, run_spacing=12, spacing=12)
 
+    def _total_play_time(self):
+        total = 0
+        for _, row in self.service.data:
+            tv = row[3] if len(row) > 3 else None
+            if not isinstance(tv, str):
+                continue
+            parts = tv.split(":")
+            try:
+                if len(parts) == 3:
+                    h, m, s = map(int, parts)
+                    total += h * 3600 + m * 60 + s
+                elif len(parts) == 2:
+                    h, m = map(int, parts)
+                    total += h * 3600 + m * 60
+            except ValueError:
+                continue
+        return format_timedelta_with_seconds(timedelta(seconds=total))
+
     def refresh(self):
         """Regenerate the PNGs and rebuild the image grid in place."""
+        self.total_time_text.value = f"Total play time: {self._total_play_time()}"
         try:
             charts = update_summary_charts(self.service.data)
         except Exception as exc:  # pragma: no cover - defensive
