@@ -326,7 +326,11 @@ class StatisticsView:
                     vertical_alignment=ft.CrossAxisAlignment.CENTER, wrap=True,
                 ),
                 self.heatmap_caption,
-                ft.Column([self.heatmap_host], scroll=ft.ScrollMode.AUTO),
+                # The heatmap is a WIDE row (~53 week columns) but short; it needs
+                # HORIZONTAL scroll. A vertical-scroll Column here expands to a huge
+                # height inside the outer scrollable Column (the "giant grey box").
+                ft.Row([self.heatmap_host], scroll=ft.ScrollMode.AUTO,
+                       vertical_alignment=ft.CrossAxisAlignment.START),
                 self._heatmap_legend(),
             ],
             spacing=6,
