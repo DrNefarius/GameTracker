@@ -11,6 +11,7 @@ from ui_flet import theme
 from ui_flet import help_view
 from ui_flet.games_view import GamesView
 from ui_flet.game_dialog import open_game_dialog, confirm_delete
+from ui_flet.game_hub import open_game_hub
 from ui_flet.summary_view import SummaryView
 from ui_flet.statistics_view import StatisticsView
 from ui_flet.igdb_view import open_igdb_settings_dialog
@@ -73,8 +74,9 @@ def main(page: ft.Page):
                          on_saved=lambda: (games_view.refresh(), snack("Game added")))
 
     def do_edit(orig_idx):
-        open_game_dialog(page, service, orig_idx,
-                         on_saved=lambda: (games_view.refresh(), snack("Saved")))
+        # A row click / edit icon opens the full Game Hub (which itself offers
+        # Edit, Add session, Rate, Delete, and an inline timer).
+        open_game_hub(page, service, orig_idx, on_changed=games_view.refresh)
 
     def do_delete(orig_idx):
         confirm_delete(page, service, orig_idx,
