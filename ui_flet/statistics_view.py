@@ -310,10 +310,12 @@ class StatisticsView:
         )
         heatmap_section = ft.Column(
             [
+                # NOTE: do NOT put an expand=True child in a wrap=True Row — Flutter
+                # forbids Expanded inside a Wrap and Flet renders it as a large grey
+                # error box. Title goes on its own line; controls wrap on their own.
+                ft.Text("Contributions", size=16, weight=ft.FontWeight.W_600),
                 ft.Row(
                     [
-                        ft.Text("Contributions", size=16, weight=ft.FontWeight.W_600,
-                                expand=True),
                         self.year_dd,
                         ft.OutlinedButton("Today", on_click=lambda e: open_date_activity_dialog(
                             self.page, self.service.data, date.today(), self.selected_game)),
