@@ -39,6 +39,7 @@ from session_visualizations import (
     create_status_timeline_chart,
 )
 from utilities import format_timedelta_with_seconds
+from pause_utils import total_session_pause_timedelta
 from core.ratings_logic import format_rating, get_session_rating_summary
 
 ALL_GAMES = "__all__"
@@ -161,57 +162,92 @@ def _intensity_color(count):
 # --------------------------------------------------------------------------- #
 # date-activity dialog
 # --------------------------------------------------------------------------- #
+def _rating_stars_from_feedback(session):
+    rating = (session.get("feedback") or {}).get("rating") or {}
+    stars = rating.get("stars")
+    if not stars:
+        return ""
+    try:
+        stars = int(stars)
+        return "★" * stars + "☆" * (5 - stars)
+    except (ValueError, TypeError):
+        return ""
+
+
+def _session_notes(session):
+    text = (session.get("feedback") or {}).get("text")
+    return " ".join(str(text).split()) if text else ""
+
+
 def open_date_activity_dialog(page, data, target_date, game_name=None):
-    """Modal listing all sessions on ``target_date`` (optionally one game)."""
+    """Modal listing all sessions on ``target_date`` with Prev/Next-day nav.
+
+    Mirrors the legacy daily-activity view: per-session game, time range,
+    duration, paused time, total (duration+pause), rating and notes, plus a day
+    summary. ``game_name`` (optional) restricts the view to a single game.
+    """
     sessions = _sessions_for_day(data, target_date, game_name)
 
     if sessions:
-        rows = []
+        cards = []
+        total_dur = timedelta()
+        games = set()
         for s in sessions:
-            label = s.get("game", game_name or "")
-            line = f"{_session_time_range(s)}  ·  {s.get('duration', '00:00:00')}"
-            details = _session_details_summary(s)
-            rows.append(
-                ft.Container(
-                    padding=ft.Padding(10, 8, 10, 8),
-                    border_radius=8,
-                    bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
-                    content=ft.Column(
-                        [
-                            ft.Row(
-                                [
-                                    ft.Text(label, weight=ft.FontWeight.W_600, expand=True),
-                                    ft.Text(line, size=12,
-                                            color=ft.Colors.ON_SURFACE_VARIANT),
-                                ]
-                            ),
-                            ft.Text(details, size=12, color=ft.Colors.ON_SURFACE_VARIANT),
-                        ],
-                        spacing=2,
-                        tight=True,
-                    ),
-                )
-            )
-        total = timedelta()
-        for s in sessions:
-            total += _duration_to_timedelta(s.get("duration"))
-        header = ft.Text(
+            dur_td = _duration_to_timedelta(s.get("duration"))
+            pause_td = total_session_pause_timedelta(s)
+            total_dur += dur_td
+            games.add(s.get("game", game_name or ""))
+            sub = (f"Paused {format_timedelta_with_seconds(pause_td)}  ·  "
+                   f"Total {format_timedelta_with_seconds(dur_td + pause_td)}")
+            lines = [
+                ft.Row([
+                    ft.Text(s.get("game", game_name or ""),
+                            weight=ft.FontWeight.W_600, expand=True),
+                    ft.Text(f"{_session_time_range(s)}  ·  {s.get('duration', '00:00:00')}",
+                            size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                ]),
+                ft.Row([
+                    ft.Text(sub, size=12, color=ft.Colors.ON_SURFACE_VARIANT, expand=True),
+                    ft.Text(_rating_stars_from_feedback(s), size=12),
+                ]),
+            ]
+            notes = _session_notes(s)
+            if notes:
+                lines.append(ft.Text(notes, size=12, color=ft.Colors.ON_SURFACE_VARIANT))
+            cards.append(ft.Container(
+                padding=ft.Padding(10, 8, 10, 8), border_radius=8,
+                bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
+                content=ft.Column(lines, spacing=2, tight=True),
+            ))
+        summary = ft.Text(
             f"{len(sessions)} session{'s' if len(sessions) != 1 else ''}  ·  "
-            f"{format_timedelta_with_seconds(total)} played",
+            f"{format_timedelta_with_seconds(total_dur)} played  ·  "
+            f"{len(games)} game{'s' if len(games) != 1 else ''}",
             size=13, color=ft.Colors.ON_SURFACE_VARIANT,
         )
-        body = ft.Column([header, *rows], spacing=8, scroll=ft.ScrollMode.AUTO, tight=True)
+        body = ft.Column([summary, *cards], spacing=8, scroll=ft.ScrollMode.AUTO, tight=True)
     else:
-        body = ft.Text("No sessions recorded on this day.",
-                       color=ft.Colors.ON_SURFACE_VARIANT)
+        body = ft.Container(
+            content=ft.Text("No gaming activity recorded for this day.",
+                            color=ft.Colors.ON_SURFACE_VARIANT),
+            alignment=ft.Alignment(0, 0), expand=True,
+        )
+
+    def _go(delta):
+        page.pop_dialog()
+        open_date_activity_dialog(page, data, target_date + timedelta(days=delta), game_name)
 
     scope = f" — {game_name}" if game_name else ""
     dialog = ft.AlertDialog(
         modal=True,
-        title=ft.Text(f"Activity on {target_date.isoformat()}{scope}"),
-        content=ft.Container(width=560, height=420, content=body),
-        actions=[ft.TextButton("Close", on_click=lambda e: page.pop_dialog())],
-        actions_alignment=ft.MainAxisAlignment.END,
+        title=ft.Text(f"Daily activity · {target_date.strftime('%A, %B %d, %Y')}{scope}"),
+        content=ft.Container(width=600, height=440, content=body),
+        actions=[
+            ft.TextButton("◀ Previous day", on_click=lambda e: _go(-1)),
+            ft.TextButton("Next day ▶", on_click=lambda e: _go(1)),
+            ft.ElevatedButton("Close", on_click=lambda e: page.pop_dialog()),
+        ],
+        actions_alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
     )
     page.show_dialog(dialog)
 
@@ -255,7 +291,15 @@ class StatisticsView:
         self.heatmap_host = ft.Container(content=ft.Text("…"))
         heatmap_section = ft.Column(
             [
-                ft.Text("Contributions", size=16, weight=ft.FontWeight.W_600),
+                ft.Row(
+                    [
+                        ft.Text("Contributions", size=16, weight=ft.FontWeight.W_600,
+                                expand=True),
+                        ft.OutlinedButton("View date activity…", icon=ft.Icons.EVENT,
+                                          on_click=self._open_date_picker),
+                    ],
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
                 self.heatmap_caption,
                 ft.Column([self.heatmap_host], scroll=ft.ScrollMode.AUTO),
                 self._heatmap_legend(),
@@ -433,6 +477,27 @@ class StatisticsView:
         self._render_chart()
         if self._is_mounted():
             self.page.update()
+
+    def _open_date_picker(self, _):
+        """Pick any date and open its daily-activity dialog (current scope)."""
+        if self.page is None:
+            return
+
+        def on_pick(e):
+            value = e.control.value
+            if value:
+                day = value.date() if hasattr(value, "date") else value
+                open_date_activity_dialog(self.page, self.service.data, day,
+                                          self.selected_game)
+
+        self.page.show_dialog(
+            ft.DatePicker(
+                first_date=datetime(2000, 1, 1),
+                last_date=datetime.now(),
+                value=datetime.now(),
+                on_change=on_pick,
+            )
+        )
 
     # ------------------------------------------------------------------ #
     # data shaping
