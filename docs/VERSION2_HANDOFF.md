@@ -131,15 +131,22 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
   closed), Phase 3A (watcher runtime), Phase 3B (tray + close-to-tray), **Phase 3C (watcher interactive
   dialogs → Flet: match-picker, remap, crash orphan-recovery — see §5)**, **Phase 3D (Discord — see
   below)**, plus the single-instance guard (§2) and many Flet-API bug fixes.
-- **3D Discord (done)**: `ui_flet/discord_runtime.py` owns the Flet lifecycle — `start_discord(service)`
-  calls `initialize_discord(enabled=config.discord_enabled, default True)` **on a daemon thread** (the IPC
-  handshake can block), then pushes library stats + browsing presence. The bridge's `discord_provider`
-  is now `get_discord_integration` (was `lambda: None`), so the watcher drives playing/paused/complete
-  presence. Toolbar **Discord toggle** (`ft.Icons.DISCORD`, greyed when off) → `set_enabled` persists
-  `discord_enabled` + enable/disable off-thread. `on_nav_change` + post-open/import call `notify_tab`
-  (browsing presence per tab + refreshed counts). `_quit_app` calls `cleanup_discord()` (explicit —
-  `os._exit` skips the module's atexit). **NB**: `constants.DISCORD_CLIENT_ID` is a placeholder, so
-  presence won't actually show until a real Discord app id is set; all calls degrade gracefully.
+- **3D Discord (done)**: `ui_flet/discord_runtime.py` owns the Flet lifecycle. **Threading is critical**:
+  pypresence's sync `Presence` uses `run_until_complete`, which raises *"Cannot run the event loop while
+  another loop is running"* if called on the thread with the **running Flet asyncio loop** — and in the
+  Flet app every caller (tab handlers AND watcher events, marshalled via `page.run_task`) is on that
+  thread. So discord_runtime funnels **all** pypresence ops onto a single dedicated **`discord-worker`**
+  daemon thread (a `queue.Queue` drained by one thread; also serializes the non-thread-safe socket). The
+  watcher reaches it through `provider()` → `_DiscordProxy`, a thread-confining proxy wired as the
+  bridge's `discord_provider` (was `lambda: None`). `start_discord` (init+browsing), `set_enabled`
+  (toggle+persist `discord_enabled`), `notify_tab` (per-tab browsing+counts) all `_submit` to the worker;
+  `shutdown(timeout)` runs `cleanup_discord` on the worker and waits so the presence clear flushes before
+  `_quit_app`'s `os._exit`. Toolbar **Discord toggle** = `ft.Icons.DISCORD` (greyed when off). **NB**:
+  `constants.DISCORD_CLIENT_ID` is a placeholder, so presence won't actually show until a real Discord app
+  id is set; all calls degrade gracefully. **Tray refresh**: `FletWatcherSink._dispatch` now calls
+  `tray.refresh()` on `-WATCHER-STATUS-/-PROCESS-DETECTED-/-PROCESS-ENDED-/-WATCHER-IDLE-PAUSE-` and after
+  tray actions, so e.g. a console session started from the tray enables "Stop Current Session" (mirrors
+  legacy `main.py`).
 - **Remaining**:
   - **3E** auto-updater UI: port `update_ui.py` (Check for Updates / Update Settings / update-available
     → download → install). Backend `auto_updater.py`.

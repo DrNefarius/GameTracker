@@ -84,6 +84,13 @@ class FletWatcherSink:
         except Exception as exc:  # pragma: no cover - defensive
             print(f"watcher sink: could not marshal {key}: {exc}")
 
+    # Watcher events that change the tracking/running state shown in the tray
+    # menu (e.g. a console session starting must enable "Stop Current Session").
+    _TRAY_REFRESH_EVENTS = (
+        "-WATCHER-STATUS-", "-PROCESS-DETECTED-",
+        "-PROCESS-ENDED-", "-WATCHER-IDLE-PAUSE-",
+    )
+
     async def _dispatch(self, key, payload):
         try:
             if key == "-TRAY-ACTION-":
@@ -91,6 +98,9 @@ class FletWatcherSink:
                     await self._quit_app()   # async: window.destroy() is a coroutine
                     return
                 self._handle_tray_action(payload)
+                # A tray action (start/pause/resume watcher, start console, stop
+                # session) just changed the state the menu reflects - rebuild it.
+                self._refresh_tray()
                 self._safe_update()
                 return
             if key == "-TOAST-ACTION-" and self._handle_toast_action(payload):
@@ -101,12 +111,23 @@ class FletWatcherSink:
             print(f"watcher dispatch error on {key}: {exc}")
             return
 
+        # Keep the tray menu's labels + enabled states in sync with the watcher.
+        if key in self._TRAY_REFRESH_EVENTS:
+            self._refresh_tray()
+
         if result and result.get("action") in ("session_added", "watcher_session_started"):
             try:
                 self.refresh_cb()
             except Exception:
                 pass
         self._safe_update()
+
+    def _refresh_tray(self):
+        if self.tray is not None:
+            try:
+                self.tray.refresh()
+            except Exception:
+                pass
 
     def _safe_update(self):
         try:
@@ -223,10 +244,12 @@ class FletWatcherSink:
         except Exception:
             pass
         try:
-            # Clears the rich presence + closes the IPC socket. Must be explicit:
-            # os._exit below bypasses the atexit handler the module registers.
-            from discord_integration import cleanup_discord
-            cleanup_discord()
+            # Clears the rich presence + closes the IPC socket on the Discord
+            # worker thread (where its loop lives), waiting briefly so the clear
+            # flushes. Must be explicit: os._exit below bypasses the module's
+            # atexit handler.
+            from ui_flet.discord_runtime import shutdown as discord_shutdown
+            discord_shutdown()
         except Exception:
             pass
         try:
@@ -275,7 +298,7 @@ def start_watcher(page, service, refresh_cb):
     from session_watcher_bridge import SessionWatcherBridge
     from process_watcher import initialize_watcher
     from notifications import bind_window
-    from discord_integration import get_discord_integration
+    from ui_flet import discord_runtime
 
     notifier = FletWatcherNotifier(page)
     bridge = SessionWatcherBridge(
@@ -283,10 +306,11 @@ def start_watcher(page, service, refresh_cb):
         data_provider=lambda: service.data,
         data_storage_provider=lambda: None,
         filename_provider=lambda: service.filename,
-        # Lazy provider: returns the live Discord integration (or None until it
-        # finishes connecting) so playing/paused/complete presence is driven
-        # straight from the watcher's session events.
-        discord_provider=get_discord_integration,
+        # Thread-confining proxy: the watcher's playing/paused/complete presence
+        # calls (dispatched on the Flet loop) are forwarded onto the Discord
+        # worker thread, where pypresence's run_until_complete won't collide with
+        # the running Flet asyncio loop.
+        discord_provider=discord_runtime.provider,
         notifier=notifier,
     )
     sink = FletWatcherSink(page, bridge, service, refresh_cb, notifier)
