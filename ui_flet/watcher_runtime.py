@@ -10,13 +10,16 @@ feeds it to the existing :class:`SessionWatcherBridge`, then refreshes the UI.
 The bridge's detect / end / pause / status handlers are already GUI-free (they
 persist sessions and fire OS toasts), so auto-tracking works as-is. The bridge's
 interactive bits (focus / discard message / info) are routed through a
-:class:`FletWatcherNotifier`. The end-of-session "Rate" toast action is handled
-here directly: it opens the Flet feedback dialog and attaches the result to the
-game's most recent session.
+:class:`FletWatcherNotifier`. The interactive toast actions that need a dialog
+are handled here directly, opening Flet dialogs (``ui_flet.watcher_dialogs``)
+that delegate mutation to the bridge's GUI-free apply helpers:
 
-Not yet ported (Phase 3C): the in-app match-picker / remap dialogs and crash
-orphan-recovery — those only trigger for unrecognized games or a mid-session
-crash; until then an ambiguous detection just shows its OS toast.
+  * end-of-session **Rate** -> feedback dialog, attached to the last session;
+  * session-start **Wrong game?** -> remap dialog;
+  * ambiguous-match **Pick another** -> match-picker dialog.
+
+Crash orphan-recovery (offer to record a session interrupted by a crash) is
+driven from ``app.main`` at startup via the same bridge helpers.
 """
 
 from datetime import datetime
@@ -112,18 +115,57 @@ class FletWatcherSink:
             pass
 
     def _handle_toast_action(self, payload):
-        """Intercept the interactive end-of-session 'Rate' toast button.
+        """Intercept the interactive toast buttons that need a Flet dialog.
 
-        Returns True if fully handled here (so the bridge's sg path isn't used).
+        Handles the end-of-session 'Rate', the session-start 'Wrong game?'
+        remap, and the ambiguous-match 'Pick another' actions here so they open
+        Flet dialogs instead of the bridge's PySimpleGUI ones. Returns True when
+        fully handled (so the bridge's sg path isn't used). Everything else
+        (discard / confirm / ignore / dismiss) is GUI-free and falls through to
+        the bridge.
         """
+        kind = payload.get("kind")
         action = (payload.get("action") or "").split("|", 1)[0]
-        if payload.get("kind") == "session_ended" and action == "rate":
+
+        if kind == "session_ended" and action == "rate":
             self.notifier.focus()
             game = payload.get("game")
             if game:
                 self._rate_last_session(game)
             return True
+
+        if kind == "session_started" and action == "remap":
+            self.notifier.focus()
+            self._open_remap_dialog()
+            return True
+
+        if kind == "match_confirmation" and action == "pick":
+            self.notifier.focus()
+            self._open_match_picker_dialog(payload.get("detection_id") or "", payload)
+            return True
+
         return False
+
+    def _open_remap_dialog(self):
+        from ui_flet.watcher_dialogs import open_remap_dialog
+        open_remap_dialog(self.page, self.bridge, notify=self.notifier.notify)
+
+    def _open_match_picker_dialog(self, detection_id, payload):
+        from ui_flet.watcher_dialogs import open_match_picker_dialog
+        open_match_picker_dialog(self.page, self.bridge, detection_id, payload,
+                                 notify=self.notifier.notify)
+
+    def drain_pending_matches_on_focus(self):
+        """Re-fire OS toasts for any unresolved ambiguous matches.
+
+        Called when the window regains focus. The bridge method is GUI-free (it
+        only re-posts toasts); clicking "Pick another" then routes back here and
+        opens the Flet picker.
+        """
+        try:
+            self.bridge.drain_pending_matches_on_focus(None)
+        except Exception:
+            pass
 
     def _handle_tray_action(self, payload):
         from process_watcher import get_watcher

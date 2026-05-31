@@ -305,27 +305,55 @@ def main(page: ft.Page):
 
     watcher_sink.on_watcher_state_changed = _sync_watcher_btn
 
-    # Close-to-tray: with a tray icon active, the window's X hides to the tray
-    # (use tray -> Quit to actually exit) so the watcher keeps running.
-    if getattr(watcher_sink, "tray", None) is not None:
-        def _on_window_event(e):
-            if getattr(e, "type", None) in (ft.WindowEventType.CLOSE, "close"):
-                page.window.visible = False
-                page.update()
-                # One-time hint so the user knows the app didn't actually quit.
-                if not service.config.get("tray_close_hint_shown"):
-                    try:
-                        from notifications import notify_info
-                        notify_info(
-                            "GameTracker is still running",
-                            "Minimized to the system tray — session tracking "
-                            "continues. Use the tray icon to reopen or quit.")
-                    except Exception:
-                        pass
-                    service.config["tray_close_hint_shown"] = True
-                    save_config(service.config)
-        try:
+    # Window events: close-to-tray + drain ambiguous matches on focus.
+    _has_tray = getattr(watcher_sink, "tray", None) is not None
+
+    def _on_window_event(e):
+        etype = getattr(e, "type", None)
+        # Close-to-tray: with a tray icon active, the window's X hides to the
+        # tray (use tray -> Quit to actually exit) so the watcher keeps running.
+        if _has_tray and etype in (ft.WindowEventType.CLOSE, "close"):
+            page.window.visible = False
+            page.update()
+            # One-time hint so the user knows the app didn't actually quit.
+            if not service.config.get("tray_close_hint_shown"):
+                try:
+                    from notifications import notify_info
+                    notify_info(
+                        "GameTracker is still running",
+                        "Minimized to the system tray — session tracking "
+                        "continues. Use the tray icon to reopen or quit.")
+                except Exception:
+                    pass
+                service.config["tray_close_hint_shown"] = True
+                save_config(service.config)
+            return
+        # On regaining focus, re-surface any unresolved ambiguous-match toasts
+        # the user hasn't acted on (clicking "Pick another" opens the Flet
+        # match-picker).
+        if etype in (ft.WindowEventType.FOCUS, "focus"):
+            watcher_sink.drain_pending_matches_on_focus()
+
+    try:
+        if _has_tray:
             page.window.prevent_close = True
-            page.window.on_event = _on_window_event
+        page.window.on_event = _on_window_event
+    except Exception:
+        pass
+
+    # ---- crash orphan-session recovery ---------------------------------
+    # If a session was active when the app last closed (e.g. a crash left
+    # active_session_state in config), offer to record the interrupted play
+    # time. Scheduled on the loop so it runs once the page is live.
+    async def _post_startup():
+        try:
+            from ui_flet.watcher_dialogs import open_orphan_recovery_dialog
+            open_orphan_recovery_dialog(page, watcher_sink.bridge,
+                                        refresh_cb=games_view.refresh)
         except Exception:
             pass
+
+    try:
+        page.run_task(_post_startup)
+    except Exception:
+        pass

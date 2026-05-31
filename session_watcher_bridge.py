@@ -543,8 +543,16 @@ class SessionWatcherBridge:
     # Crash recovery
     # ------------------------------------------------------------------
 
-    def recover_orphan_session_if_any(self, parent_window) -> Optional[Dict[str, Any]]:
-        """If a session was active when the app crashed, offer to record it."""
+    def get_orphan_recovery_context(self) -> Optional[Dict[str, Any]]:
+        """Read (and clear) the persisted active-session state, if recoverable.
+
+        GUI-free half of crash recovery: returns ``{game_name, start_iso,
+        last_tick_iso, duration_str}`` when a usable orphan session is found,
+        else ``None``. The config entry is cleared immediately so a user
+        dismissal doesn't re-prompt next launch. The caller (any UI) asks the
+        user whether to record it, then passes the same dict to
+        :meth:`apply_orphan_recovery`.
+        """
         cfg = load_config()
         state = cfg.get('active_session_state')
         if not state:
@@ -565,30 +573,26 @@ class SessionWatcherBridge:
             return None
         if end_dt <= start_dt:
             return None
-        duration = end_dt - start_dt
+        return {
+            'game_name': game_name,
+            'start_iso': start_iso,
+            'last_tick_iso': last_tick_iso,
+            'duration_str': format_timedelta_with_seconds(end_dt - start_dt),
+        }
 
-        try:
-            import PySimpleGUI as sg
-            from utilities import calculate_popup_center_location
-            loc = calculate_popup_center_location(parent_window, popup_width=480, popup_height=180) \
-                if parent_window else None
-            answer = sg.popup_yes_no(
-                f"It looks like a session for '{game_name}' was interrupted "
-                f"(approx {format_timedelta_with_seconds(duration)}).\n\n"
-                "Would you like to record it now?",
-                title="Recover crashed session?",
-                location=loc,
-            )
-        except Exception:
-            answer = 'No'
+    def apply_orphan_recovery(self, ctx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Persist a recovered crash session from a context dict.
 
-        if answer != 'Yes':
+        Returns a ``{'action': 'session_added', 'data': ...}`` envelope on
+        success (so the caller can refresh its views) or ``None``.
+        """
+        if not ctx:
             return None
-
+        game_name = ctx.get('game_name')
         session = {
-            'start': start_iso,
-            'end': last_tick_iso,
-            'duration': format_timedelta_with_seconds(duration),
+            'start': ctx.get('start_iso'),
+            'end': ctx.get('last_tick_iso'),
+            'duration': ctx.get('duration_str'),
             'pauses': [],
             'source': 'auto_watcher_recovered',
         }
@@ -605,6 +609,30 @@ class SessionWatcherBridge:
             return {'action': 'session_added', 'data': self._data()}
         return None
 
+    def recover_orphan_session_if_any(self, parent_window) -> Optional[Dict[str, Any]]:
+        """Legacy (PySimpleGUI) crash recovery: prompt, then record if accepted."""
+        ctx = self.get_orphan_recovery_context()
+        if not ctx:
+            return None
+        try:
+            import PySimpleGUI as sg
+            from utilities import calculate_popup_center_location
+            loc = calculate_popup_center_location(parent_window, popup_width=480, popup_height=180) \
+                if parent_window else None
+            answer = sg.popup_yes_no(
+                f"It looks like a session for '{ctx['game_name']}' was interrupted "
+                f"(approx {ctx['duration_str']}).\n\n"
+                "Would you like to record it now?",
+                title="Recover crashed session?",
+                location=loc,
+            )
+        except Exception:
+            answer = 'No'
+
+        if answer != 'Yes':
+            return None
+        return self.apply_orphan_recovery(ctx)
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
@@ -614,6 +642,42 @@ class SessionWatcherBridge:
             if row and row[0] == game_name:
                 return i
         return None
+
+    def _sorted_library_names(self) -> List[str]:
+        """Deduped (case-insensitive), case-preserving, alpha-sorted library names.
+
+        Shared by the remap / match-picker dialogs so every picker shows the
+        same option set regardless of which UI renders it.
+        """
+        seen_lower = set()
+        names: List[str] = []
+        for entry in self.build_library_snapshot():
+            n = entry.get('name')
+            if not n:
+                continue
+            key = n.lower()
+            if key in seen_lower:
+                continue
+            seen_lower.add(key)
+            names.append(n)
+        names.sort(key=lambda s: s.lower())
+        return names
+
+    @staticmethod
+    def _preselect_from_exe(exe_basename: str, library_names: List[str]) -> str:
+        """Best-effort partial match of the exe stem against library titles.
+
+        Gives the picker a plausible starting selection so the user usually
+        only has to confirm. Returns '' when nothing looks close.
+        """
+        if not exe_basename:
+            return ''
+        stem = os.path.splitext(exe_basename)[0].lower()
+        stripped = stem.replace(' ', '')
+        for n in library_names:
+            if stem and stripped in n.lower().replace(' ', ''):
+                return n
+        return ''
 
     def _cover_path_for(self, row_index: int) -> Optional[str]:
         try:
@@ -772,62 +836,114 @@ class SessionWatcherBridge:
 
         return True
 
-    def _open_remap_dialog(self) -> None:
-        """Picker dialog for the toast's "Wrong game?" action.
+    def get_remap_context(self) -> Optional[Dict[str, Any]]:
+        """Data needed to render the "Wrong game?" remap dialog.
 
-        Shows the user what we currently believe the running process is, lets
-        them pick the correct title from the library (or mark the exe as
-        never-track), then:
-          1. Discards the active (wrong-titled) session so it isn't recorded.
-          2. Forgets the auto-learned mapping that misled us.
-          3. Saves the user's correction (new mapping or ignore-list entry).
-        The watcher will re-detect the still-running process on its next tick
-        and start a fresh session under the correct title.
+        Returns ``{wrong_name, exe_path, exe_basename, library_names,
+        preselect}`` when a session is currently being tracked, else ``None``
+        (no watcher OR nothing tracked - the caller shows an info message).
+        GUI-free so any UI can build its own picker from it.
         """
         try:
             from process_watcher import get_watcher
         except Exception as exc:  # noqa: BLE001
-            _log.warning("remap dialog: cannot import watcher: %s", exc)
-            return
+            _log.warning("remap ctx: cannot import watcher: %s", exc)
+            return None
         watcher = get_watcher()
         if watcher is None:
-            _log.warning("remap dialog: no watcher instance")
-            return
-
+            return None
         snapshot = watcher.get_active_session_state()
         if not snapshot:
+            return None
+
+        exe_path = snapshot.get('exe_path') or ''
+        exe_basename = os.path.basename(exe_path) if exe_path else '(unknown)'
+        library_names = self._sorted_library_names()
+        return {
+            'wrong_name': snapshot.get('game_name') or '(unknown)',
+            'exe_path': exe_path,
+            'exe_basename': exe_basename,
+            'library_names': library_names,
+            'preselect': self._preselect_from_exe(exe_basename, library_names),
+        }
+
+    def apply_remap_decision(
+        self,
+        ctx: Dict[str, Any],
+        chosen: Optional[str] = None,
+        ignore: bool = False,
+    ) -> Optional[str]:
+        """Apply a "Wrong game?" decision collected from any UI.
+
+        ``chosen`` is a canonical library name to retitle the live session to;
+        ``ignore=True`` means the user marked the exe as never-track. Forgets
+        the misleading auto-learned mapping first, then either retitles the
+        live session in place (preserving elapsed time) or discards it and
+        adds the exe to the ignore list. Returns a short confirmation message
+        for the UI to surface, or ``None`` when nothing was applied.
+        """
+        exe_path = (ctx or {}).get('exe_path') or ''
+        exe_basename = (ctx or {}).get('exe_basename') or '(unknown)'
+        if not chosen and not ignore:
+            _log.info("remap: cancelled by user (was tracking %r)",
+                      (ctx or {}).get('wrong_name'))
+            return None
+        try:
+            from process_watcher import get_watcher
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("remap apply: cannot import watcher: %s", exc)
+            return None
+        watcher = get_watcher()
+        if watcher is None:
+            return None
+
+        # Order matters: forget the bad mapping BEFORE remembering the new one
+        # so case / trailing-slash path collisions resolve cleanly.
+        try:
+            if exe_path:
+                watcher.forget_mapping(exe_path)
+
+            if ignore:
+                watcher.discard_current_session()
+                if exe_path and exe_basename:
+                    watcher.add_ignore(exe_basename)
+                _log.info("remap: user marked %s as never-track", exe_basename)
+                return f"Got it. {exe_basename} will no longer be auto-tracked."
+
+            if exe_path and chosen:
+                watcher.remember_mapping(exe_path, chosen)
+            ok = self._retitle_active_session_to(chosen)
+            if not ok:
+                _log.warning("remap: retitle failed; mapping saved for "
+                             "next launch only")
+            else:
+                _log.info("remap: live session retitled -> %r (exe=%s)",
+                          chosen, exe_basename)
+            return (f"Now tracking as {chosen}. Your elapsed time so far "
+                    f"is preserved.")
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("remap apply: applying decision failed: %s", exc)
+            return None
+
+    def _open_remap_dialog(self) -> None:
+        """Legacy (PySimpleGUI) picker for the toast's "Wrong game?" action.
+
+        Collects the correct title (or never-track), then delegates the actual
+        mutation to :meth:`apply_remap_decision`. The watcher re-detects the
+        still-running process on its next tick under the corrected title.
+        """
+        ctx = self.get_remap_context()
+        if ctx is None:
             self._show_simple_info(
                 "Wrong game?",
                 "No game is currently being tracked, so there's nothing to remap.")
             return
 
-        wrong_name = snapshot.get('game_name') or '(unknown)'
-        exe_path = snapshot.get('exe_path') or ''
-        exe_basename = os.path.basename(exe_path) if exe_path else '(unknown)'
-
-        # Library names, sorted, deduped, case-preserving.
-        seen_lower = set()
-        library_names: List[str] = []
-        for entry in self.build_library_snapshot():
-            n = entry.get('name')
-            if not n:
-                continue
-            key = n.lower()
-            if key in seen_lower:
-                continue
-            seen_lower.add(key)
-            library_names.append(n)
-        library_names.sort(key=lambda s: s.lower())
-
-        # Try to preselect by partial-match against the exe basename, so the
-        # combobox starts on a plausible candidate when possible.
-        preselect = ''
-        if exe_basename:
-            stem = os.path.splitext(exe_basename)[0].lower()
-            for n in library_names:
-                if stem and stem in n.lower().replace(' ', ''):
-                    preselect = n
-                    break
+        wrong_name = ctx['wrong_name']
+        exe_basename = ctx['exe_basename']
+        library_names = ctx['library_names']
+        preselect = ctx['preselect']
+        seen_lower = {n.lower() for n in library_names}
 
         try:
             import PySimpleGUI as sg
@@ -905,130 +1021,160 @@ class SessionWatcherBridge:
                       wrong_name)
             return
 
-        # Apply the user's decision. Order matters:
-        #   1) Update the persisted exe -> game mapping (or ignore-list).
-        #      Forget BEFORE remember so collisions caused by case /
-        #      trailing-slash path differences resolve cleanly.
-        #   2) Then either retitle the live session in place (so the user
-        #      doesn't have to restart the game for the correction to
-        #      take effect) or discard it (when the user picked "Don't
-        #      track this process").
-        try:
-            if exe_path:
-                watcher.forget_mapping(exe_path)
+        # Mutation + confirmation message live in the shared, GUI-free apply
+        # method so the Flet path behaves identically.
+        message = self.apply_remap_decision(ctx, chosen=chosen, ignore=ignore)
+        if message:
+            try:
+                import PySimpleGUI as sg
+                sg.popup_quick_message(
+                    message, keep_on_top=True,
+                    background_color='#2d6a4f', text_color='white')
+            except Exception:
+                pass
 
-            if ignore:
-                # The user said this exe is not a game - drop the live
-                # session and put the basename on the never-track list.
-                watcher.discard_current_session()
-                if exe_basename:
-                    watcher.add_ignore(exe_basename)
-                _log.info("remap dialog: user marked %s as never-track",
-                          exe_basename)
-            else:
-                # Retitle the live session so the elapsed time keeps
-                # accumulating under the correct title - no game restart
-                # required.
-                if exe_path and chosen:
-                    watcher.remember_mapping(exe_path, chosen)
-                ok = self._retitle_active_session_to(chosen)
-                if not ok:
-                    # Retitle couldn't apply (e.g. the session ended
-                    # while the dialog was open). Fall back to just
-                    # saving the mapping for next launch.
-                    _log.warning(
-                        "remap dialog: retitle failed; mapping saved for "
-                        "next launch only")
-                else:
-                    _log.info("remap dialog: live session retitled "
-                              "%r -> %r (exe=%s)",
-                              wrong_name, chosen, exe_basename)
+    def get_match_pick_context(
+        self,
+        detection_id: str,
+        payload: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Data needed to render the "Pick the matching game" dialog.
+
+        Reads the ambiguous-detection info (preferring the richer queued
+        ``_pending_matches`` entry over the leaner toast ``payload``) and keeps
+        it queued so a cancelled picker can still be re-fired on focus. Returns
+        ``{detection_id, exe_path, exe_basename, install_dir, best_guess,
+        library_names, preselect}`` or ``None`` if there is no watcher.
+        """
+        try:
+            from process_watcher import get_watcher
         except Exception as exc:  # noqa: BLE001
-            _log.warning("remap dialog: applying decision failed: %s", exc)
-            return
+            _log.warning("pick ctx: cannot import watcher: %s", exc)
+            return None
+        if get_watcher() is None:
+            _log.warning("pick ctx: no watcher instance")
+            return None
 
-        # Friendly confirmation in the main window.
+        info = self._pending_matches.get(detection_id) or payload or {}
+        # Keep it queued until a decision is committed (cancel re-fires later).
+        if detection_id and detection_id not in self._pending_matches:
+            self._pending_matches[detection_id] = info
+
+        exe_path = info.get('exe_path') or ''
+        exe_basename = info.get('exe_basename') \
+            or (os.path.basename(exe_path) if exe_path else '(unknown)')
+        best_guess = info.get('best_guess')
+        library_names = self._sorted_library_names()
+
+        if best_guess and best_guess in library_names:
+            preselect = best_guess
+        else:
+            preselect = self._preselect_from_exe(exe_basename, library_names)
+
+        return {
+            'detection_id': detection_id,
+            'exe_path': exe_path,
+            'exe_basename': exe_basename,
+            'install_dir': info.get('install_dir') or '',
+            'best_guess': best_guess,
+            'library_names': library_names,
+            'preselect': preselect,
+        }
+
+    def apply_match_pick_decision(
+        self,
+        ctx: Dict[str, Any],
+        chosen: Optional[str] = None,
+        ignore: bool = False,
+        scope_dir: bool = False,
+    ) -> Optional[str]:
+        """Apply a match-picker decision collected from any UI.
+
+        ``chosen`` is a canonical library name; ``ignore=True`` marks the exe
+        as never-track; ``scope_dir=True`` maps the whole install folder rather
+        than just the one exe. Saves the mapping, whitelists the parent folder
+        for strict mode, forces the resolver to re-examine the running
+        process(es), and drops duplicate pending detections for the same exe.
+        Returns a confirmation message for the UI, or ``None``. A cancel
+        (neither chosen nor ignore) leaves the detection queued for re-fire.
+        """
+        detection_id = (ctx or {}).get('detection_id') or ''
+        exe_path = (ctx or {}).get('exe_path') or ''
+        exe_basename = (ctx or {}).get('exe_basename') or '(unknown)'
+        install_dir = (ctx or {}).get('install_dir') or ''
+        if not chosen and not ignore:
+            _log.info("pick: cancelled (was %s)", exe_basename)
+            return None
         try:
-            import PySimpleGUI as sg
-            if ignore:
-                sg.popup_quick_message(
-                    f"Got it. {exe_basename} will no longer be auto-tracked.",
-                    keep_on_top=True, background_color='#2d6a4f',
-                    text_color='white')
-            else:
-                sg.popup_quick_message(
-                    f"Now tracking as {chosen}. Your elapsed time so far "
-                    f"is preserved.",
-                    keep_on_top=True, background_color='#2d6a4f',
-                    text_color='white')
-        except Exception:
-            pass
+            from process_watcher import get_watcher
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("pick apply: cannot import watcher: %s", exc)
+            return None
+        watcher = get_watcher()
+        if watcher is None:
+            return None
+
+        # Decision committed - drop this entry from the queue.
+        self._pending_matches.pop(detection_id, None)
+
+        try:
+            if ignore and exe_basename:
+                watcher.add_ignore(exe_basename)
+                _log.info("pick: %s added to ignore list", exe_basename)
+                return f"Got it. {exe_basename} will no longer be auto-tracked."
+            if chosen:
+                # Save the appropriate mapping flavor and whitelist the parent
+                # folder so strict mode lets future detections through.
+                if scope_dir and install_dir:
+                    watcher.remember_installdir_mapping(install_dir, chosen)
+                    _log.info("pick: installdir mapping %s -> %r",
+                              install_dir, chosen)
+                elif exe_path:
+                    watcher.remember_mapping(exe_path, chosen)
+                    _log.info("pick: exe mapping %s -> %r", exe_path, chosen)
+                if exe_path:
+                    watcher.add_user_root(os.path.dirname(exe_path))
+
+                # Force the resolver to re-examine the still-running
+                # process(es) so the mapping takes effect without a relaunch.
+                if scope_dir and install_dir:
+                    watcher.recheck_install_dir(install_dir)
+                elif exe_path:
+                    watcher.recheck_exe(exe_path)
+
+                # Drop any twin pending detections for the same exe.
+                self._resolve_twin_pending_matches(exe_path, chosen)
+
+                scope_label = "the install folder" if scope_dir else exe_basename
+                return (f"Mapped {scope_label} to {chosen}. The next launch "
+                        f"will be tracked automatically.")
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("pick apply: applying decision failed: %s", exc)
+            return None
+        return None
 
     def _open_match_picker_dialog(
         self,
         detection_id: str,
         info: Dict[str, Any],
     ) -> None:
-        """Picker dialog for the toast's "Pick another" action.
+        """Legacy (PySimpleGUI) picker for the toast's "Pick another" action.
 
-        The watcher saw an unrecognized executable and its best fuzzy
-        guess against the user's library scored below the auto-confirm
-        threshold. The toast offered "Yes, that's it / Pick another /
-        Never for this exe"; this method handles the middle option by
-        showing a list of every library title and letting the user
-        commit a mapping (or mark the exe as never-track).
-
-        Mirrors the per-game ``Link Executable`` flow: same single-exe
-        vs. install-folder scope choice, same auto-whitelist of the
-        parent folder so strict mode lets the path through, same
-        confirmation banner. Once a mapping is saved the watcher's
-        Layer 1 lookup picks it up on the next tick - no game restart
-        required (unlike the toast's "Yes" path which only takes effect
-        on the next launch).
+        Collects a library title + match scope (single exe vs. install folder)
+        or a never-track decision, then delegates the mutation to
+        :meth:`apply_match_pick_decision`. Once a mapping is saved the watcher's
+        Layer 1 lookup picks it up on the next tick - no game restart required.
         """
-        try:
-            from process_watcher import get_watcher
-        except Exception as exc:  # noqa: BLE001
-            _log.warning("pick dialog: cannot import watcher: %s", exc)
-            return
-        watcher = get_watcher()
-        if watcher is None:
-            _log.warning("pick dialog: no watcher instance")
+        ctx = self.get_match_pick_context(detection_id, info)
+        if ctx is None:
             return
 
-        exe_path = info.get('exe_path') or ''
-        exe_basename = info.get('exe_basename') \
-            or (os.path.basename(exe_path) if exe_path else '(unknown)')
-        install_dir = info.get('install_dir') or ''
-        best_guess = info.get('best_guess')
-
-        # Build the deduped, sorted library names list. Try a partial
-        # match against the exe stem to preselect a plausible candidate
-        # so the user gets a useful starting point rather than an empty
-        # combobox - same UX trick the Wrong-game? remap dialog uses.
-        seen_lower = set()
-        library_names: List[str] = []
-        for entry in self.build_library_snapshot():
-            n = entry.get('name')
-            if not n:
-                continue
-            key = n.lower()
-            if key in seen_lower:
-                continue
-            seen_lower.add(key)
-            library_names.append(n)
-        library_names.sort(key=lambda s: s.lower())
-
-        preselect = ''
-        if best_guess and best_guess in library_names:
-            preselect = best_guess
-        elif exe_basename:
-            stem = os.path.splitext(exe_basename)[0].lower()
-            stripped_stem = stem.replace(' ', '')
-            for n in library_names:
-                if stem and stripped_stem in n.lower().replace(' ', ''):
-                    preselect = n
-                    break
+        exe_basename = ctx['exe_basename']
+        install_dir = ctx['install_dir']
+        best_guess = ctx['best_guess']
+        library_names = ctx['library_names']
+        preselect = ctx['preselect']
+        seen_lower = {n.lower() for n in library_names}
 
         try:
             import PySimpleGUI as sg
@@ -1133,73 +1279,19 @@ class SessionWatcherBridge:
                 break
         win.close()
 
-        if not chosen and not ignore:
-            # User cancelled - leave the entry on _pending_matches so
-            # drain_pending_matches_on_focus can re-fire the toast later.
-            _log.info("pick dialog: cancelled (was %s)", exe_basename)
-            return
-
-        # Decision committed - drop this entry from the queue.
-        self._pending_matches.pop(detection_id, None)
-
-        try:
-            if ignore and exe_basename:
-                watcher.add_ignore(exe_basename)
-                _log.info("pick dialog: %s added to ignore list",
-                          exe_basename)
-            elif chosen:
-                # Save the appropriate mapping flavor and whitelist the
-                # parent folder so strict mode lets future detections
-                # through. Same defensive pattern used by the per-game
-                # Link Executable dialog.
-                if scope_dir and install_dir:
-                    watcher.remember_installdir_mapping(install_dir, chosen)
-                    _log.info("pick dialog: installdir mapping %s -> %r",
-                              install_dir, chosen)
-                elif exe_path:
-                    watcher.remember_mapping(exe_path, chosen)
-                    _log.info("pick dialog: exe mapping %s -> %r",
-                              exe_path, chosen)
-                if exe_path:
-                    watcher.add_user_root(os.path.dirname(exe_path))
-
-                # Force the resolver to re-examine the still-running
-                # process(es). Without this, the user would have to quit
-                # and re-launch the game for the new mapping to take
-                # effect - cached pids are otherwise never reconsidered.
-                if scope_dir and install_dir:
-                    watcher.recheck_install_dir(install_dir)
-                elif exe_path:
-                    watcher.recheck_exe(exe_path)
-
-                # If the user mapped this exe to a real game, any OTHER
-                # pending detection for the same exe path is now
-                # redundant - the next watcher tick will resolve them
-                # via Layer 1. Drop them from the queue so we don't
-                # re-fire stale toasts on focus.
-                self._resolve_twin_pending_matches(exe_path, chosen)
-        except Exception as exc:  # noqa: BLE001
-            _log.warning("pick dialog: applying decision failed: %s", exc)
-            return
-
-        # Friendly confirmation banner.
-        try:
-            import PySimpleGUI as sg
-            if ignore:
+        # Mutation + confirmation message live in the shared, GUI-free apply
+        # method so the Flet path behaves identically. A cancel leaves the
+        # entry on _pending_matches so drain-on-focus can re-fire it later.
+        message = self.apply_match_pick_decision(
+            ctx, chosen=chosen, ignore=ignore, scope_dir=scope_dir)
+        if message:
+            try:
+                import PySimpleGUI as sg
                 sg.popup_quick_message(
-                    f"Got it. {exe_basename} will no longer be auto-tracked.",
-                    keep_on_top=True, background_color='#2d6a4f',
-                    text_color='white')
-            else:
-                scope_label = ("the install folder"
-                               if scope_dir else exe_basename)
-                sg.popup_quick_message(
-                    f"Mapped {scope_label} to {chosen}. The next launch "
-                    f"will be tracked automatically.",
-                    keep_on_top=True, background_color='#2d6a4f',
-                    text_color='white')
-        except Exception:
-            pass
+                    message, keep_on_top=True,
+                    background_color='#2d6a4f', text_color='white')
+            except Exception:
+                pass
 
     def _resolve_twin_pending_matches(
         self,
