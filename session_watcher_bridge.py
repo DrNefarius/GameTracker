@@ -65,12 +65,17 @@ class SessionWatcherBridge:
         data_storage_provider: DataStorageProvider,
         filename_provider: FilenameProvider,
         discord_provider: DiscordProvider,
+        notifier=None,
     ) -> None:
         self._window = window_provider
         self._data = data_provider
         self._data_storage = data_storage_provider
         self._filename = filename_provider
         self._discord = discord_provider
+        # Optional UI-agnostic notifier (core.notifier.UINotifier). When set
+        # (the Flet UI), the bridge routes its UI interactions through it instead
+        # of PySimpleGUI; when None (legacy), the sg fallbacks below are used.
+        self._notifier = notifier
 
         # Active session ids -> the row index they are accumulating on.
         self._active_sessions: Dict[str, int] = {}
@@ -625,6 +630,12 @@ class SessionWatcherBridge:
         return None
 
     def _focus_main_window(self) -> None:
+        if self._notifier is not None:
+            try:
+                self._notifier.focus()
+            except Exception:
+                pass
+            return
         win = self._window()
         if win is None:
             return
@@ -682,14 +693,19 @@ class SessionWatcherBridge:
         _log.info("discard: dropped session=%s game=%r (user opted out)",
                   snapshot.get('session_id'), snapshot.get('game_name'))
 
-        try:
-            import PySimpleGUI as sg
-            sg.popup_quick_message(
-                f"OK - this {snapshot.get('game_name') or 'session'} run won't be tracked.",
-                keep_on_top=True, background_color='#2d6a4f',
-                text_color='white')
-        except Exception:
-            pass
+        msg = f"OK - this {snapshot.get('game_name') or 'session'} run won't be tracked."
+        if self._notifier is not None:
+            try:
+                self._notifier.notify("Session not tracked", msg)
+            except Exception:
+                pass
+        else:
+            try:
+                import PySimpleGUI as sg
+                sg.popup_quick_message(msg, keep_on_top=True,
+                                       background_color='#2d6a4f', text_color='white')
+            except Exception:
+                pass
 
     def _retitle_active_session_to(self, new_game_name: str) -> bool:
         """Apply a "Wrong game?" correction to the currently running session.
@@ -1219,6 +1235,12 @@ class SessionWatcherBridge:
 
     def _show_simple_info(self, title: str, message: str) -> None:
         """Tiny wrapper so callers don't repeat the import dance."""
+        if self._notifier is not None:
+            try:
+                self._notifier.info(title, message)
+            except Exception:
+                pass
+            return
         try:
             import PySimpleGUI as sg
             sg.popup(message, title=title, keep_on_top=True)

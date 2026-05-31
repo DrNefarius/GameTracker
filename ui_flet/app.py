@@ -16,6 +16,7 @@ from ui_flet.summary_view import SummaryView
 from ui_flet.statistics_view import StatisticsView
 from ui_flet.igdb_view import open_igdb_settings_dialog
 from ui_flet.watcher_view import open_watcher_settings_dialog
+from ui_flet.watcher_runtime import start_watcher
 
 
 def _placeholder(icon, title):
@@ -164,6 +165,30 @@ def main(page: ft.Page):
         on_click=toggle_theme,
     )
 
+    # ---- process-watcher On/Off toggle ----------------------------------
+    def toggle_watcher(_):
+        from process_watcher import get_watcher
+        new_enabled = not bool(service.config.get("watcher_enabled", False))
+        service.config["watcher_enabled"] = new_enabled
+        save_config(service.config)
+        w = get_watcher()
+        if w is not None:
+            try:
+                w.start() if new_enabled else w.stop()
+            except Exception as ex:  # pragma: no cover - defensive
+                print("watcher toggle failed:", ex)
+        watcher_btn.icon = ft.Icons.VISIBILITY if new_enabled else ft.Icons.VISIBILITY_OFF
+        watcher_btn.tooltip = f"Process Watcher: {'On' if new_enabled else 'Off'}"
+        snack(f"Process Watcher {'enabled' if new_enabled else 'disabled'}")
+        page.update()
+
+    _watcher_on = bool(service.config.get("watcher_enabled", False))
+    watcher_btn = ft.IconButton(
+        icon=ft.Icons.VISIBILITY if _watcher_on else ft.Icons.VISIBILITY_OFF,
+        tooltip=f"Process Watcher: {'On' if _watcher_on else 'Off'}",
+        on_click=toggle_watcher,
+    )
+
     # ---- toolbar ---------------------------------------------------------
     toolbar = ft.Container(
         bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
@@ -179,6 +204,7 @@ def main(page: ft.Page):
                 ft.IconButton(ft.Icons.UPLOAD_FILE, tooltip="Import Excel", on_click=do_import),
                 ft.IconButton(ft.Icons.CLOUD_SYNC, tooltip="IGDB Settings",
                               on_click=lambda e: open_igdb_settings_dialog(page, service)),
+                watcher_btn,
                 ft.IconButton(ft.Icons.SETTINGS, tooltip="Process Watcher settings",
                               on_click=lambda e: open_watcher_settings_dialog(page, service)),
                 ft.PopupMenuButton(
@@ -266,3 +292,8 @@ def main(page: ft.Page):
 
     # Initial table width (page.width may not be known until the first resize).
     apply_table_width(getattr(page, "width", None) or 1200)
+
+    # ---- background process watcher (auto session tracking) -------------
+    # Runs in its own thread; its events are marshalled onto the Flet loop and
+    # auto-recorded sessions refresh the games list.
+    start_watcher(page, service, refresh_cb=games_view.refresh)
