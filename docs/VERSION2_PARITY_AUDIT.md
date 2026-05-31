@@ -99,7 +99,7 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
 |---|---|---|
 | Light/Dark/System theme toggle | ✅ | New |
 | System tray icon (`tray_icon.py`) | 🔶 | Phase 3 |
-| Process watcher (detection, toasts, match-confirm) | 🔶 | Phase 3 (`UINotifier`) |
+| Process watcher (detection, toasts, match-confirm) | ✅ | 3A detection/toasts; **3C** match-confirm + remap + crash recovery as Flet dialogs |
 | Discord Rich Presence | 🔶 | Phase 3 |
 | Auto-updater + update notifications | 🔶 | Phase 3 |
 | Idle detection | 🔶 | Phase 3 |

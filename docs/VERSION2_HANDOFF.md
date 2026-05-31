@@ -86,7 +86,7 @@ Every one of these caused a real bug — honor them:
   `igdb_view.py` — IGDB settings dialog. `watcher_view.py` — watcher settings dialog.
   `help_view.py` — About/User Guide/etc. `watcher_runtime.py` — **watcher↔Flet bridge** (§5).
 
-## 5. Watcher integration (done, 3A/3B)
+## 5. Watcher integration (done, 3A/3B/3C)
 - `process_watcher` runs in its own thread, emits via `obj.write_event_value(key,payload)`.
   `notifications.py` posts toast-button clicks the same way (set via `notifications.bind_window(obj)`).
 - `ui_flet/watcher_runtime.py`:
@@ -102,6 +102,17 @@ Every one of these caused a real bug — honor them:
   when `notifier is None`** (legacy app unchanged). detect/end/pause/status are already sg-free.
 - **Quit** awaits `window.destroy()` then `os._exit(0)`. Close-to-tray shows a one-time toast
   (`notifications.notify_info`, gated by config `tray_close_hint_shown`).
+- **3C interactive dialogs (done)**: the three watcher dialogs are ported to Flet in
+  `ui_flet/watcher_dialogs.py` (searchable virtualized ListView game picker, like the Statistics
+  scope selector). The GUI-free decision logic lives in `SessionWatcherBridge` helper pairs
+  `get_remap_context`/`apply_remap_decision`, `get_match_pick_context`/`apply_match_pick_decision`,
+  `get_orphan_recovery_context`/`apply_orphan_recovery`; the **legacy sg dialogs now delegate to the
+  same helpers** (single source of truth). The sink (`FletWatcherSink._handle_toast_action`)
+  intercepts the **Wrong game? (`remap`)** and **Pick another (`pick`)** toast actions → Flet
+  dialogs; `confirm`/`ignore`/`discard`/`dismiss` stay on the GUI-free bridge path. Unresolved
+  ambiguous matches re-fire their OS toast on window **FOCUS** (`drain_pending_matches_on_focus`,
+  wired in `app.main`'s `window.on_event`). **Crash orphan-recovery** runs at startup via
+  `app.main`'s `_post_startup` (`page.run_task`).
 
 ## 6. The ONE sg leak in the new UI
 `statistics_view._render_chart_kind("heatmap")` lazy-imports `create_session_heatmap` from
@@ -110,15 +121,9 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
 
 ## 7. Status
 - **Done**: Phase 0 (foundation), Phase 1 (Games List), Phase 2 (all screens, parity audit + all gaps
-  closed), Phase 3A (watcher runtime), Phase 3B (tray + close-to-tray), plus many Flet-API bug fixes.
+  closed), Phase 3A (watcher runtime), Phase 3B (tray + close-to-tray), **Phase 3C (watcher interactive
+  dialogs → Flet: match-picker, remap, crash orphan-recovery — see §5)**, plus many Flet-API bug fixes.
 - **Remaining**:
-  - **3C** watcher interactive dialogs → Flet: **match-picker** (unrecognized game → pick library game
-    + scope exe-vs-install-dir), **remap** (retitle active session), **crash orphan-recovery**. Legacy
-    sources: `session_watcher_bridge._open_match_picker_dialog` (~L960), `_open_remap_dialog` (~L770),
-    `recover_orphan_session_if_any` (~L541), `drain_pending_matches_on_focus` (~L519). Ambiguous matches
-    queue in `bridge._pending_matches` + fire an OS toast; wire a Flet picker (apply via watcher mapping
-    APIs: `forget_mapping`, `_retitle_active_session_to`, `start_manual_session`). Extend `UINotifier` /
-    handle in the sink. **Currently an unrecognized game only raises its OS toast.**
   - **3D** Discord: `initialize_discord` at startup; pass `get_discord_integration` as the bridge's
     `discord_provider` (currently `lambda: None`); enable/disable toggle (config `discord_enabled`).
   - **3E** auto-updater UI: port `update_ui.py` (Check for Updates / Update Settings / update-available
@@ -146,6 +151,7 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
   The user validates GUI behavior (tabs, tray, real-game watcher detection) — those can't be auto-tested.
 
 ## 9. Git
-Branch `Version2` (do not push), working tree clean. Latest: `4692726`. Earlier key commits include
-`c1cd797` (3A watcher), `94a8cae` (3B tray), `f86478b` (parity gaps closed), `f592cf6` (audit doc),
-`e3e2ee9` (foundation). `main`/`master` carry the two pre-migration bug fixes; `Version2` branched off `main`.
+Branch `Version2` (do not push). Latest: `9b25f60` (3C watcher interactive dialogs). Earlier key
+commits include `835a07f` (3B tray Quit/close-to-tray fixes), `c1cd797` (3A watcher), `94a8cae`
+(3B tray), `f86478b` (parity gaps closed), `f592cf6` (audit doc), `e3e2ee9` (foundation).
+`main`/`master` carry the two pre-migration bug fixes; `Version2` branched off `main`.
