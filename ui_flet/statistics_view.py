@@ -327,7 +327,7 @@ class StatisticsView:
         self.heatmap_caption = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         self.heatmap_host = ft.Container(content=ft.Text("…"))
         self.year_dd = ft.Dropdown(
-            label="Period", value="rolling", width=170, dense=True,
+            label="Period", value="rolling", width=200, dense=True,
             options=[ft.dropdown.Option(key="rolling", text="Last 12 months")],
             on_select=self._on_year_select,
         )
@@ -436,7 +436,7 @@ class StatisticsView:
             on_select=self._on_dist_type_select,
         )
         self.hm_window_dd = ft.Dropdown(
-            label="Window", value="1", width=130, dense=True,
+            label="Window", value="1", width=170, dense=True,
             options=[ft.dropdown.Option(key=k, text=t) for k, t in
                      (("1", "1 Month"), ("3", "3 Months"), ("6", "6 Months"), ("12", "1 Year"))],
             on_select=self._on_hm_window,
@@ -459,14 +459,14 @@ class StatisticsView:
                                alignment=ft.Alignment(0, 0), padding=ft.Padding(0, 8, 0, 8))
             for kind, _ in _CHART_TABS
         }
+        # Charts don't scroll: each tab shows a single fixed-size graph, so the
+        # per-tab columns render at their natural height (no inner scrollbar).
         tab_views = ft.TabBarView(
             controls=[
-                ft.Column([self._chart_hosts["timeline"]], scroll=ft.ScrollMode.AUTO),
-                ft.Column([self.dist_type_dd, self._chart_hosts["distribution"]],
-                          scroll=ft.ScrollMode.AUTO),
-                ft.Column([self._chart_hosts["status"]], scroll=ft.ScrollMode.AUTO),
-                ft.Column([self._heatmap_controls, self._chart_hosts["heatmap"]],
-                          scroll=ft.ScrollMode.AUTO),
+                ft.Column([self._chart_hosts["timeline"]]),
+                ft.Column([self.dist_type_dd, self._chart_hosts["distribution"]]),
+                ft.Column([self._chart_hosts["status"]]),
+                ft.Column([self._heatmap_controls, self._chart_hosts["heatmap"]]),
             ],
             expand=True,
         )
@@ -476,7 +476,10 @@ class StatisticsView:
                 [
                     ft.TabBar(tabs=[ft.Tab(label=lbl) for _, lbl in _CHART_TABS],
                               scrollable=True),
-                    ft.Container(tab_views, height=440),
+                    # Top padding so the first control's label (e.g. the
+                    # Distribution dropdown) isn't clipped by the tab bar. Taller
+                    # than before to fit dropdown + graph without an inner scroll.
+                    ft.Container(tab_views, height=480, padding=ft.Padding(0, 14, 0, 0)),
                 ],
                 spacing=8,
             ),
