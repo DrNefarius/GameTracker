@@ -51,14 +51,13 @@ from ui_flet.session_dialogs import (
 ALL_GAMES = "__all__"
 _HEATMAP_WEEKS = 53
 
-_CHART_OPTIONS = [
-    ("all_timeline", "All sessions: timeline", "all_timeline"),
-    ("all_distribution", "All sessions: length distribution", "all_distribution"),
-    ("game_timeline", "Selected game: session timeline", "game_timeline"),
-    ("game_distribution", "Selected game: length distribution", "game_distribution"),
-    ("game_status", "Selected game: status timeline", "game_status"),
-    ("all_heatmap", "All sessions: gaming heatmap", "all_heatmap"),
-    ("game_heatmap", "Selected game: gaming heatmap", "game_heatmap"),
+# Chart tabs: (kind, label). The scope (all games vs. the selected game) follows
+# the game selection automatically rather than being baked into the chart choice.
+_CHART_TABS = [
+    ("timeline", "Timeline"),
+    ("distribution", "Distribution"),
+    ("status", "Status timeline"),
+    ("heatmap", "Gaming heatmap"),
 ]
 
 
@@ -281,7 +280,7 @@ class StatisticsView:
         self.page = page
         self.service = service
         self.selected_game = None            # None == All games
-        self.selected_chart = _CHART_OPTIONS[0][0]
+        self._active_tab = 0                 # index into _CHART_TABS
         self.heatmap_year = None             # None == rolling last 12 months
         self.dist_type = "line"              # line / scatter / box / histogram
         self.heatmap_window_months = 1       # gaming-heatmap chart window
@@ -303,15 +302,25 @@ class StatisticsView:
             run_spacing=10, spacing=10,
         )
 
-        # ---- scope selector -----------------------------------------------
-        self.game_dd = ft.Dropdown(
-            label="Scope",
-            value=ALL_GAMES,
-            options=[],
-            on_select=self._on_game_select,
-            width=360,
-            editable=True,        # type to filter (searchable, like the legacy list)
-            enable_filter=True,
+        # ---- scope selector: filterable, virtualized list -----------------
+        # A search box + ft.ListView (ListView lazily renders only visible rows,
+        # so a 900+ game library stays smooth) - approximates the legacy
+        # filterable Listbox without the dropdown's giant-menu problem.
+        self.game_search = ft.TextField(
+            hint_text="Filter games…", prefix_icon=ft.Icons.SEARCH,
+            on_change=self._on_game_search, dense=True, expand=True,
+        )
+        self.game_list = ft.ListView(spacing=2, padding=ft.Padding(4, 4, 4, 4))
+        self._game_panel = ft.Column(
+            [
+                ft.Text("Scope", size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+                self.game_search,
+                ft.Container(
+                    self.game_list, height=200, border_radius=8,
+                    bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.ON_SURFACE),
+                ),
+            ],
+            spacing=6,
         )
 
         # ---- contributions heatmap ----------------------------------------
@@ -418,14 +427,7 @@ class StatisticsView:
             padding=ft.Padding(0, 8, 0, 8),
         )
 
-        # ---- charts --------------------------------------------------------
-        self.chart_dd = ft.Dropdown(
-            label="Chart",
-            value=self.selected_chart,
-            options=[ft.dropdown.Option(key=k, text=label) for k, label, _ in _CHART_OPTIONS],
-            on_select=self._on_chart_select,
-            width=360,
-        )
+        # ---- charts (tabbed; scope follows the game selection) ------------
         self.dist_type_dd = ft.Dropdown(
             label="Distribution type", value="line", width=190, dense=True,
             options=[ft.dropdown.Option(key=k, text=t) for k, t in
@@ -433,7 +435,6 @@ class StatisticsView:
                       ("box", "Box Plot"), ("histogram", "Histogram"))],
             on_select=self._on_dist_type_select,
         )
-        # Gaming-heatmap window controls (shown only when a heatmap chart is picked).
         self.hm_window_dd = ft.Dropdown(
             label="Window", value="1", width=130, dense=True,
             options=[ft.dropdown.Option(key=k, text=t) for k, t in
@@ -450,11 +451,35 @@ class StatisticsView:
                 ft.OutlinedButton("Most active", on_click=self._hm_most_active),
                 self.hm_period,
             ],
-            wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER, visible=False,
+            wrap=True, vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
-        self._chart_host = ft.Container(
-            content=self._chart_placeholder("Loading chart…"),
-            alignment=ft.Alignment(0, 0), padding=ft.Padding(0, 8, 0, 8),
+        # One lazily-rendered host per tab (only the active tab's chart renders).
+        self._chart_hosts = {
+            kind: ft.Container(content=self._chart_placeholder("Loading chart…"),
+                               alignment=ft.Alignment(0, 0), padding=ft.Padding(0, 8, 0, 8))
+            for kind, _ in _CHART_TABS
+        }
+        tab_views = ft.TabBarView(
+            controls=[
+                ft.Column([self._chart_hosts["timeline"]], scroll=ft.ScrollMode.AUTO),
+                ft.Column([self.dist_type_dd, self._chart_hosts["distribution"]],
+                          scroll=ft.ScrollMode.AUTO),
+                ft.Column([self._chart_hosts["status"]], scroll=ft.ScrollMode.AUTO),
+                ft.Column([self._heatmap_controls, self._chart_hosts["heatmap"]],
+                          scroll=ft.ScrollMode.AUTO),
+            ],
+            expand=True,
+        )
+        self.chart_tabs = ft.Tabs(
+            length=len(_CHART_TABS), selected_index=0, on_change=self._on_chart_tab,
+            content=ft.Column(
+                [
+                    ft.TabBar(tabs=[ft.Tab(label=lbl) for _, lbl in _CHART_TABS],
+                              scrollable=True),
+                    ft.Container(tab_views, height=440),
+                ],
+                spacing=8,
+            ),
         )
 
         # ---- assemble ------------------------------------------------------
@@ -463,7 +488,7 @@ class StatisticsView:
                 ft.Text("Statistics", size=20, weight=ft.FontWeight.BOLD),
                 header,
                 ft.Divider(height=1),
-                self.game_dd,
+                self._game_panel,
                 heatmap_section,
                 ft.Divider(height=1),
                 self.rating_section,
@@ -471,10 +496,7 @@ class StatisticsView:
                 self._game_detail,
                 ft.Divider(height=1),
                 ft.Text("Charts", size=16, weight=ft.FontWeight.W_600),
-                ft.Row([self.chart_dd, self.dist_type_dd], spacing=12, wrap=True,
-                       vertical_alignment=ft.CrossAxisAlignment.END),
-                self._heatmap_controls,
-                self._chart_host,
+                self.chart_tabs,
             ],
             expand=True, scroll=ft.ScrollMode.AUTO, spacing=12,
         )
@@ -545,20 +567,44 @@ class StatisticsView:
     # ------------------------------------------------------------------ #
     # event handlers
     # ------------------------------------------------------------------ #
-    def _on_game_select(self, _):
-        value = self.game_dd.value
-        self.selected_game = None if value in (None, ALL_GAMES) else value
-        self._render_contributions()
-        self._render_rating_comparison()
-        self._render_game_detail()
-        if self.selected_chart.startswith("game_"):
-            self._render_chart()
+    # ---- scope (filterable list) ----
+    def _on_game_search(self, _):
+        self._refresh_game_list()
         if self._is_mounted():
             self.page.update()
 
-    def _on_chart_select(self, _):
-        self.selected_chart = self.chart_dd.value or _CHART_OPTIONS[0][0]
-        self._render_chart()
+    def _game_item(self, label, value):
+        selected = (value == self.selected_game)
+        return ft.Container(
+            content=ft.Text(label, size=13,
+                            weight=ft.FontWeight.W_600 if selected else None,
+                            color=ft.Colors.PRIMARY if selected else None),
+            on_click=lambda e, v=value: self._select_scope(v),
+            padding=ft.Padding(10, 6, 10, 6), border_radius=6,
+            bgcolor=ft.Colors.with_opacity(0.14, ft.Colors.PRIMARY) if selected else None,
+        )
+
+    def _refresh_game_list(self):
+        q = (self.game_search.value or "").strip().lower()
+        names = [n for n in self._games_with_history() if q in n.lower()]
+        items = [self._game_item("All games", None)]
+        items += [self._game_item(n, n) for n in names]
+        self.game_list.controls = items
+
+    def _select_scope(self, value):
+        self.selected_game = value  # None == All games
+        self._refresh_game_list()
+        self._render_contributions()
+        self._render_rating_comparison()
+        self._render_game_detail()
+        self._render_active_chart()
+        if self._is_mounted():
+            self.page.update()
+
+    # ---- chart tabs ----
+    def _on_chart_tab(self, e):
+        self._active_tab = e.control.selected_index or 0
+        self._render_active_chart()
         if self._is_mounted():
             self.page.update()
 
@@ -571,10 +617,9 @@ class StatisticsView:
 
     def _on_dist_type_select(self, _):
         self.dist_type = self.dist_type_dd.value or "line"
-        if self.selected_chart in ("all_distribution", "game_distribution"):
-            self._render_chart()
-            if self._is_mounted():
-                self.page.update()
+        self._render_chart_kind("distribution")
+        if self._is_mounted():
+            self.page.update()
 
     # ---- gaming-heatmap window navigation ----
     def _hm_sessions(self):
@@ -584,14 +629,14 @@ class StatisticsView:
 
     def _on_hm_window(self, _):
         self.heatmap_window_months = int(self.hm_window_dd.value or "1")
-        self._render_chart()
+        self._render_chart_kind("heatmap")
         if self._is_mounted():
             self.page.update()
 
     def _hm_shift(self, months):
         base = self.heatmap_end_date or date.today()
         self.heatmap_end_date = min(base + timedelta(days=months * 30), date.today())
-        self._render_chart()
+        self._render_chart_kind("heatmap")
         if self._is_mounted():
             self.page.update()
 
@@ -603,14 +648,14 @@ class StatisticsView:
 
     def _hm_latest(self, _):
         self.heatmap_end_date = None
-        self._render_chart()
+        self._render_chart_kind("heatmap")
         if self._is_mounted():
             self.page.update()
 
     def _hm_most_active(self, _):
         self.heatmap_end_date = find_most_active_period(
             self._hm_sessions(), self.heatmap_window_months)
-        self._render_chart()
+        self._render_chart_kind("heatmap")
         if self._is_mounted():
             self.page.update()
 
@@ -627,7 +672,6 @@ class StatisticsView:
     def select_game(self, name):
         """Programmatically focus a game (used by Game Hub's 'View Statistics')."""
         self.selected_game = name
-        self.game_dd.value = name
         self.refresh()
 
     def _open_date_picker(self, _):
@@ -846,44 +890,45 @@ class StatisticsView:
             f.write(buf.getvalue())
         return path
 
-    def _render_chart(self):
-        kind = next((k for key, _, k in _CHART_OPTIONS if key == self.selected_chart), None)
-        self._heatmap_controls.visible = kind in ("all_heatmap", "game_heatmap")
-        if (kind in ("game_timeline", "game_distribution", "game_status", "game_heatmap")
-                and not self.selected_game):
-            self._chart_host.content = self._chart_placeholder(
-                "Select a game above to view this chart.")
+    def _scope_sessions(self):
+        """Sessions for the current scope: one game, or every session library-wide."""
+        if self.selected_game:
+            return get_game_sessions(self.service.data, self.selected_game) or []
+        return extract_all_sessions(self.service.data)
+
+    def _render_active_chart(self):
+        idx = self._active_tab if 0 <= self._active_tab < len(_CHART_TABS) else 0
+        self._render_chart_kind(_CHART_TABS[idx][0])
+
+    def _render_chart_kind(self, kind):
+        """Render one tab's chart into its host. Scope follows the game selection;
+        'all games' uses every session, a selected game uses just that game's."""
+        host = self._chart_hosts.get(kind)
+        if host is None:
+            return
+        # Status timeline is per-game only.
+        if kind == "status" and not self.selected_game:
+            host.content = self._chart_placeholder(
+                "Select a game to view its status timeline.")
             return
         try:
-            if kind == "all_timeline":
-                buf = create_session_timeline_chart(extract_all_sessions(self.service.data))
-            elif kind == "all_distribution":
-                buf = create_session_distribution_chart(
-                    extract_all_sessions(self.service.data), chart_type=self.dist_type)
-            elif kind == "game_timeline":
-                buf = create_session_timeline_chart(
-                    get_game_sessions(self.service.data, self.selected_game),
-                    game_name=self.selected_game)
-            elif kind == "game_distribution":
-                buf = create_session_distribution_chart(
-                    get_game_sessions(self.service.data, self.selected_game),
-                    game_name=self.selected_game, chart_type=self.dist_type)
-            elif kind == "game_status":
+            game = self.selected_game
+            scope = self._scope_sessions()
+            if kind == "timeline":
+                buf = create_session_timeline_chart(scope, game_name=game)
+            elif kind == "distribution":
+                buf = create_session_distribution_chart(scope, game_name=game,
+                                                        chart_type=self.dist_type)
+            elif kind == "status":
                 buf = create_status_timeline_chart(
-                    get_status_history(self.service.data, self.selected_game),
-                    game_name=self.selected_game)
-            elif kind in ("all_heatmap", "game_heatmap"):
+                    get_status_history(self.service.data, game), game_name=game)
+            elif kind == "heatmap":
                 # create_session_heatmap currently lives in session_management
                 # (imports PySimpleGUI); lazy-import keeps it off ui_flet's import
                 # graph. Phase 5 relocates it to a GUI-free module.
                 from session_management import create_session_heatmap
-                hm_sessions = (get_game_sessions(self.service.data, self.selected_game)
-                               if kind == "game_heatmap"
-                               else extract_all_sessions(self.service.data))
-                buf = create_session_heatmap(
-                    hm_sessions,
-                    self.selected_game if kind == "game_heatmap" else None,
-                    self.heatmap_window_months, self.heatmap_end_date)
+                buf = create_session_heatmap(scope, game, self.heatmap_window_months,
+                                             self.heatmap_end_date)
                 end = self.heatmap_end_date or date.today()
                 start = end - timedelta(days=self.heatmap_window_months * 30)
                 self.hm_period.value = f"{start.isoformat()} → {end.isoformat()}"
@@ -891,33 +936,29 @@ class StatisticsView:
                 buf = None
 
             if buf is None:
-                self._chart_host.content = self._chart_placeholder("No chart available.")
+                host.content = self._chart_placeholder("No chart available.")
                 return
-            self._chart_host.content = ft.Image(
+            host.content = ft.Image(
                 src=self._write_png(buf), fit=ft.BoxFit.CONTAIN,
-                gapless_playback=True, height=360,
+                gapless_playback=True, height=380,
                 error_content=ft.Text("Image failed to load",
                                       color=ft.Colors.ON_SURFACE_VARIANT),
             )
         except Exception as exc:  # pragma: no cover - defensive
-            self._chart_host.content = self._chart_placeholder(
-                f"Could not generate chart.\n{exc}")
+            host.content = self._chart_placeholder(f"Could not generate chart.\n{exc}")
 
     def refresh(self):
         self._render_overall()
 
         names = self._games_with_history()
-        self.game_dd.options = [ft.dropdown.Option(key=ALL_GAMES, text="All games")] + [
-            ft.dropdown.Option(key=n, text=n) for n in names
-        ]
         if self.selected_game is not None and self.selected_game not in names:
             self.selected_game = None
-            self.game_dd.value = ALL_GAMES
+        self._refresh_game_list()
 
         self._render_contributions()
         self._render_rating_comparison()
         self._render_game_detail()
-        self._render_chart()
+        self._render_active_chart()
 
         if self._is_mounted():
             self.page.update()
