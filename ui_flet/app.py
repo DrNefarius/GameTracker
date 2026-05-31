@@ -312,6 +312,18 @@ def main(page: ft.Page):
             if getattr(e, "type", None) in (ft.WindowEventType.CLOSE, "close"):
                 page.window.visible = False
                 page.update()
+                # One-time hint so the user knows the app didn't actually quit.
+                if not service.config.get("tray_close_hint_shown"):
+                    try:
+                        from notifications import notify_info
+                        notify_info(
+                            "GameTracker is still running",
+                            "Minimized to the system tray — session tracking "
+                            "continues. Use the tray icon to reopen or quit.")
+                    except Exception:
+                        pass
+                    service.config["tray_close_hint_shown"] = True
+                    save_config(service.config)
         try:
             page.window.prevent_close = True
             page.window.on_event = _on_window_event

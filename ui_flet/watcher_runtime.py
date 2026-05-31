@@ -84,6 +84,9 @@ class FletWatcherSink:
     async def _dispatch(self, key, payload):
         try:
             if key == "-TRAY-ACTION-":
+                if (payload or {}).get("action") == "quit":
+                    await self._quit_app()   # async: window.destroy() is a coroutine
+                    return
                 self._handle_tray_action(payload)
                 self._safe_update()
                 return
@@ -129,8 +132,6 @@ class FletWatcherSink:
         w = get_watcher()
         if action == "open_app":
             self.notifier.focus()
-        elif action == "quit":
-            self._quit_app()
         elif action == "pause_watcher":
             if w is not None:
                 w.pause()
@@ -165,7 +166,10 @@ class FletWatcherSink:
                 return row[2] if len(row) > 2 else None
         return None
 
-    def _quit_app(self):
+    async def _quit_app(self):
+        # Stop the active session cleanly, then close. window.destroy() is an
+        # async coroutine in Flet 0.85 (must be awaited), and we os._exit() as a
+        # guaranteed fallback so the process can't linger.
         try:
             from process_watcher import cleanup_watcher
             cleanup_watcher()
@@ -178,9 +182,11 @@ class FletWatcherSink:
             pass
         try:
             self.page.window.prevent_close = False
-            self.page.window.destroy()
+            await self.page.window.destroy()
         except Exception:
             pass
+        import os
+        os._exit(0)
 
     def _rate_last_session(self, game_name):
         from ui_flet.session_dialogs import open_feedback_dialog

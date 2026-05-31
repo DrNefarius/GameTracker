@@ -185,6 +185,24 @@ def _make_activation_callback(default_payload: Dict[str, Any]) -> Callable:
 # ---------------------------------------------------------------------------
 
 
+def notify_info(title: str, message: str = "") -> bool:
+    """Show a simple informational toast (no action buttons).
+
+    Used for UI hints like "still running in the tray". Returns True if shown.
+    """
+    toaster = _get_toaster()
+    if toaster is None or _Toast is None:
+        return False
+    try:
+        toast = _Toast()
+        toast.text_fields = [title, message] if message else [title]
+        toaster.show_toast(toast)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        _log.error("notify_info failed: %s", exc)
+        return False
+
+
 def notify_session_started(
     session_id: str,
     game_name: str,
