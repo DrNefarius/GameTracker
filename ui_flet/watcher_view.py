@@ -15,7 +15,8 @@ UX mirrors the legacy PySimpleGUI dialog's grouping:
     Open log file buttons + the resolved log path.
   - Extra watched folders (``watcher_user_roots``) and ignored process names
     (``watcher_ignore_list``): each a bounded, scrollable list with per-row
-    delete + an "Add" field.
+    delete + an "Add" field. Folders also get a "Browse…" button that opens the
+    native OS folder picker (multiplatform via ``FilePicker.get_directory_path``).
   - Learned mappings (``watcher_process_map``): the watcher's per-executable
     exe->game associations (its first-layer lookup), shown as a bounded,
     scrollable list with per-row "forget" plus an "Add mapping..." picker
@@ -116,17 +117,21 @@ def _scroll_box(rows_column, height):
     )
 
 
-def _build_editable_list(values, hint_text, empty_text, list_height=140):
+def _build_editable_list(values, hint_text, empty_text, list_height=140,
+                         with_browse=False):
     """Build an editable string-list editor with a bounded, scrollable body.
 
-    Returns ``(control, get_items_fn, add_item_fn)``:
+    Returns ``(control, get_items_fn, add_item_fn, browse_button)``:
       - ``control`` is a Flet Column: a fixed-height scrolling list of rows
         (each a delete IconButton + label) followed by an "Add" TextField +
-        button.
+        button (and, when ``with_browse``, a "Browse…" button).
       - ``get_items_fn()`` returns the current list of strings (order
         preserved, blanks dropped).
       - ``add_item_fn(value)`` appends ``value`` (case-insensitive dedupe) and
-        repaints - used by the Add-mapping flow to auto-whitelist parent folders.
+        repaints - used by the folder-browse and Add-mapping flows.
+      - ``browse_button`` is the "Browse…" ``ft.OutlinedButton`` when
+        ``with_browse`` is set (the live dialog attaches the page-dependent
+        folder-picker handler to it), else ``None``.
 
     The list lives in a plain Python list captured in the closure so it works
     without a live page; updates are no-ops until the controls are mounted.
@@ -185,12 +190,20 @@ def _build_editable_list(values, hint_text, empty_text, list_height=140):
     add_button = ft.Button("Add", icon=ft.Icons.ADD, on_click=_add)
     add_field.on_submit = _add
 
+    # The live dialog attaches the async folder-picker handler to this button;
+    # headless it just sits there inert.
+    browse_button = (ft.OutlinedButton("Browse…", icon=ft.Icons.FOLDER_OPEN)
+                     if with_browse else None)
+    add_row = [add_field, add_button]
+    if browse_button is not None:
+        add_row.append(browse_button)
+
     _rebuild()
 
     control = ft.Column(
         [
             _scroll_box(rows_column, list_height),
-            ft.Row([add_field, add_button], vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Row(add_row, vertical_alignment=ft.CrossAxisAlignment.CENTER),
         ],
         spacing=8,
         tight=True,
@@ -199,7 +212,7 @@ def _build_editable_list(values, hint_text, empty_text, list_height=140):
     def get_items():
         return [str(i) for i in items]
 
-    return control, get_items, add_item
+    return control, get_items, add_item, browse_button
 
 
 def _build_mappings_editor(process_map, list_height=200):
@@ -399,12 +412,13 @@ def _build_watcher_content(service):
     )
 
     # ---- Editable lists -------------------------------------------------
-    roots_editor, get_roots, add_root = _build_editable_list(
+    roots_editor, get_roots, add_root, roots_browse_button = _build_editable_list(
         cfg.get("watcher_user_roots"),
         hint_text="e.g. D:\\Games",
         empty_text="(no extra folders added yet)",
+        with_browse=True,
     )
-    ignore_editor, get_ignore, _add_ignore = _build_editable_list(
+    ignore_editor, get_ignore, _add_ignore, _ = _build_editable_list(
         cfg.get("watcher_ignore_list"),
         hint_text="e.g. launcher.exe",
         empty_text="(no ignored process names yet)",
@@ -515,6 +529,7 @@ def _build_watcher_content(service):
         "mapping_add_button": mapping_add_button,
         "add_mapping": add_mapping,
         "add_root": add_root,
+        "roots_browse_button": roots_browse_button,
     }
 
     return content, get_values, wiring
@@ -704,5 +719,21 @@ def open_watcher_settings_dialog(page, service, on_saved=None):
                                  on_add=_apply, on_close=_reopen)
 
     wiring["mapping_add_button"].on_click = _on_add_mapping
+
+    # Watched-folders "Browse…": open the native OS folder picker (multiplatform
+    # via FilePicker.get_directory_path) and add the chosen folder. It's a native
+    # dialog, not a Flet one, so the settings dialog can stay open behind it.
+    async def _browse_root(_):
+        try:
+            path = await picker.get_directory_path(
+                dialog_title="Pick a folder to add to the watch list")
+        except Exception:  # noqa: BLE001
+            path = None
+        if path:
+            wiring["add_root"](os.path.abspath(path))
+            page.update()
+
+    if wiring.get("roots_browse_button") is not None:
+        wiring["roots_browse_button"].on_click = _browse_root
 
     page.show_dialog(dialog)
