@@ -17,6 +17,7 @@ from ui_flet.statistics_view import StatisticsView
 from ui_flet.igdb_view import open_igdb_settings_dialog
 from ui_flet.watcher_view import open_watcher_settings_dialog
 from ui_flet.watcher_runtime import start_watcher
+from ui_flet import discord_runtime
 
 
 def _placeholder(icon, title):
@@ -116,6 +117,7 @@ def main(page: ft.Page):
         try:
             service.open_path(path)
             games_view.refresh()
+            discord_runtime.notify_tab(service, rail.selected_index)  # refresh stats
             snack(f"Loaded {len(service.data)} games")
         except Exception as exc:
             snack(f"Open failed: {exc}", error=True)
@@ -132,6 +134,7 @@ def main(page: ft.Page):
         try:
             service.import_excel(path)
             games_view.refresh()
+            discord_runtime.notify_tab(service, rail.selected_index)  # refresh stats
             snack(f"Imported {len(service.data)} games")
         except Exception as exc:
             snack(f"Import failed: {exc}", error=True)
@@ -189,6 +192,23 @@ def main(page: ft.Page):
         on_click=toggle_watcher,
     )
 
+    # ---- Discord Rich Presence On/Off toggle ----------------------------
+    def toggle_discord(_):
+        new_enabled = not bool(service.config.get("discord_enabled", True))
+        discord_runtime.set_enabled(service, new_enabled)
+        discord_btn.icon_color = None if new_enabled else ft.Colors.ON_SURFACE_VARIANT
+        discord_btn.tooltip = f"Discord Rich Presence: {'On' if new_enabled else 'Off'}"
+        snack(f"Discord Rich Presence {'enabled' if new_enabled else 'disabled'}")
+        page.update()
+
+    _discord_on = bool(service.config.get("discord_enabled", True))
+    discord_btn = ft.IconButton(
+        icon=ft.Icons.DISCORD,
+        icon_color=None if _discord_on else ft.Colors.ON_SURFACE_VARIANT,
+        tooltip=f"Discord Rich Presence: {'On' if _discord_on else 'Off'}",
+        on_click=toggle_discord,
+    )
+
     # ---- toolbar ---------------------------------------------------------
     toolbar = ft.Container(
         bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
@@ -205,6 +225,7 @@ def main(page: ft.Page):
                 ft.IconButton(ft.Icons.CLOUD_SYNC, tooltip="IGDB Settings",
                               on_click=lambda e: open_igdb_settings_dialog(page, service)),
                 watcher_btn,
+                discord_btn,
                 ft.IconButton(ft.Icons.SETTINGS, tooltip="Process Watcher settings",
                               on_click=lambda e: open_watcher_settings_dialog(page, service)),
                 ft.PopupMenuButton(
@@ -249,6 +270,7 @@ def main(page: ft.Page):
             summary_view.refresh()      # regenerate charts from current data
         elif idx == 2:
             statistics_view.refresh()   # recompute stats + repopulate pickers
+        discord_runtime.notify_tab(service, idx)  # browsing-presence per tab
         page.update()
 
     # Stretch the games table to fill the width, and keep it responsive.
@@ -292,6 +314,11 @@ def main(page: ft.Page):
 
     # Initial table width (page.width may not be known until the first resize).
     apply_table_width(getattr(page, "width", None) or 1200)
+
+    # ---- Discord Rich Presence -----------------------------------------
+    # Initializes off the UI thread (the IPC handshake can block); the watcher
+    # bridge drives playing/paused/complete presence via discord_provider.
+    discord_runtime.start_discord(service)
 
     # ---- background process watcher + system tray ----------------------
     # Runs in its own thread; events are marshalled onto the Flet loop and

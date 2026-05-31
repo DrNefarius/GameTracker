@@ -29,7 +29,7 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
 |---|---|---|
 | IGDB Settings | ✅ | Toolbar button |
 | Process Watcher Settings | ✅ | Toolbar button |
-| Discord enable/disable toggle | 🔶 | Phase 3 (Discord wiring) |
+| Discord enable/disable toggle | ✅ | **3D** toolbar toggle (`discord_enabled`); see App-wide row |
 | Process Watcher On/Off toggle | 🔶 | Phase 3 (watcher) |
 | Rescan Game Libraries | 🔶 | Phase 3 (watcher / store manifests) |
 | Enrich Library from IGDB | 🔶 | Phase 3 (needs IGDB match-picker) |
@@ -100,7 +100,7 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
 | Light/Dark/System theme toggle | ✅ | New |
 | System tray icon (`tray_icon.py`) | 🔶 | Phase 3 |
 | Process watcher (detection, toasts, match-confirm) | ✅ | 3A detection/toasts; **3C** match-confirm + remap + crash recovery as Flet dialogs |
-| Discord Rich Presence | 🔶 | Phase 3 |
+| Discord Rich Presence | ✅ | **3D** `ui_flet/discord_runtime.py`: startup init (daemon thread), watcher-driven playing/paused/complete, per-tab browsing, cleanup on quit. (Real presence needs a non-placeholder `DISCORD_CLIENT_ID`.) |
 | Auto-updater + update notifications | 🔶 | Phase 3 |
 | Idle detection | 🔶 | Phase 3 |
 

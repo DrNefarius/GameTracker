@@ -129,10 +129,18 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
 ## 7. Status
 - **Done**: Phase 0 (foundation), Phase 1 (Games List), Phase 2 (all screens, parity audit + all gaps
   closed), Phase 3A (watcher runtime), Phase 3B (tray + close-to-tray), **Phase 3C (watcher interactive
-  dialogs → Flet: match-picker, remap, crash orphan-recovery — see §5)**, plus many Flet-API bug fixes.
+  dialogs → Flet: match-picker, remap, crash orphan-recovery — see §5)**, **Phase 3D (Discord — see
+  below)**, plus the single-instance guard (§2) and many Flet-API bug fixes.
+- **3D Discord (done)**: `ui_flet/discord_runtime.py` owns the Flet lifecycle — `start_discord(service)`
+  calls `initialize_discord(enabled=config.discord_enabled, default True)` **on a daemon thread** (the IPC
+  handshake can block), then pushes library stats + browsing presence. The bridge's `discord_provider`
+  is now `get_discord_integration` (was `lambda: None`), so the watcher drives playing/paused/complete
+  presence. Toolbar **Discord toggle** (`ft.Icons.DISCORD`, greyed when off) → `set_enabled` persists
+  `discord_enabled` + enable/disable off-thread. `on_nav_change` + post-open/import call `notify_tab`
+  (browsing presence per tab + refreshed counts). `_quit_app` calls `cleanup_discord()` (explicit —
+  `os._exit` skips the module's atexit). **NB**: `constants.DISCORD_CLIENT_ID` is a placeholder, so
+  presence won't actually show until a real Discord app id is set; all calls degrade gracefully.
 - **Remaining**:
-  - **3D** Discord: `initialize_discord` at startup; pass `get_discord_integration` as the bridge's
-    `discord_provider` (currently `lambda: None`); enable/disable toggle (config `discord_enabled`).
   - **3E** auto-updater UI: port `update_ui.py` (Check for Updates / Update Settings / update-available
     → download → install). Backend `auto_updater.py`.
   - **3F** IGDB: enrichment wizard + match-picker (`igdb_ui.py`); Game Hub **Re-fetch / Change Match**

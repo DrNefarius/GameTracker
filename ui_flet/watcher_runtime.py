@@ -223,6 +223,13 @@ class FletWatcherSink:
         except Exception:
             pass
         try:
+            # Clears the rich presence + closes the IPC socket. Must be explicit:
+            # os._exit below bypasses the atexit handler the module registers.
+            from discord_integration import cleanup_discord
+            cleanup_discord()
+        except Exception:
+            pass
+        try:
             self.page.window.prevent_close = False
             await self.page.window.destroy()
         except Exception:
@@ -268,6 +275,7 @@ def start_watcher(page, service, refresh_cb):
     from session_watcher_bridge import SessionWatcherBridge
     from process_watcher import initialize_watcher
     from notifications import bind_window
+    from discord_integration import get_discord_integration
 
     notifier = FletWatcherNotifier(page)
     bridge = SessionWatcherBridge(
@@ -275,7 +283,10 @@ def start_watcher(page, service, refresh_cb):
         data_provider=lambda: service.data,
         data_storage_provider=lambda: None,
         filename_provider=lambda: service.filename,
-        discord_provider=lambda: None,   # Discord wired in Phase 3D
+        # Lazy provider: returns the live Discord integration (or None until it
+        # finishes connecting) so playing/paused/complete presence is driven
+        # straight from the watcher's session events.
+        discord_provider=get_discord_integration,
         notifier=notifier,
     )
     sink = FletWatcherSink(page, bridge, service, refresh_cb, notifier)
