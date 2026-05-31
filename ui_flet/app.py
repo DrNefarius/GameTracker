@@ -293,7 +293,27 @@ def main(page: ft.Page):
     # Initial table width (page.width may not be known until the first resize).
     apply_table_width(getattr(page, "width", None) or 1200)
 
-    # ---- background process watcher (auto session tracking) -------------
-    # Runs in its own thread; its events are marshalled onto the Flet loop and
+    # ---- background process watcher + system tray ----------------------
+    # Runs in its own thread; events are marshalled onto the Flet loop and
     # auto-recorded sessions refresh the games list.
-    start_watcher(page, service, refresh_cb=games_view.refresh)
+    watcher_sink = start_watcher(page, service, refresh_cb=games_view.refresh)
+
+    def _sync_watcher_btn(enabled):
+        watcher_btn.icon = ft.Icons.VISIBILITY if enabled else ft.Icons.VISIBILITY_OFF
+        watcher_btn.tooltip = f"Process Watcher: {'On' if enabled else 'Off'}"
+        page.update()
+
+    watcher_sink.on_watcher_state_changed = _sync_watcher_btn
+
+    # Close-to-tray: with a tray icon active, the window's X hides to the tray
+    # (use tray -> Quit to actually exit) so the watcher keeps running.
+    if getattr(watcher_sink, "tray", None) is not None:
+        def _on_window_event(e):
+            if getattr(e, "type", None) in (ft.WindowEventType.CLOSE, "close"):
+                page.window.visible = False
+                page.update()
+        try:
+            page.window.prevent_close = True
+            page.window.on_event = _on_window_event
+        except Exception:
+            pass

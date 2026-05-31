@@ -71,6 +71,8 @@ class FletWatcherSink:
         self.service = service
         self.refresh_cb = refresh_cb
         self.notifier = notifier
+        self.tray = None                       # set by start_watcher
+        self.on_watcher_state_changed = None   # set by app.py to sync the toggle
 
     # process_watcher / notifications call this from their own threads.
     def write_event_value(self, key, payload=None):
@@ -81,6 +83,10 @@ class FletWatcherSink:
 
     async def _dispatch(self, key, payload):
         try:
+            if key == "-TRAY-ACTION-":
+                self._handle_tray_action(payload)
+                self._safe_update()
+                return
             if key == "-TOAST-ACTION-" and self._handle_toast_action(payload):
                 self._safe_update()
                 return
@@ -116,6 +122,66 @@ class FletWatcherSink:
             return True
         return False
 
+    def _handle_tray_action(self, payload):
+        from process_watcher import get_watcher
+        action = payload.get("action")
+        sub = payload.get("payload") or {}
+        w = get_watcher()
+        if action == "open_app":
+            self.notifier.focus()
+        elif action == "quit":
+            self._quit_app()
+        elif action == "pause_watcher":
+            if w is not None:
+                w.pause()
+        elif action == "resume_watcher":
+            if w is not None:
+                w.resume()
+        elif action == "start_watcher":
+            if w is not None:
+                w.start()
+            self.service.config["watcher_enabled"] = True
+            try:
+                from config import save_config
+                save_config(self.service.config)
+            except Exception:
+                pass
+            if self.on_watcher_state_changed:
+                try:
+                    self.on_watcher_state_changed(True)
+                except Exception:
+                    pass
+        elif action == "stop_session":
+            if w is not None:
+                w.stop_current_session()
+        elif action == "start_console":
+            game = sub.get("game")
+            if game and w is not None:
+                w.start_manual_session(game, self._platform_for(game))
+
+    def _platform_for(self, game_name):
+        for _idx, row in self.service.data:
+            if row and row[0] == game_name:
+                return row[2] if len(row) > 2 else None
+        return None
+
+    def _quit_app(self):
+        try:
+            from process_watcher import cleanup_watcher
+            cleanup_watcher()
+        except Exception:
+            pass
+        try:
+            from tray_icon import cleanup_tray
+            cleanup_tray()
+        except Exception:
+            pass
+        try:
+            self.page.window.prevent_close = False
+            self.page.window.destroy()
+        except Exception:
+            pass
+
     def _rate_last_session(self, game_name):
         from ui_flet.session_dialogs import open_feedback_dialog
         from session_data import get_game_sessions
@@ -148,8 +214,8 @@ def start_watcher(page, service, refresh_cb):
     """Construct the bridge + sink, point notifications + the watcher at them,
     and start the watcher if it's enabled in config.
 
-    Returns the ProcessWatcher (or None). The caller must keep the returned
-    bridge/sink alive (they are stashed on the returned watcher's ``_flet`` attr).
+    Returns the FletWatcherSink (``.tray`` is the TrayIcon or None). The
+    watcher/bridge/notifier are kept alive via the watcher's ``_flet`` attr.
     """
     from session_watcher_bridge import SessionWatcherBridge
     from process_watcher import initialize_watcher
@@ -173,4 +239,32 @@ def start_watcher(page, service, refresh_cb):
     if watcher is not None:
         # Keep strong refs so they aren't GC'd while the watcher thread runs.
         watcher._flet = (bridge, sink, notifier)  # type: ignore[attr-defined]
-    return watcher
+        # Idle / foreground hooks so idle-pause + foreground-only tracking work.
+        try:
+            from idle_detection import get_idle_seconds, get_foreground_pid
+            watcher.idle_seconds_provider = get_idle_seconds
+            watcher.foreground_pid_provider = get_foreground_pid
+        except Exception as exc:  # pragma: no cover - platform-dependent
+            print(f"idle/foreground hooks unavailable: {exc}")
+
+    # System tray (its own thread). Uses the same sink for its actions.
+    if service.config.get("tray_icon_enabled", True):
+        try:
+            from tray_icon import initialize_tray
+
+            def _tray_state():
+                snap = {}
+                if watcher is not None:
+                    try:
+                        snap.update(watcher.get_state_snapshot() or {})
+                    except Exception:
+                        pass
+                snap.update(bridge.build_state_snapshot() or {})
+                return snap
+
+            sink.tray = initialize_tray(
+                sink, get_state=_tray_state,
+                get_console_games=lambda: bridge.list_recent_console_games(15))
+        except Exception as exc:  # pragma: no cover - platform-dependent
+            print(f"tray init failed: {exc}")
+    return sink
