@@ -305,6 +305,19 @@ def main(page: ft.Page):
 
     watcher_sink.on_watcher_state_changed = _sync_watcher_btn
 
+    # Single-instance activation: when a second launch is blocked, it pings this
+    # instance; bring our (possibly tray-hidden) window to the front by reusing
+    # the tray "open" path. write_event_value marshals onto the Flet loop, so
+    # this is safe to call from the guard's listener thread.
+    try:
+        from single_instance import get_instance
+        _inst = get_instance()
+        if _inst is not None:
+            _inst.on_activate = lambda: watcher_sink.write_event_value(
+                "-TRAY-ACTION-", {"action": "open_app"})
+    except Exception:
+        pass
+
     # Window events: close-to-tray + drain ambiguous matches on focus.
     _has_tray = getattr(watcher_sink, "tray", None) is not None
 

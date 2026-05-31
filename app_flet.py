@@ -7,10 +7,22 @@ The legacy PySimpleGUI entry point (main.py) is left untouched during the
 migration so both UIs remain runnable.
 """
 
+import sys
+
 import flet as ft
 
+from single_instance import try_acquire
 from ui_flet.app import main
 
 
 if __name__ == "__main__":
+    # Refuse to start a second copy. If one is already running, it was pinged to
+    # bring its window to the foreground (it may be hidden in the system tray),
+    # so we just exit. The returned guard is kept alive by the single_instance
+    # module global for this process's lifetime.
+    if try_acquire() is None:
+        print("GameTracker is already running - "
+              "bringing the existing window to the front.")
+        sys.exit(0)
+
     ft.run(main)

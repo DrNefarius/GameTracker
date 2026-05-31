@@ -19,6 +19,13 @@ Read this + `docs/VERSION2_PARITY_AUDIT.md` first.
   `config`, `constants`, `process_watcher`, `notifications` (OS toasts), `igdb_integration`,
   `auto_updater`, `discord_integration`, `store_manifests`, `pause_utils`, `idle_detection`,
   `utilities`, `visualizations`, `session_visualizations`, `tray_icon`, `watcher_log`.
+- **`single_instance.py`** (new, GUI-free): cross-platform single-instance guard. **Prevention** =
+  exclusive non-blocking lock on `<config dir>/gametracker.lock` (`msvcrt.locking` on Windows,
+  `fcntl.flock` elsewhere; OS frees it on crash, immune to Windows dynamic-range port exclusions).
+  **Activation** (best-effort) = a loopback listener on port 48219; a blocked launch pings it so the
+  running instance surfaces its (possibly tray-hidden) window. `app_flet.py` calls `try_acquire()`
+  before `ft.run` and exits if it returns None; `app.main` wires `get_instance().on_activate` to the
+  sink's tray-'open' path (`write_event_value('-TRAY-ACTION-', {'action':'open_app'})`).
 - **`core/` = UI-agnostic facade** (no GUI imports):
   - `services.py` → `GameLibraryService`: `.data` (list of `(orig_idx, row)`), `.filename`,
     `.config`; methods `bootstrap / open_path / import_excel / save / save_as / add_game /
