@@ -44,9 +44,19 @@ class FletWatcherNotifier:
         self.notify(title, message)
 
     def focus(self):
+        # NB: page.window.to_front() / center() are async coroutines in Flet
+        # 0.85, so calling them synchronously is a no-op. Use the synchronous
+        # window *properties* instead: restore + focus, and briefly flip
+        # always_on_top to nudge the window to the foreground (the reliable
+        # cross-platform trick), then release it.
         try:
-            self.page.window.visible = True
-            self.page.window.to_front()
+            win = self.page.window
+            win.visible = True
+            win.minimized = False
+            win.focused = True
+            win.always_on_top = True
+            self.page.update()
+            win.always_on_top = False
             self.page.update()
         except Exception:
             pass
