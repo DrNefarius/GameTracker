@@ -30,7 +30,28 @@ except Exception as _exc:  # noqa: BLE001
     _PYSTRAY_AVAILABLE = False
 
 
-_ICON_PATH = 'gameslisticon.ico'
+def _resolve_icon_path() -> str:
+    """Locate gameslisticon.ico robustly for both in-repo runs and packaged
+    builds.
+
+    In a `flet build` bundle the working directory is not the app root, so the
+    bare relative path 'gameslisticon.ico' won't resolve. Prefer a path relative
+    to this module file (the icon ships alongside the Python sources), then fall
+    back to the CWD-relative name, then to the bare name (the caller already
+    has a generated-image fallback if none exists).
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(here, 'gameslisticon.ico'),
+        os.path.join(os.getcwd(), 'gameslisticon.ico'),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return 'gameslisticon.ico'
+
+
+_ICON_PATH = _resolve_icon_path()
 
 
 class TrayIcon:

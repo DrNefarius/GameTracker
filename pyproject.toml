@@ -1,0 +1,58 @@
+# Packaging configuration for the Version2 (Flet) build of GameTracker.
+#
+# This drives `flet build <platform>` (Phase 4). The legacy PySimpleGUI app
+# (main.py) is NOT packaged — `tool.flet.app.module` points the build at the
+# Flet entry point (app_flet.py); without it `flet build` would default to
+# `main` and bundle the wrong, deprecated UI.
+#
+# Build prerequisites (NOT pip-installable — install once on the build machine):
+#   * Flutter SDK (stable channel) on PATH — `flet build` invokes it.
+#   * Windows: Visual Studio 2019/2022 with the "Desktop development with C++"
+#     workload (MSVC + Windows 10/11 SDK).
+#   * Linux: clang, cmake, ninja-build, GTK3 dev headers, pkg-config
+#     (see scripts/build_linux.sh).
+# Run `flet doctor` to check the toolchain. Build commands live in
+# scripts/build_windows.ps1 and scripts/build_linux.sh; see docs/BUILD.md.
+
+[project]
+name = "gametracker"
+version = "1.11.3"
+description = "GameTracker — track your game library, playtime, sessions and ratings."
+requires-python = ">=3.10"
+
+# Build-scoped dependencies. `flet build` bundles exactly these (it prefers
+# [project.dependencies] over requirements.txt). Deliberately EXCLUDES
+# PySimpleGUI: the Flet UI only reaches it via one lazy import (the Statistics
+# "Gaming heatmap" chart, the known sg leak tracked for Phase 5), and that render
+# path already degrades to a placeholder when the import fails — so the packaged
+# app runs without tkinter/PySimpleGUI. requirements.txt still carries it for the
+# legacy dev entry point (main.py).
+dependencies = [
+    "flet>=0.85,<0.86",
+    "flet-desktop>=0.85,<0.86",
+    "matplotlib>=3.5.0",
+    "openpyxl>=3.0.0",
+    "Pillow>=9.0.0",
+    "pypresence>=4.2.0",
+    "requests>=2.25.0",
+    "psutil>=5.9.0",
+    "rapidfuzz>=3.0.0",
+    "pystray>=0.19.0",
+]
+
+[tool.flet]
+# App identity / packaging metadata.
+org = "com.drnefarius"
+product = "GameTracker"
+company = "DrNefarius"
+copyright = "Copyright (C) 2025 DrNefarius"
+
+[tool.flet.app]
+# Package the Flet entry point, NOT the legacy main.py.
+module = "app_flet"
+
+[tool.flet.windows]
+# Windows-only extra: actionable toast notifications (soft-imported at runtime).
+dependencies = [
+    "windows-toasts>=1.1.0",
+]
