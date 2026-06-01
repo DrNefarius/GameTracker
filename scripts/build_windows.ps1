@@ -37,6 +37,16 @@ if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
 
 # --arch x64 — the common desktop target. (ARM64 Windows is a separate run:
 # `--arch arm64`, build on an ARM64 host; see docs/BUILD.md.)
+#
+# Known flet 0.85.2 / serious_python_windows 1.0.0 issue: the generated CMake
+# always tries to copy build\site-packages into the bundle (it's gated on the
+# SERIOUS_PYTHON_SITE_PACKAGES env var, which flet sets unconditionally), but
+# serious_python only creates that dir when it has native wheels to install
+# there — when it bundles everything into app.zip instead, the dir is absent and
+# `cmake -E copy_directory` hard-fails. We pre-create the (possibly empty) dir so
+# the copy is a harmless no-op. See docs/BUILD.md "Troubleshooting".
+New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "build\site-packages") | Out-Null
+
 & $Flet build windows `
     --arch x64 `
     --project "GameTracker" `
@@ -45,7 +55,28 @@ if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
     --verbose
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "flet build windows failed (exit $LASTEXITCODE). Run `flet doctor` and check the toolchain."
+    # The site-packages copy runs late (during `flutter build`); if flet created
+    # build\ fresh and wiped our dir mid-run, re-assert it and resume the native
+    # build (idempotent — it reuses the already-packaged app.zip).
+    Write-Warning "flet build returned $LASTEXITCODE; ensuring build\site-packages exists and resuming the native build..."
+    New-Item -ItemType Directory -Force -Path (Join-Path $RepoRoot "build\site-packages") | Out-Null
+    $FlutterProj = Join-Path $RepoRoot "build\flutter"
+    if (Test-Path $FlutterProj) {
+        Push-Location $FlutterProj
+        $env:SERIOUS_PYTHON_SITE_PACKAGES = (Join-Path $RepoRoot "build\site-packages")
+        & flutter build windows --release
+        $rc = $LASTEXITCODE
+        Pop-Location
+        if ($rc -ne 0) {
+            Write-Error "Native build still failed (exit $rc). Run ``flet doctor`` and check the toolchain."
+            exit $rc
+        }
+        Write-Host "==> Resumed native build succeeded." -ForegroundColor Green
+        $ReleaseDir = Join-Path $RepoRoot "build\flutter\build\windows\x64\runner\Release"
+        Write-Host "    Launch: $ReleaseDir\GameTracker.exe"
+        exit 0
+    }
+    Write-Error "flet build windows failed (exit $LASTEXITCODE). Run ``flet doctor`` and check the toolchain."
     exit $LASTEXITCODE
 }
 

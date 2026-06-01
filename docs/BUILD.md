@@ -116,6 +116,18 @@ error — install `libgtk-3-dev` and retry.
   `PATH` in the same shell you run the build from.
 * **MSVC / Windows SDK errors** — the “Desktop development with C++” workload is
   missing or incomplete; reopen the Visual Studio Installer and add it.
+* **`Error copying directory from "...\build\site-packages"`** (build fails in
+  the `serious_python_windows` / `CopyPythonDLLs` step with `MSB3073`) — a
+  flet 0.85.2 / serious_python 1.0.0 packaging bug. The generated CMake always
+  tries to copy `build/site-packages` into the bundle (it's gated on the
+  `SERIOUS_PYTHON_SITE_PACKAGES` env var, which flet sets unconditionally), but
+  serious_python only creates that dir when it has native wheels to install
+  there. When it bundles every dependency into `app.zip` instead, the dir never
+  exists and `cmake -E copy_directory` hard-fails. **The build scripts work
+  around this automatically** (they pre-create the empty dir and, if needed,
+  resume the native build). If you invoke `flet build` directly, first run
+  `mkdir build/site-packages` (Windows: `New-Item -ItemType Directory -Force
+  build\site-packages`).
 * **Slow first build** — `flet build` downloads a Flutter build template and
   compiles the native shell on first run; subsequent builds are much faster.
 * **Tray icon missing in the bundle** — `tray_icon.py` resolves

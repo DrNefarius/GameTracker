@@ -45,11 +45,32 @@ if ! command -v flutter >/dev/null 2>&1; then
     echo "         https://docs.flutter.dev/get-started/install/linux and re-run." >&2
 fi
 
-"$FLET" build linux \
+# Known flet 0.85.2 / serious_python issue: the generated CMake always tries to
+# copy build/site-packages into the bundle (gated on SERIOUS_PYTHON_SITE_PACKAGES,
+# which flet sets unconditionally), but serious_python only creates that dir when
+# it has native wheels to install — when it bundles everything into app.zip
+# instead, the dir is absent and the copy hard-fails. Pre-create it so the copy
+# is a harmless no-op. See docs/BUILD.md "Troubleshooting".
+mkdir -p "$REPO_ROOT/build/site-packages"
+
+if ! "$FLET" build linux \
     --project "GameTracker" \
     --product "GameTracker" \
     --copyright "Copyright (C) 2025 DrNefarius" \
-    --verbose
+    --verbose; then
+    # The site-packages copy runs late (during the native build); re-assert the
+    # dir and resume (idempotent — reuses the already-packaged app.zip).
+    echo "==> flet build failed; ensuring build/site-packages exists and resuming the native build..." >&2
+    mkdir -p "$REPO_ROOT/build/site-packages"
+    if [ -d "$REPO_ROOT/build/flutter" ]; then
+        ( cd "$REPO_ROOT/build/flutter" \
+          && SERIOUS_PYTHON_SITE_PACKAGES="$REPO_ROOT/build/site-packages" \
+             flutter build linux --release )
+    else
+        echo "ERROR: build/flutter not found; the packaging step did not complete." >&2
+        exit 1
+    fi
+fi
 
 OUT="$REPO_ROOT/build/linux"
 echo "==> Build complete: $OUT"
