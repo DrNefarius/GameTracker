@@ -304,12 +304,19 @@ class GameHub:
             ),
         )
 
+        # "Fetch metadata" is only useful when the game has no IGDB panel yet;
+        # visibility is toggled in refresh(). When metadata exists, the panel
+        # itself carries Re-fetch / Change match / Remove.
+        self.fetch_btn = ft.OutlinedButton(
+            "Fetch metadata", icon=ft.Icons.CLOUD_DOWNLOAD,
+            on_click=self._on_change_match, visible=False)
         actions_row = ft.Row(
             [
                 ft.OutlinedButton("Edit", icon=ft.Icons.EDIT, on_click=self._on_edit),
                 ft.OutlinedButton("Add session", icon=ft.Icons.ADD,
                                   on_click=self._on_add_session),
                 ft.OutlinedButton("Rate", icon=ft.Icons.STAR, on_click=self._on_rate),
+                self.fetch_btn,
                 ft.OutlinedButton("View Statistics", icon=ft.Icons.BAR_CHART,
                                   on_click=self._on_view_statistics),
                 ft.OutlinedButton("Delete", icon=ft.Icons.DELETE_OUTLINE,
@@ -432,8 +439,17 @@ class GameHub:
                         scroll=ft.ScrollMode.AUTO,
                     ),
                 ),
-                ft.OutlinedButton("Remove metadata", icon=ft.Icons.DELETE_SWEEP,
-                                  on_click=self._on_remove_metadata),
+                ft.Row(
+                    [
+                        ft.OutlinedButton("Re-fetch", icon=ft.Icons.REFRESH,
+                                          on_click=self._on_refetch_metadata),
+                        ft.OutlinedButton("Change match", icon=ft.Icons.FIND_REPLACE,
+                                          on_click=self._on_change_match),
+                        ft.OutlinedButton("Remove metadata", icon=ft.Icons.DELETE_SWEEP,
+                                          on_click=self._on_remove_metadata),
+                    ],
+                    spacing=8, wrap=True,
+                ),
             ],
             spacing=8,
             expand=True,
@@ -456,9 +472,11 @@ class GameHub:
 
         self.header_holder.content = self._build_header()
         self.igdb_holder.content = self._build_igdb_panel()
-        self.igdb_holder.visible = isinstance(
-            self.row[10] if len(self.row) > 10 else None, dict
-        )
+        has_meta = isinstance(self.row[10] if len(self.row) > 10 else None, dict) \
+            and bool((self.row[10] or {}).get("igdb_id"))
+        self.igdb_holder.visible = has_meta
+        # Offer "Fetch metadata" only when there's no real IGDB match yet.
+        self.fetch_btn.visible = not has_meta
 
         total = self.row[3] if len(self.row) > 3 else None
         initial_td = parse_hhmmss_to_timedelta(total)
@@ -695,6 +713,22 @@ class GameHub:
         self.refresh()
         self._notify_changed()
         self._snack("IGDB metadata removed")
+
+    def _on_change_match(self, _):
+        # Re-open the hub fresh after the picker applies (or skips) so the IGDB
+        # panel reflects the new match. The picker pops itself on apply.
+        from ui_flet.igdb_match import open_match_picker
+        self.page.pop_dialog()
+        self._stop_timer_thread()
+        open_match_picker(self.page, self.service, self.orig_idx,
+                          on_done=self._reopen_after_child)
+
+    def _on_refetch_metadata(self, _):
+        # Re-fetch runs in place (no dialog of its own) and updates the row; just
+        # refresh the open hub when it completes.
+        from ui_flet.igdb_match import refetch_metadata
+        refetch_metadata(self.page, self.service, self.orig_idx,
+                         on_done=lambda: (self.refresh(), self._notify_changed()))
 
     # ------------------------------------------------------------------ #
     # lifecycle / plumbing

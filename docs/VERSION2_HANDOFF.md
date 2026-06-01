@@ -32,6 +32,9 @@ Read this + `docs/VERSION2_PARITY_AUDIT.md` first.
     update_game / delete_game / get_game / set_status`; module fns `new_game_row`, `edited_game_row`.
   - `ratings_logic.py` → sg-free `format_rating / calculate_session_rating_average /
     get_session_rating_summary` (legacy `ratings.py` imports sg, can't be imported by the new UI).
+  - `igdb_logic.py` → sg-free IGDB business logic (search / confidence-ranking / auto-match / details /
+    cover caching), relocated out of `igdb_ui.py` (which imports sg). `igdb_ui.py` re-imports it under
+    the old underscore names for legacy compatibility. Consumed by `ui_flet/igdb_match.py`.
   - `notifier.py` → `UINotifier` Protocol (the watcher's UI seam).
 - **`ui_flet/` = all Flet UI** (sg-free, **one exception** — see §6). Entry `app_flet.py` → `ft.run(main)`.
 - **Game row layout** (the in-memory tuple's `row`): `[0]=name, [1]=release_date('YYYY-MM-DD' or '-'),
@@ -130,8 +133,9 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
 - **Done**: Phase 0 (foundation), Phase 1 (Games List), Phase 2 (all screens, parity audit + all gaps
   closed), Phase 3A (watcher runtime), Phase 3B (tray + close-to-tray), **Phase 3C (watcher interactive
   dialogs → Flet: match-picker, remap, crash orphan-recovery — see §5)**, **Phase 3D (Discord — see
-  below)**, **Phase 3E (auto-updater UI — see below)**, plus the single-instance guard (§2) and many
-  Flet-API bug fixes.
+  below)**, **Phase 3E (auto-updater UI — see below)**, **Phase 3F (IGDB enrichment/match-picker +
+  Game Hub Re-fetch/Change Match + Rescan — see below)**, plus the single-instance guard (§2) and many
+  Flet-API bug fixes. **Phase 3 is complete.**
 - **3D Discord (done)**: `ui_flet/discord_runtime.py` owns the Flet lifecycle. **Threading is critical**:
   pypresence's sync `Presence` uses `run_until_complete`, which raises *"Cannot run the event loop while
   another loop is running"* if called on the thread with the **running Flet asyncio loop** — and in the
@@ -158,9 +162,19 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
   `update_view.startup_check` (success popup + auto-check when enabled). **NB**: the actual file-replace +
   relaunch only fully works in a **packaged build**; from source the final install step stages against the
   repo. Backend `auto_updater.py` untouched.
+- **3F IGDB (done)**: the GUI-free IGDB business logic (search / confidence-ranking / auto-match /
+  details / cover caching) was **relocated from `igdb_ui.py` into `core/igdb_logic.py`** (single source
+  of truth); `igdb_ui.py` now re-imports it under the old underscore names so the legacy UI still runs.
+  New `ui_flet/igdb_match.py`: **`open_match_picker`** (search → confidence-ranked candidate list →
+  re-search/select/skip → download details+cover → write row[10]); **`refetch_metadata`** (re-pull
+  details for an already-matched game, in place); **`open_enrich_library`** (batch wizard: off-thread
+  search, auto-apply strong matches when `igdb_auto_match_on_add`, queue ambiguous ones for an
+  end-of-run review chained through the picker); **`rescan_game_libraries`** (store-manifest rescan
+  off-thread). Game Hub gained **Re-fetch / Change match** (in the IGDB panel) + a **Fetch metadata**
+  action button shown only when no real match exists. Toolbar **IGDB popup** (`ft.Icons.CLOUD_SYNC`):
+  Settings / Enrich Library / Rescan. A user "skip" stores `row[10] = {'_skipped': True}` so enrichment
+  won't re-prompt. All network on daemon threads, marshalled via `page.run_task`.
 - **Remaining**:
-  - **3F** IGDB: enrichment wizard + match-picker (`igdb_ui.py`); Game Hub **Re-fetch / Change Match**
-    (hub currently only Remove-metadata); **Rescan Game Libraries**; **Enrich Library** menu item.
   - **Phase 4** packaging: `flet build windows` (native exe) + `flet build linux` + early **ARM64**
     smoke (Flet's weakest target — build on-device, GTK deps, no cross-compile; CI matrix). **Not Nuitka.**
   - **Phase 5** cleanup: remove PySimpleGUI dep + legacy UI files (`main.py`, `ui_components.py`,

@@ -31,8 +31,8 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
 | Process Watcher Settings | ✅ | Toolbar button |
 | Discord enable/disable toggle | ✅ | **3D** toolbar toggle (`discord_enabled`); see App-wide row |
 | Process Watcher On/Off toggle | 🔶 | Phase 3 (watcher) |
-| Rescan Game Libraries | 🔶 | Phase 3 (watcher / store manifests) |
-| Enrich Library from IGDB | 🔶 | Phase 3 (needs IGDB match-picker) |
+| Rescan Game Libraries | ✅ | **3F** IGDB menu → Rescan (`igdb_match.rescan_game_libraries`) |
+| Enrich Library from IGDB | ✅ | **3F** IGDB menu → Enrich (`igdb_match.open_enrich_library`) |
 | Check for Updates / Update Settings | ✅ | **3E** toolbar Updates menu (`ui_flet/update_view.py`) |
 
 ## Help menu
@@ -91,7 +91,7 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
 | Sessions table (interactive) + status history | ✅ | Row tap → session-actions |
 | Edit / Add session / Rate / Delete | ✅ | |
 | View Statistics | ✅ | Switches to Statistics tab + selects game |
-| **IGDB Re-fetch / Change Match** | 🔶 | Phase 3 (needs match-picker) |
+| **IGDB Re-fetch / Change Match** | ✅ | **3F** Game Hub IGDB panel (`igdb_match.open_match_picker` / `refetch_metadata`) + Fetch metadata when unmatched |
 | **Link Executable** | 🔶 | Phase 3 (watcher) |
 
 ## App-wide / background
@@ -123,7 +123,13 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
   currently reaches `create_session_heatmap` via a localized lazy import; this is the only place
   `ui_flet` touches an sg-importing module, and it must be cut before sg is removed.
 
-## Correctly deferred to Phase 3
-Discord toggle/presence · Watcher on/off + Rescan + detection/toasts/match-confirm + Link Executable ·
-IGDB enrichment + match-picker + Re-fetch/Change Match · Check for Updates / Update Settings / update UI ·
-system tray.
+## Phase 3 — DONE
+Discord toggle/presence (3D) · Watcher on/off + Rescan (3F) + detection/toasts/match-confirm (3A/3C) ·
+IGDB enrichment + match-picker + Re-fetch/Change Match (3F) · Check for Updates / Update Settings /
+update UI (3E) · system tray (3B).
+
+### Still open (carried past Phase 3)
+- **Link Executable** (Game Hub): manually map a game to a specific .exe / install dir for the watcher.
+  The underlying watcher APIs exist (`remember_mapping` / `remember_installdir_mapping` / `add_user_root`,
+  used by the 3C match-picker and the watcher-settings learned-mappings editor), but there is no per-game
+  "Link Executable" button in the Flet Game Hub yet. Small follow-up; not blocking Phase 4/5.

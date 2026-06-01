@@ -53,6 +53,26 @@ from igdb_integration import (
 )
 from utilities import calculate_popup_center_location
 
+# The IGDB business logic (search / ranking / auto-match / details / cover
+# caching) lives in the GUI-free ``core.igdb_logic`` so both this legacy
+# PySimpleGUI UI and the Flet UI share one implementation. Re-imported here
+# under their historical (underscore-prefixed) names for backwards
+# compatibility with existing callers (game_hub.py, this module's dialogs).
+from core.igdb_logic import (  # noqa: F401
+    cover_image_for as _cover_image_for,
+    ensure_cover_cached as _ensure_cover_cached,
+    format_seconds_short as _format_seconds_short,
+    load_igdb_details,
+    parse_user_playtime_seconds as _parse_user_playtime_seconds,
+    parse_user_year as _parse_user_year,
+    pick_auto_match as _pick_auto_match,
+    platforms_match as _platforms_match,
+    purge_legacy_jpeg as _purge_legacy_jpeg,
+    rank_candidates_by_confidence,
+    score_candidate as _score_candidate,
+    search_igdb_candidates,
+)
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -64,67 +84,6 @@ def _run_async(target: Callable, *args, **kwargs) -> threading.Thread:
     t = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
     t.start()
     return t
-
-
-def _format_seconds_short(seconds: Optional[int]) -> str:
-    """Render an IGDB time_to_beat value (seconds) as e.g. '45h' or '1h 30m'."""
-    if not seconds or seconds <= 0:
-        return "--"
-    hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
-    if hours >= 5:
-        return f"{hours}h"
-    if hours > 0:
-        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
-    return f"{minutes}m"
-
-
-def _parse_user_playtime_seconds(time_str: Optional[str]) -> int:
-    """Convert the app's HH:MM:SS time_played field to integer seconds."""
-    if not time_str or not isinstance(time_str, str):
-        return 0
-    parts = time_str.split(":")
-    try:
-        if len(parts) == 3:
-            h, m, s = (int(p) for p in parts)
-            return h * 3600 + m * 60 + s
-        if len(parts) == 2:
-            h, m = (int(p) for p in parts)
-            return h * 3600 + m * 60
-    except ValueError:
-        return 0
-    return 0
-
-
-def _purge_legacy_jpeg(igdb_id: int) -> None:
-    """Remove any pre-PNG cached JPEG for this id; tk can't render it anyway."""
-    legacy = legacy_cover_cache_path(int(igdb_id))
-    try:
-        if os.path.exists(legacy):
-            os.remove(legacy)
-    except OSError:
-        pass
-
-
-def _cover_image_for(igdb: Optional[Dict[str, Any]]) -> Optional[str]:
-    """Return a local cover path if cached (auto-healing a missing PNG), else None.
-
-    tkinter's PhotoImage only speaks PNG/GIF, so we normalize everything to PNG
-    on disk. If the PNG is missing but we still have the IGDB image id, we
-    download it now (small, synchronous HTTP call) so the popup renders with an
-    image on the very first open after upgrading.
-    """
-    if not igdb:
-        return None
-    igdb_id = igdb.get("igdb_id")
-    if not igdb_id:
-        return None
-    _purge_legacy_jpeg(int(igdb_id))
-    path = cover_cache_path(int(igdb_id))
-    if os.path.exists(path):
-        return path
-    # Try a best-effort on-demand download to upgrade older caches.
-    return _ensure_cover_cached(igdb)
 
 
 _COVER_DISPLAY_SIZE: Tuple[int, int] = (200, 280)
@@ -160,25 +119,6 @@ def _render_cover_fitted(cover_path: Optional[str],
     except Exception as exc:  # noqa: BLE001
         print(f"IGDB: cover resize failed for {cover_path}: {exc}")
         return None
-
-
-def _ensure_cover_cached(igdb: Dict[str, Any]) -> Optional[str]:
-    """Download the cover to the local cache if missing. Returns path or None."""
-    igdb_id = igdb.get("igdb_id")
-    image_id = igdb.get("cover_image_id")
-    if not igdb_id or not image_id:
-        return None
-    _purge_legacy_jpeg(int(igdb_id))
-    path = cover_cache_path(int(igdb_id))
-    if os.path.exists(path):
-        return path
-    try:
-        client = get_igdb_client()
-    except IGDBConfigError:
-        return None
-    if client.download_cover(image_id, path):
-        return path
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -453,296 +393,6 @@ def show_match_dialog(game_name: str, candidates: List[Dict[str, Any]],
     return chosen
 
 
-# ---------------------------------------------------------------------------
-# Fetch metadata (business logic shared by single-game + batch flows)
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# Auto-match heuristics
-# ---------------------------------------------------------------------------
-
-# Common short-form platform names users type into the app, mapped to the
-# canonical IGDB-style names. Used only for fuzzy matching in `_platforms_match`;
-# we don't force the user to spell anything in particular.
-_PLATFORM_ALIASES: Dict[str, List[str]] = {
-    "snes": ["super nintendo entertainment system", "super nintendo", "super famicom", "sfc"],
-    "nes": ["nintendo entertainment system", "famicom", "fc"],
-    "n64": ["nintendo 64"],
-    "gc": ["gamecube", "nintendo gamecube"],
-    "gb": ["game boy"],
-    "gbc": ["game boy color"],
-    "gba": ["game boy advance"],
-    "nds": ["nintendo ds"],
-    "ds": ["nintendo ds"],
-    "3ds": ["nintendo 3ds"],
-    "switch": ["nintendo switch", "ns"],
-    "wii": ["nintendo wii"],
-    "wiiu": ["nintendo wii u", "wii u"],
-    "ps1": ["playstation", "psx"],
-    "ps2": ["playstation 2"],
-    "ps3": ["playstation 3"],
-    "ps4": ["playstation 4"],
-    "ps5": ["playstation 5"],
-    "psp": ["playstation portable"],
-    "psv": ["playstation vita", "ps vita", "psvita"],
-    "xbox": ["xbox"],
-    "x360": ["xbox 360"],
-    "xone": ["xbox one"],
-    "xsx": ["xbox series x", "xbox series x|s", "xbox series"],
-    "xss": ["xbox series s", "xbox series"],
-    "pc": ["pc (microsoft windows)", "microsoft windows", "windows"],
-    "mac": ["mac", "macos", "os x"],
-    "linux": ["linux"],
-    "md": ["mega drive", "sega mega drive", "genesis", "sega genesis"],
-    "saturn": ["sega saturn"],
-    "dc": ["dreamcast", "sega dreamcast"],
-    "arcade": ["arcade"],
-}
-
-
-def _norm_platform(text: str) -> str:
-    """Lowercase + strip non-alphanumerics for loose platform comparison."""
-    return "".join(ch for ch in (text or "").lower() if ch.isalnum())
-
-
-def _platforms_match(user_platform: Optional[str], igdb_platforms: List[str]) -> bool:
-    """True if the user's platform string plausibly refers to any IGDB platform
-    for the candidate. Matching is case/punctuation-insensitive and falls back
-    to an alias table for common short forms like 'SNES' or 'PS2'."""
-    if not user_platform or not igdb_platforms:
-        return False
-    up_raw = user_platform.strip().lower()
-    up_norm = _norm_platform(up_raw)
-    if not up_norm:
-        return False
-    candidates = {up_raw, up_norm}
-    for key, aliases in _PLATFORM_ALIASES.items():
-        if up_norm == key or up_norm in {_norm_platform(a) for a in aliases}:
-            candidates.add(key)
-            candidates.update(aliases)
-            candidates.update(_norm_platform(a) for a in aliases)
-    for ig in igdb_platforms:
-        ig_raw = (ig or "").strip().lower()
-        ig_norm = _norm_platform(ig_raw)
-        if not ig_norm:
-            continue
-        if ig_raw in candidates or ig_norm in candidates:
-            return True
-        # Bidirectional substring check catches partial names in either direction
-        # (e.g. user "super nintendo" vs. IGDB "Super Nintendo Entertainment System").
-        if up_norm and (up_norm in ig_norm or ig_norm in up_norm):
-            return True
-    return False
-
-
-# Category-based score adjustment: main games are preferred, ports/remasters
-# are neutral, bundles and DLC are actively penalized so they only win when
-# the rest of the signal overwhelmingly points at them.
-_CATEGORY_SCORE: Dict[int, int] = {
-    0: 10,    # Main game
-    8: 0,     # Remake
-    9: 0,     # Remaster
-    4: -5,    # Standalone Expansion
-    10: -5,   # Expanded Edition
-    2: -5,    # Expansion
-    11: -10,  # Port
-    6: -20,   # Episode
-    7: -20,   # Season
-    3: -25,   # Bundle
-    13: -25,  # Pack
-    1: -30,   # DLC / Add-on
-    12: -30,  # Fork
-    5: -30,   # Mod
-    14: -30,  # Update
-}
-
-# Thresholds for auto-pick. Tuned so "exact name + year + platform" on the
-# main game easily clears them, while ambiguous cases fall through to the
-# dialog.
-_AUTO_MATCH_MIN_SCORE = 100
-_AUTO_MATCH_MIN_MARGIN = 25
-
-
-def _score_candidate(cand: Dict[str, Any], game_name: str,
-                     user_year: Optional[int], user_platform: Optional[str]) -> int:
-    """Compute a confidence score for a single IGDB candidate.
-
-    The score composes four independent signals:
-      - Name similarity (exact / substring).
-      - Release year proximity within the user's stored date (±1 / ±3).
-      - Platform overlap with the user's stored platform.
-      - IGDB category (main game preferred, ports/bundles/DLC penalized).
-    """
-    score = 0
-    clean_user = (game_name or "").strip().lower()
-    clean_cand = (cand.get("name") or "").strip().lower()
-    if clean_user and clean_cand:
-        if clean_user == clean_cand:
-            score += 100
-        elif clean_user in clean_cand or clean_cand in clean_user:
-            score += 40
-
-    cand_year = cand.get("year")
-    if user_year and cand_year:
-        diff = abs(int(cand_year) - int(user_year))
-        if diff == 0:
-            score += 40
-        elif diff == 1:
-            score += 30
-        elif diff <= 3:
-            score += 10
-        else:
-            # Big year gap is a negative signal on its own - a "1990" user
-            # entry almost certainly isn't the 2019 remaster.
-            score -= 10
-
-    if user_platform and _platforms_match(user_platform, cand.get("platforms") or []):
-        score += 50
-
-    cat = cand.get("category")
-    if cat is not None:
-        try:
-            score += _CATEGORY_SCORE.get(int(cat), 0)
-        except (TypeError, ValueError):
-            pass
-
-    return score
-
-
-def _parse_user_year(release_date: Optional[str]) -> Optional[int]:
-    """Return the year part of a YYYY-MM-DD-ish string, or None if unparseable."""
-    if not release_date or not isinstance(release_date, str) or len(release_date) < 4:
-        return None
-    try:
-        return int(release_date[:4])
-    except ValueError:
-        return None
-
-
-def rank_candidates_by_confidence(
-    candidates: List[Dict[str, Any]],
-    game_name: str,
-    release_date: Optional[str],
-    platform: Optional[str],
-) -> List[Dict[str, Any]]:
-    """Re-order IGDB search candidates by composite-confidence score.
-
-    `sort_search_candidates` only knows about the IGDB `category` field, so a
-    1990 SNES original and a 2020 remake of it both land in the "Main game"
-    bucket and IGDB's raw relevance order decides which is shown first - that
-    relevance often surfaces the newer, more popular release first, even
-    though the user explicitly stored a 1990 release date for the entry.
-
-    Given the user's known year and platform, this function reuses the same
-    `_score_candidate` heuristic that powers `_pick_auto_match` to put the
-    most likely match at the top of the list. Stable on score ties so the
-    original IGDB / category order survives where signals are uninformative.
-
-    No-op (returns the input order) if no context is provided, so callers
-    that don't have year/platform handy don't need to special-case anything.
-    """
-    if not candidates:
-        return candidates
-    if not (game_name or release_date or platform):
-        return candidates
-    user_year = _parse_user_year(release_date)
-    indexed = list(enumerate(candidates))
-    indexed.sort(
-        key=lambda it: (
-            -_score_candidate(it[1], game_name, user_year, platform),
-            it[0],
-        )
-    )
-    return [c for _, c in indexed]
-
-
-def _pick_auto_match(game_name: str, release_date: Optional[str],
-                     platform: Optional[str],
-                     candidates: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Pick the single best IGDB candidate for a user's game if confidence is high.
-
-    Returns a candidate only when it satisfies both:
-      - its absolute score meets `_AUTO_MATCH_MIN_SCORE`, and
-      - it beats the runner-up by at least `_AUTO_MATCH_MIN_MARGIN`.
-
-    Otherwise returns None, letting the caller fall back to the interactive
-    match dialog. The `platform` argument is optional so legacy callers that
-    don't have it handy (e.g. backfill scripts) still get useful auto-match
-    behavior using name + year alone.
-    """
-    if not candidates:
-        return None
-    user_year = _parse_user_year(release_date)
-
-    scored = [(_score_candidate(c, game_name, user_year, platform), c) for c in candidates]
-    scored.sort(key=lambda it: it[0], reverse=True)
-
-    top_score, top_cand = scored[0]
-    if top_score < _AUTO_MATCH_MIN_SCORE:
-        return None
-    runner_up = scored[1][0] if len(scored) > 1 else (top_score - _AUTO_MATCH_MIN_MARGIN - 1)
-    if top_score - runner_up < _AUTO_MATCH_MIN_MARGIN:
-        return None
-    return top_cand
-
-
-def search_igdb_candidates(
-    game_name: str,
-    limit: int = 15,
-    *,
-    user_release: Optional[str] = None,
-    user_platform: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Network-only search wrapper safe to run on a worker thread.
-
-    Returns {'candidates': [...]} on success or {'_error': 'message'} on failure.
-    Results are already re-ordered so main games surface above ports/bundles;
-    when `user_release` / `user_platform` are supplied, results are further
-    re-ranked by composite confidence (name + year + platform) so the entry
-    that best matches the user's stored data is shown first - critical when
-    the same title spans multiple decades (1993 original vs. 2020 remake).
-    Never touches Tk/PySimpleGUI, so it can run from any thread.
-    """
-    try:
-        client = get_igdb_client()
-    except IGDBConfigError as exc:
-        return {"_error": str(exc)}
-    try:
-        raw = client.search_games(game_name, limit=limit)
-        ordered = sort_search_candidates(raw)
-        ordered = rank_candidates_by_confidence(
-            ordered, game_name, user_release, user_platform)
-        return {"candidates": ordered}
-    except IGDBError as exc:
-        return {"_error": f"IGDB search failed: {exc}"}
-    except Exception as exc:  # noqa: BLE001
-        return {"_error": f"Unexpected error during search: {exc}"}
-
-
-def load_igdb_details(igdb_id: int) -> Dict[str, Any]:
-    """Network-only details + cover download safe to run on a worker thread.
-
-    Returns the normalized details dict on success or {'_error': 'message'} on
-    failure. Never touches Tk/PySimpleGUI.
-    """
-    try:
-        client = get_igdb_client()
-    except IGDBConfigError as exc:
-        return {"_error": str(exc)}
-    try:
-        details = client.get_game_details(int(igdb_id))
-    except IGDBNotFoundError:
-        return {"_error": f"IGDB entry {igdb_id} no longer exists."}
-    except IGDBError as exc:
-        return {"_error": f"IGDB lookup failed: {exc}"}
-    except Exception as exc:  # noqa: BLE001
-        return {"_error": f"Unexpected error during details lookup: {exc}"}
-
-    if details.get("cover_image_id"):
-        # Cover download also goes through the same thread-safe HTTP session.
-        _ensure_cover_cached(details)
-    return details
 
 
 def _show_igdb_error(parent_window, message: str) -> None:

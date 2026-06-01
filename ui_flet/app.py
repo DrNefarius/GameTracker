@@ -15,6 +15,7 @@ from ui_flet.game_hub import open_game_hub
 from ui_flet.summary_view import SummaryView
 from ui_flet.statistics_view import StatisticsView
 from ui_flet.igdb_view import open_igdb_settings_dialog
+from ui_flet import igdb_match
 from ui_flet.watcher_view import open_watcher_settings_dialog
 from ui_flet.watcher_runtime import start_watcher
 from ui_flet import discord_runtime
@@ -223,8 +224,20 @@ def main(page: ft.Page):
                 ft.IconButton(ft.Icons.FOLDER_OPEN, tooltip="Open .gmd", on_click=do_open),
                 ft.IconButton(ft.Icons.SAVE_AS, tooltip="Save As", on_click=do_save_as),
                 ft.IconButton(ft.Icons.UPLOAD_FILE, tooltip="Import Excel", on_click=do_import),
-                ft.IconButton(ft.Icons.CLOUD_SYNC, tooltip="IGDB Settings",
-                              on_click=lambda e: open_igdb_settings_dialog(page, service)),
+                ft.PopupMenuButton(
+                    icon=ft.Icons.CLOUD_SYNC,
+                    tooltip="IGDB",
+                    items=[
+                        ft.PopupMenuItem(content=ft.Text("IGDB Settings"),
+                                         on_click=lambda e: open_igdb_settings_dialog(page, service)),
+                        ft.PopupMenuItem(content=ft.Text("Enrich Library from IGDB"),
+                                         on_click=lambda e: igdb_match.open_enrich_library(
+                                             page, service, on_done=games_view.refresh)),
+                        ft.PopupMenuItem(),
+                        ft.PopupMenuItem(content=ft.Text("Rescan Game Libraries"),
+                                         on_click=lambda e: igdb_match.rescan_game_libraries(page)),
+                    ],
+                ),
                 watcher_btn,
                 discord_btn,
                 ft.IconButton(ft.Icons.SETTINGS, tooltip="Process Watcher settings",
