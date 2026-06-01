@@ -174,9 +174,20 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
   action button shown only when no real match exists. Toolbar **IGDB popup** (`ft.Icons.CLOUD_SYNC`):
   Settings / Enrich Library / Rescan. A user "skip" stores `row[10] = {'_skipped': True}` so enrichment
   won't re-prompt. All network on daemon threads, marshalled via `page.run_task`.
-- **Remaining**:
-  - **Phase 4** packaging: `flet build windows` (native exe) + `flet build linux` + early **ARM64**
-    smoke (Flet's weakest target — build on-device, GTK deps, no cross-compile; CI matrix). **Not Nuitka.**
+- **Phase 4 packaging (Windows DONE; Linux ready to run on a Linux host)**: config in `pyproject.toml`
+  (`tool.flet.app.module = app_flet` so the build packages the Flet entry, NOT legacy `main.py`;
+  build-scoped `[project.dependencies]` excludes PySimpleGUI). Build via `scripts/build_windows.ps1` /
+  `scripts/build_linux.sh`; full guide in **`docs/BUILD.md`**. Prereqs: Flutter SDK on PATH (`flet build`
+  auto-downloads it on first run; here it landed at `C:\Users\Tobias\flutter\3.41.7`), + VS2019/22 C++
+  on Windows / clang+cmake+ninja+GTK3 on Linux. **Key gotcha (fixed in the scripts)**: flet 0.85.2 /
+  serious_python 1.0.0 unconditionally `cmake -E copy_directory build/site-packages`, but that dir is
+  only created when there are native wheels to install there — when everything goes into `app.zip`
+  instead, the copy hard-fails (`CopyPythonDLLs` MSB3073). The scripts pre-create the empty dir (+ a
+  resume-the-native-build fallback). **Windows verified end-to-end**: from-scratch `build_windows.ps1`
+  → `build/windows/GameTracker.exe` (289MB, embedded CPython 3.12), launches + runs clean. Also note the
+  rich console crashes on cp1252 stdout when redirected — use `TERM=dumb PYTHONIOENCODING=utf-8` +
+  `--no-rich-output` for logged/non-interactive builds, and `--yes` to auto-accept the Flutter-SDK
+  install prompt. **Linux/ARM64 still need to be run on the target host** (no cross-compile).
   - **Phase 5** cleanup: remove PySimpleGUI dep + legacy UI files (`main.py`, `ui_components.py`,
     `event_handlers.py`, `*_ui.py`, legacy `game_hub.py`, `session_display.py` UI parts,
     `date_activity_view.py`, `ratings.py` popup); relocate the two chart fns (§6); drop the bridge's sg
