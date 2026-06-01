@@ -18,6 +18,7 @@ from ui_flet.igdb_view import open_igdb_settings_dialog
 from ui_flet.watcher_view import open_watcher_settings_dialog
 from ui_flet.watcher_runtime import start_watcher
 from ui_flet import discord_runtime
+from ui_flet import update_view
 
 
 def _placeholder(icon, title):
@@ -229,6 +230,16 @@ def main(page: ft.Page):
                 ft.IconButton(ft.Icons.SETTINGS, tooltip="Process Watcher settings",
                               on_click=lambda e: open_watcher_settings_dialog(page, service)),
                 ft.PopupMenuButton(
+                    icon=ft.Icons.SYSTEM_UPDATE,
+                    tooltip="Updates",
+                    items=[
+                        ft.PopupMenuItem(content=ft.Text("Check for Updates"),
+                                         on_click=lambda e: update_view.check_for_updates_manual(page)),
+                        ft.PopupMenuItem(content=ft.Text("Update Settings"),
+                                         on_click=lambda e: update_view.open_update_settings_dialog(page, service)),
+                    ],
+                ),
+                ft.PopupMenuButton(
                     icon=ft.Icons.HELP_OUTLINE,
                     tooltip="Help",
                     items=[
@@ -390,6 +401,12 @@ def main(page: ft.Page):
             from ui_flet.watcher_dialogs import open_orphan_recovery_dialog
             open_orphan_recovery_dialog(page, watcher_sink.bridge,
                                         refresh_cb=games_view.refresh)
+        except Exception:
+            pass
+        # Auto-updater: show the post-update success popup (if we just updated)
+        # and check for new updates when enabled.
+        try:
+            update_view.startup_check(page, service)
         except Exception:
             pass
 

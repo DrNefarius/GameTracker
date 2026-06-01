@@ -33,7 +33,7 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
 | Process Watcher On/Off toggle | 🔶 | Phase 3 (watcher) |
 | Rescan Game Libraries | 🔶 | Phase 3 (watcher / store manifests) |
 | Enrich Library from IGDB | 🔶 | Phase 3 (needs IGDB match-picker) |
-| Check for Updates / Update Settings | 🔶 | Phase 3 (auto-updater + update UI) |
+| Check for Updates / Update Settings | ✅ | **3E** toolbar Updates menu (`ui_flet/update_view.py`) |
 
 ## Help menu
 | Feature | Status |
@@ -101,7 +101,7 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
 | System tray icon (`tray_icon.py`) | 🔶 | Phase 3 |
 | Process watcher (detection, toasts, match-confirm) | ✅ | 3A detection/toasts; **3C** match-confirm + remap + crash recovery as Flet dialogs |
 | Discord Rich Presence | ✅ | **3D** `ui_flet/discord_runtime.py`: startup init (daemon thread), watcher-driven playing/paused/complete, per-tab browsing, cleanup on quit. (Real presence needs a non-placeholder `DISCORD_CLIENT_ID`.) |
-| Auto-updater + update notifications | 🔶 | Phase 3 |
+| Auto-updater + update notifications | ✅ | **3E** `ui_flet/update_view.py`: notification (markdown notes), download/stage progress, install confirm, settings, success popup, startup check. (Full install+relaunch is a packaged-build concern.) |
 | Idle detection | 🔶 | Phase 3 |
 
 ---

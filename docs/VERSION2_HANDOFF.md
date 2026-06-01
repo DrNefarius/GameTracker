@@ -130,7 +130,8 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
 - **Done**: Phase 0 (foundation), Phase 1 (Games List), Phase 2 (all screens, parity audit + all gaps
   closed), Phase 3A (watcher runtime), Phase 3B (tray + close-to-tray), **Phase 3C (watcher interactive
   dialogs → Flet: match-picker, remap, crash orphan-recovery — see §5)**, **Phase 3D (Discord — see
-  below)**, plus the single-instance guard (§2) and many Flet-API bug fixes.
+  below)**, **Phase 3E (auto-updater UI — see below)**, plus the single-instance guard (§2) and many
+  Flet-API bug fixes.
 - **3D Discord (done)**: `ui_flet/discord_runtime.py` owns the Flet lifecycle. **Threading is critical**:
   pypresence's sync `Presence` uses `run_until_complete`, which raises *"Cannot run the event loop while
   another loop is running"* if called on the thread with the **running Flet asyncio loop** — and in the
@@ -147,9 +148,17 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
   `tray.refresh()` on `-WATCHER-STATUS-/-PROCESS-DETECTED-/-PROCESS-ENDED-/-WATCHER-IDLE-PAUSE-` and after
   tray actions, so e.g. a console session started from the tray enables "Stop Current Session" (mirrors
   legacy `main.py`).
+- **3E auto-updater UI (done)**: `ui_flet/update_view.py` ports `update_ui.py`. Toolbar **Updates** popup
+  (`ft.Icons.SYSTEM_UPDATE`) → **Check for Updates** (`check_for_updates_manual`: checking spinner →
+  notification or "no updates") + **Update Settings** (`open_update_settings_dialog`: check-on-startup
+  toggle + Check now / Open downloads / Clear downloads). The notification renders release notes via
+  **`ft.Markdown`** (GITHUB_WEB; links open with `webbrowser.open`). Download/stage run on daemon threads
+  with progress callbacks marshalled via `page.run_task`; `_do_restart` tears down watcher/tray/discord
+  then calls `auto_updater.restart_application()` + `os._exit`. `app.main`'s `_post_startup` calls
+  `update_view.startup_check` (success popup + auto-check when enabled). **NB**: the actual file-replace +
+  relaunch only fully works in a **packaged build**; from source the final install step stages against the
+  repo. Backend `auto_updater.py` untouched.
 - **Remaining**:
-  - **3E** auto-updater UI: port `update_ui.py` (Check for Updates / Update Settings / update-available
-    → download → install). Backend `auto_updater.py`.
   - **3F** IGDB: enrichment wizard + match-picker (`igdb_ui.py`); Game Hub **Re-fetch / Change Match**
     (hub currently only Remove-metadata); **Rescan Game Libraries**; **Enrich Library** menu item.
   - **Phase 4** packaging: `flet build windows` (native exe) + `flet build linux` + early **ARM64**
