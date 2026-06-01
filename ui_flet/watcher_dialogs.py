@@ -10,6 +10,9 @@ auto-tracker can't make on its own:
     title; the user re-points it at the correct game, preserving elapsed time.
   * **crash orphan recovery** - a session was active when the app last closed;
     the user is offered to record the interrupted play time.
+  * **link executable** (Game Hub) - manually map a known library game to a
+    specific .exe (or its install folder) so the watcher tracks it even when
+    strict mode would otherwise skip the binary (non-launcher games, MMOs).
 
 All three were PySimpleGUI popups in :mod:`session_watcher_bridge`. This module
 renders them in Flet instead. The actual mutation (watcher mappings, retitling,
@@ -21,6 +24,8 @@ The game picker mirrors the Statistics scope selector: a search box over a
 virtualized ``ft.ListView`` (not a Dropdown), so a large library stays smooth
 and avoids Flet 0.85's giant-editable-menu problem.
 """
+
+import os
 
 import flet as ft
 
@@ -316,6 +321,190 @@ def open_orphan_recovery_dialog(page, bridge, refresh_cb=None):
         actions=[
             ft.TextButton("No", on_click=lambda e: page.pop_dialog()),
             ft.Button("Yes, record it", icon=ft.Icons.SAVE, on_click=_on_yes),
+        ],
+        actions_alignment=ft.MainAxisAlignment.END,
+    ))
+
+
+# --------------------------------------------------------------------------- #
+# Link executable (Game Hub -> watcher mapping)
+# --------------------------------------------------------------------------- #
+def apply_link_executable(game_name, exe_path, scope_dir=False):
+    """GUI-free: persist an exe/install-dir -> game mapping in the watcher.
+
+    Mirrors the legacy ``watcher_link_dialog``: remembers the mapping (single
+    exe or whole install folder), whitelists the parent folder for strict mode,
+    and forces the resolver to re-examine running processes so the mapping takes
+    effect without a relaunch. Returns ``(ok, message)``.
+    """
+    if not exe_path or not os.path.isfile(exe_path):
+        return False, "That file doesn't exist."
+    try:
+        from process_watcher import get_watcher
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Watcher unavailable: {exc}"
+    watcher = get_watcher()
+    if watcher is None:
+        return False, ("The process watcher isn't initialized. Enable it in "
+                       "Process Watcher Settings first.")
+    try:
+        parent = os.path.dirname(exe_path)
+        if scope_dir:
+            watcher.remember_installdir_mapping(parent, game_name)
+        else:
+            watcher.remember_mapping(exe_path, game_name)
+        added = watcher.add_user_root(parent)
+        try:
+            if scope_dir:
+                watcher.recheck_install_dir(parent)
+            else:
+                watcher.recheck_exe(exe_path)
+        except Exception:  # noqa: BLE001
+            pass
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Saving the link failed: {exc}"
+
+    scope_label = "any .exe in the install folder" if scope_dir else os.path.basename(exe_path)
+    root_msg = (" Added the parent folder to the watch list."
+                if added else "")
+    return True, f"Linked '{game_name}' to {scope_label}.{root_msg}"
+
+
+def open_link_executable_dialog(page, game_name, game_platform=None, picker=None,
+                                on_done=None, on_close=None, notify=None):
+    """Flet "Link Executable" dialog for a known library game.
+
+    Lets the user browse to an .exe and choose match scope (single exe vs. whole
+    install folder), then persists the watcher mapping via
+    :func:`apply_link_executable`. Console-platform games get a confirmation
+    first (linking an emulator binary would mis-attribute every future emulator
+    session). ``picker`` is an ``ft.FilePicker`` already added to ``page.services``
+    (the caller owns it); if omitted, one is created and appended here.
+
+    ``on_done`` fires only after a successful link; ``on_close`` fires on every
+    terminal path (link OR cancel) so the caller can restore its own view
+    (Flet shows one dialog at a time).
+    """
+    def _finish():
+        if on_close:
+            try:
+                on_close()
+            except Exception:  # noqa: BLE001
+                pass
+    if picker is None:
+        picker = ft.FilePicker()
+        try:
+            page.services.append(picker)
+        except Exception:  # noqa: BLE001
+            pass
+
+    exe_field = ft.TextField(label="Executable", hint_text="path to the game .exe",
+                             expand=True)
+    scope = ft.RadioGroup(
+        value="exe",
+        content=ft.Column(
+            [
+                ft.Radio(value="exe", label="Just this executable"),
+                ft.Radio(value="dir", label="Any executable in this folder"),
+            ],
+            tight=True, spacing=0,
+        ),
+    )
+    error = ft.Text("", color=ft.Colors.ERROR, visible=False)
+
+    def _notify(msg):
+        (notify or (lambda m: _snack(page, m)))(msg)
+
+    async def _browse(_):
+        try:
+            res = await picker.pick_files(
+                dialog_title="Pick the game executable",
+                allowed_extensions=["exe"],
+                file_type=ft.FilePickerFileType.CUSTOM,
+            )
+        except Exception:  # noqa: BLE001
+            res = None
+        if res and getattr(res[0], "path", None):
+            exe_field.value = res[0].path
+            page.update()
+
+    def _commit():
+        ok, message = apply_link_executable(
+            game_name, (exe_field.value or "").strip(), scope_dir=(scope.value == "dir"))
+        if not ok:
+            error.value = message
+            error.visible = True
+            page.update()
+            return
+        page.pop_dialog()
+        _notify(message)
+        if on_done:
+            on_done()
+        _finish()
+
+    def _on_link(_):
+        exe = (exe_field.value or "").strip()
+        if not exe or not os.path.isfile(exe):
+            error.value = "Pick an existing .exe file."
+            error.visible = True
+            page.update()
+            return
+        # Console-platform guard: warn before linking an emulator binary.
+        try:
+            from utilities import is_console_platform
+            console = is_console_platform(game_platform)
+        except Exception:  # noqa: BLE001
+            console = False
+        if console:
+            def _confirm(_):
+                page.pop_dialog()  # close the warning
+                _commit()
+            page.show_dialog(ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Probably not what you want"),
+                content=ft.Container(width=460, content=ft.Text(
+                    f"'{game_name}' is stored as a console game ({game_platform}). "
+                    "Linking an emulator .exe will track every future launch of that "
+                    "emulator as this one game.\n\nUse the tray's 'Start Console "
+                    "Session' for console titles instead.\n\nLink anyway?")),
+                actions=[
+                    ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()),
+                    ft.Button("Link anyway", on_click=_confirm),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            ))
+            return
+        _commit()
+
+    content = ft.Column(
+        [
+            ft.Text(f"Link an executable to '{game_name}'", weight=ft.FontWeight.W_600,
+                    size=14),
+            ft.Text("Pick the .exe that launches this game. The watcher will track "
+                    "sessions automatically the next time it runs.",
+                    size=12, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Row([exe_field,
+                    ft.OutlinedButton("Browse…", icon=ft.Icons.FOLDER_OPEN, on_click=_browse)],
+                   vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=8),
+            ft.Column(
+                [ft.Text("Match scope", weight=ft.FontWeight.W_600, size=12), scope],
+                tight=True, spacing=2,
+            ),
+            ft.Text("The parent folder is added to the strict-mode watch list so the "
+                    "exe isn't filtered out.",
+                    size=11, italic=True, color=ft.Colors.ON_SURFACE_VARIANT),
+            error,
+        ],
+        tight=True, spacing=12,
+    )
+
+    page.show_dialog(ft.AlertDialog(
+        modal=True,
+        title=ft.Text("Link Executable"),
+        content=ft.Container(width=560, content=content),
+        actions=[
+            ft.TextButton("Cancel", on_click=lambda e: (page.pop_dialog(), _finish())),
+            ft.Button("Link", icon=ft.Icons.LINK, on_click=_on_link),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     ))

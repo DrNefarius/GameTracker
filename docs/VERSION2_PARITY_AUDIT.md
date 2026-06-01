@@ -92,7 +92,7 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
 | Edit / Add session / Rate / Delete | ✅ | |
 | View Statistics | ✅ | Switches to Statistics tab + selects game |
 | **IGDB Re-fetch / Change Match** | ✅ | **3F** Game Hub IGDB panel (`igdb_match.open_match_picker` / `refetch_metadata`) + Fetch metadata when unmatched |
-| **Link Executable** | 🔶 | Phase 3 (watcher) |
+| **Link Executable** | ✅ | Game Hub "Link executable" (`watcher_dialogs.open_link_executable_dialog`): browse .exe + exe/install-dir scope, console-platform guard |
 
 ## App-wide / background
 | Feature | Status | Notes |
@@ -129,7 +129,6 @@ IGDB enrichment + match-picker + Re-fetch/Change Match (3F) · Check for Updates
 update UI (3E) · system tray (3B).
 
 ### Still open (carried past Phase 3)
-- **Link Executable** (Game Hub): manually map a game to a specific .exe / install dir for the watcher.
-  The underlying watcher APIs exist (`remember_mapping` / `remember_installdir_mapping` / `add_user_root`,
-  used by the 3C match-picker and the watcher-settings learned-mappings editor), but there is no per-game
-  "Link Executable" button in the Flet Game Hub yet. Small follow-up; not blocking Phase 4/5.
+- (none) — **Link Executable** is now done: Game Hub → "Link executable" opens
+  `watcher_dialogs.open_link_executable_dialog` (browse .exe, exe-vs-install-dir scope,
+  console-platform guard, persists via `apply_link_executable`).

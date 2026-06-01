@@ -317,6 +317,8 @@ class GameHub:
                                   on_click=self._on_add_session),
                 ft.OutlinedButton("Rate", icon=ft.Icons.STAR, on_click=self._on_rate),
                 self.fetch_btn,
+                ft.OutlinedButton("Link executable", icon=ft.Icons.LINK,
+                                  on_click=self._on_link_executable),
                 ft.OutlinedButton("View Statistics", icon=ft.Icons.BAR_CHART,
                                   on_click=self._on_view_statistics),
                 ft.OutlinedButton("Delete", icon=ft.Icons.DELETE_OUTLINE,
@@ -713,6 +715,23 @@ class GameHub:
         self.refresh()
         self._notify_changed()
         self._snack("IGDB metadata removed")
+
+    def _on_link_executable(self, _):
+        # Map this game to a specific .exe / install dir for the watcher. Single
+        # -dialog model: pop the hub, run the link dialog, and re-open a fresh
+        # hub on every terminal path (Link or Cancel) via on_close.
+        from ui_flet.watcher_dialogs import open_link_executable_dialog
+        platform = self.row[2] if len(self.row) > 2 else None
+        self.page.pop_dialog()
+        self._stop_timer_thread()
+
+        def _reopen():
+            GameHub(self.page, self.service, self.orig_idx, self.on_changed,
+                    self.on_view_statistics).open()
+
+        open_link_executable_dialog(
+            self.page, self.game_name, game_platform=platform,
+            on_close=_reopen, notify=lambda m: self._snack(m))
 
     def _on_change_match(self, _):
         # Re-open the hub fresh after the picker applies (or skips) so the IGDB
