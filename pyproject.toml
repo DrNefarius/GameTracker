@@ -51,6 +51,31 @@ copyright = "Copyright (C) 2025 DrNefarius"
 # Package the Flet entry point, NOT the legacy main.py.
 module = "app_flet"
 
+# Files/dirs to keep OUT of the bundled app.zip. serious_python copies the whole
+# project dir into the app archive; without this it sweeps in the venv, VCS data,
+# build artifacts and IDE config (hundreds of MB of junk, and a stale .venv that
+# can shadow the freshly pip-installed dependencies). Paths are relative to the
+# repo root. The third-party dependencies are installed separately by
+# serious_python into build/site-packages and bundled from there — they must NOT
+# be sourced from .venv here.
+exclude = [
+    ".venv",
+    ".git",
+    ".github",
+    ".idea",
+    ".vscode",
+    ".pytest_cache",
+    ".claude",
+    "__pycache__",
+    "build",
+    "build_temp",
+    "dist",
+    "main.build",
+    "tests",
+    "docs",
+    "scripts",
+]
+
 [tool.flet.windows]
 # Windows-only extra: actionable toast notifications (soft-imported at runtime).
 dependencies = [

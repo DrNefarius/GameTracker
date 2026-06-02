@@ -116,18 +116,39 @@ error — install `libgtk-3-dev` and retry.
   `PATH` in the same shell you run the build from.
 * **MSVC / Windows SDK errors** — the “Desktop development with C++” workload is
   missing or incomplete; reopen the Visual Studio Installer and add it.
-* **`Error copying directory from "...\build\site-packages"`** (build fails in
-  the `serious_python_windows` / `CopyPythonDLLs` step with `MSB3073`) — a
-  flet 0.85.2 / serious_python 1.0.0 packaging bug. The generated CMake always
-  tries to copy `build/site-packages` into the bundle (it's gated on the
-  `SERIOUS_PYTHON_SITE_PACKAGES` env var, which flet sets unconditionally), but
-  serious_python only creates that dir when it has native wheels to install
-  there. When it bundles every dependency into `app.zip` instead, the dir never
-  exists and `cmake -E copy_directory` hard-fails. **The build scripts work
-  around this automatically** (they pre-create the empty dir and, if needed,
-  resume the native build). If you invoke `flet build` directly, first run
-  `mkdir build/site-packages` (Windows: `New-Item -ItemType Directory -Force
-  build\site-packages`).
+* **Packaged app crashes with `ModuleNotFoundError: No module named 'certifi'`**
+  (or `requests` / `psutil` / etc.), AND/OR the build fails in the
+  `serious_python_windows` / `CopyPythonDLLs` step with
+  `Error copying directory from "...\build\site-packages"` (`MSB3073`) — both are
+  the **same root cause**: serious_python installed **zero** dependencies, so
+  `build/site-packages` is empty/absent.
+
+  The trigger is passing **`--arch`** for a desktop build. flet's `--arch` is
+  documented as "macOS and Android only", but it still forwards the value to
+  serious_python, whose Windows/Linux arch key is the empty string `""`.
+  serious_python's per-arch install loop does
+  `if (archArg.isNotEmpty && !archArg.contains(arch.key)) continue;` — so with
+  `--arch x64` it skips its only (empty-key) entry and never runs `pip install`.
+  The package step then finishes suspiciously fast (a few seconds, no
+  "Installing ... with pip" line) and the app ships with no third-party deps.
+
+  **Fix: do not pass `--arch` for `flet build windows` / `flet build linux`.**
+  The build scripts already omit it. A correct build shows a multi-minute
+  "Installing ... with pip" step and leaves `build/site-packages` populated
+  (`certifi/`, `requests/`, `psutil/`, `matplotlib/`, …). For ARM64, you still
+  don't pass `--arch` — Flet can't cross-compile, so you build on the ARM64 host
+  and its architecture is what you get.
+* **Packaged app crashes with `ModuleNotFoundError: No module named 'tkinter'`**
+  — the embedded CPython that serious_python bundles has **no tkinter** (the
+  native build even deletes `tcl86t.dll`/`tk86t.dll`). Any backend module the
+  Flet UI imports must therefore not `import tkinter` (or `PySimpleGUI`, which
+  imports tkinter) at module scope. `utilities.py` used to do this eagerly for
+  its legacy table-width / popup-centering helpers; it now guards the import
+  (`try: import tkinter ... except ImportError: tk = None`) and those helpers
+  fall back, so the Flet UI loads fine. If you add a new shared helper, keep any
+  tkinter/PySimpleGUI use lazy + guarded. (To catch all such leaks up front:
+  run the Flet entry under a meta-path import blocker for `tkinter`/`PySimpleGUI`
+  and confirm `import app_flet` still succeeds.)
 * **Slow first build** — `flet build` downloads a Flutter build template and
   compiles the native shell on first run; subsequent builds are much faster.
 * **Tray icon missing in the bundle** — `tray_icon.py` resolves

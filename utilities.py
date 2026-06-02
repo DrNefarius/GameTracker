@@ -3,8 +3,19 @@ Utility functions for the GamesList application.
 Contains various helper functions for formatting, calculations, and data processing.
 """
 
-import tkinter as tk
-import tkinter.font as tkfont
+try:
+    import tkinter as tk
+    import tkinter.font as tkfont
+except ImportError:
+    # tkinter is NOT bundled in the packaged (flet build) app — serious_python's
+    # embedded CPython strips it (the native build even deletes tcl86t/tk86t.dll).
+    # Only the legacy PySimpleGUI table-pixel-width and popup-centering helpers
+    # below use it, and every one of them already falls back gracefully when it's
+    # unavailable, so the Flet UI never needs tkinter at all. The legacy
+    # PySimpleGUI entry (main.py) still runs against a normal Python where
+    # tkinter is present, so it is unaffected.
+    tk = None
+    tkfont = None
 from datetime import timedelta, datetime
 
 from constants import STAR_FILLED, STAR_EMPTY, COMPLETED_STYLE, DROPPED_STYLE, IN_PROGRESS_STYLE, FUTURE_RELEASE_STYLE, DEFAULT_STYLE
