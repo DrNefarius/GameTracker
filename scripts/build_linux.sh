@@ -40,9 +40,21 @@ echo "    arch: $(uname -m)"
 FLET="$REPO_ROOT/.venv/bin/flet"
 [ -x "$FLET" ] || FLET="flet"
 
+# Locate Flutter. `flet build` manages its OWN Flutter SDK (downloaded on first
+# `--yes` run to ~/flutter/<version>), so it does NOT need Flutter on the system
+# PATH. If that managed copy exists we add it to PATH for this session and stay
+# quiet; only warn if Flutter can't be found anywhere (flet build will then
+# offer to download it).
 if ! command -v flutter >/dev/null 2>&1; then
-    echo "WARNING: Flutter SDK not found on PATH. 'flet build' needs it; install from" >&2
-    echo "         https://docs.flutter.dev/get-started/install/linux and re-run." >&2
+    _managed_flutter="$(ls -d "$HOME"/flutter/*/bin/flutter 2>/dev/null | sort | tail -n1)"
+    if [ -n "$_managed_flutter" ]; then
+        export PATH="$(dirname "$_managed_flutter"):$PATH"
+        echo "    using flet-managed Flutter at $(dirname "$_managed_flutter")"
+    else
+        echo "WARNING: Flutter not on PATH and no flet-managed copy under ~/flutter." >&2
+        echo "         flet build (--yes) will download it on first use; or install from" >&2
+        echo "         https://docs.flutter.dev/get-started/install/linux" >&2
+    fi
 fi
 
 # NB: do NOT pass `--arch` for desktop. flet's `--arch` is for macOS/Android
@@ -55,6 +67,7 @@ fi
     --project "GameTracker" \
     --product "GameTracker" \
     --copyright "Copyright (C) 2025 DrNefarius" \
+    --yes \
     --verbose
 
 OUT="$REPO_ROOT/build/linux"

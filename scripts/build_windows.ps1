@@ -29,10 +29,23 @@ Write-Host "    repo: $RepoRoot"
 $Flet = Join-Path $RepoRoot ".venv\Scripts\flet.exe"
 if (-not (Test-Path $Flet)) { $Flet = "flet" }
 
-# Quick toolchain sanity check (non-fatal; flet build will hard-fail with a
-# clearer message if Flutter/VS are missing).
+# Locate Flutter. `flet build` manages its OWN Flutter SDK (downloaded on first
+# `--yes` run to $HOME\flutter\<version>), so it does NOT need Flutter on the
+# system PATH — but if we find that managed copy we add it to PATH for this
+# session (handy if any sub-step shells out to `flutter` directly) and stay
+# quiet. Only warn if Flutter can't be found anywhere; even then, `flet build
+# --yes` below will offer to download it.
 if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
-    Write-Warning "Flutter SDK not found on PATH. `flet build` needs it; install from https://docs.flutter.dev and re-run."
+    $flutterBin = Get-ChildItem -Path (Join-Path $HOME "flutter") -Directory -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName "bin" } |
+        Where-Object { Test-Path (Join-Path $_ "flutter.bat") } |
+        Select-Object -Last 1
+    if ($flutterBin) {
+        $env:PATH = "$flutterBin;$env:PATH"
+        Write-Host "    using flet-managed Flutter at $flutterBin" -ForegroundColor DarkGray
+    } else {
+        Write-Warning "Flutter not on PATH and no flet-managed copy under $HOME\flutter. flet build (--yes) will download it on first use."
+    }
 }
 
 # NB: do NOT pass `--arch` for desktop. flet's `--arch` is for macOS/Android
@@ -46,6 +59,7 @@ if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
     --project "GameTracker" `
     --product "GameTracker" `
     --copyright "Copyright (C) 2025 DrNefarius" `
+    --yes `
     --verbose
 
 if ($LASTEXITCODE -ne 0) {
