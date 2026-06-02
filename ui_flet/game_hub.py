@@ -309,7 +309,7 @@ class GameHub:
         # itself carries Re-fetch / Change match / Remove.
         self.fetch_btn = ft.OutlinedButton(
             "Fetch metadata", icon=ft.Icons.CLOUD_DOWNLOAD,
-            on_click=self._on_change_match, visible=False)
+            on_click=self._on_fetch_metadata, visible=False)
         actions_row = ft.Row(
             [
                 ft.OutlinedButton("Edit", icon=ft.Icons.EDIT, on_click=self._on_edit),
@@ -733,14 +733,25 @@ class GameHub:
             self.page, self.game_name, game_platform=platform,
             on_close=_reopen, notify=lambda m: self._snack(m))
 
-    def _on_change_match(self, _):
-        # Re-open the hub fresh after the picker applies (or skips) so the IGDB
-        # panel reflects the new match. The picker pops itself on apply.
+    def _on_fetch_metadata(self, _):
+        # First-time fetch (no IGDB match yet): respects the "auto-apply strong
+        # matches" config flag (igdb_auto_match_on_add) — when set and a
+        # high-confidence match is found, it applies silently; otherwise the
+        # picker appears.
         from ui_flet.igdb_match import open_match_picker
         self.page.pop_dialog()
         self._stop_timer_thread()
         open_match_picker(self.page, self.service, self.orig_idx,
                           on_done=self._reopen_after_child)
+
+    def _on_change_match(self, _):
+        # Explicit re-pick: always show the picker (never auto-apply), since the
+        # user deliberately wants to choose a different match.
+        from ui_flet.igdb_match import open_match_picker
+        self.page.pop_dialog()
+        self._stop_timer_thread()
+        open_match_picker(self.page, self.service, self.orig_idx,
+                          on_done=self._reopen_after_child, allow_auto=False)
 
     def _on_refetch_metadata(self, _):
         # Re-fetch runs in place (no dialog of its own) and updates the row; just

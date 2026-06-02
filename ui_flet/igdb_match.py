@@ -96,7 +96,8 @@ def _apply_details_to_row(service, orig_idx, details):
 # --------------------------------------------------------------------------- #
 # Match picker
 # --------------------------------------------------------------------------- #
-def open_match_picker(page, service, orig_idx, on_done=None, initial_query=None):
+def open_match_picker(page, service, orig_idx, on_done=None, initial_query=None,
+                      allow_auto=None, _preloaded=None):
     """Open the IGDB match picker for the game at ``orig_idx``.
 
     Searches IGDB for the game's title (confidence-ranked by its stored release
@@ -104,13 +105,62 @@ def open_match_picker(page, service, orig_idx, on_done=None, initial_query=None)
     on "Use selected" downloads the full details + cover and writes them to the
     row. Calls ``on_done()`` after a successful apply or a skip (so the caller
     can refresh). Cancel just closes.
+
+    ``allow_auto`` controls the "auto-apply strong matches" behaviour: when True
+    (it defaults to the ``igdb_auto_match_on_add`` config flag) the picker first
+    searches and, if a candidate clears the confidence + margin thresholds,
+    applies it silently WITHOUT showing the dialog — only falling through to the
+    picker when no match is confident enough. Pass ``allow_auto=False`` to force
+    the dialog (e.g. an explicit "Change match"). ``_preloaded`` is internal: the
+    candidates already fetched by the auto-match gate, so the dialog doesn't
+    search twice.
     """
     row = service.get_game(orig_idx) or []
     game_name = row[0] if row else ""
     release = row[1] if len(row) > 1 else None
     platform = row[2] if len(row) > 2 else None
 
-    state = {"candidates": [], "selected": None, "searching": False}
+    if allow_auto is None:
+        allow_auto = bool(getattr(service, "config", {}).get("igdb_auto_match_on_add"))
+
+    # Auto-match gate: search off-thread and silently apply a high-confidence
+    # match. Only reached on the first fetch (not on an explicit re-pick, which
+    # passes allow_auto=False) and only when the user enabled the config flag.
+    if allow_auto and _preloaded is None:
+        _snack(page, "Searching IGDB for a strong match…")
+        q = (initial_query or game_name or "").strip()
+
+        def _auto_worker():
+            cands = []
+            if q:
+                res = igdb_logic.search_igdb_candidates(
+                    q, user_release=release, user_platform=platform)
+                if not res.get("_error"):
+                    cands = res.get("candidates") or []
+            auto = (igdb_logic.pick_auto_match(game_name, release, platform, cands)
+                    if cands else None)
+            details = None
+            if auto and auto.get("id"):
+                details = igdb_logic.load_igdb_details(int(auto["id"]))
+
+            async def _after():
+                if details and not details.get("_error"):
+                    _apply_details_to_row(service, orig_idx, details)
+                    _snack(page, f"Auto-matched: {details.get('name', game_name)}")
+                    if on_done:
+                        on_done()
+                    return
+                # No confident auto-match (or the details fetch failed) -> show
+                # the picker, pre-loaded with the candidates we already fetched.
+                open_match_picker(page, service, orig_idx, on_done=on_done,
+                                  initial_query=initial_query, allow_auto=False,
+                                  _preloaded=cands)
+            _run_on(page, _after)
+
+        threading.Thread(target=_auto_worker, name="igdb-automatch", daemon=True).start()
+        return
+
+    state = {"candidates": list(_preloaded or []), "selected": None, "searching": False}
 
     query = ft.TextField(label="Search title", value=initial_query or game_name or "",
                          expand=True, dense=True)
@@ -259,9 +309,15 @@ def open_match_picker(page, service, orig_idx, on_done=None, initial_query=None)
         actions_alignment=ft.MainAxisAlignment.END,
     ))
 
-    # Kick off the initial search automatically.
     _render_results()
-    _do_search()
+    if _preloaded is None:
+        # Kick off the initial search automatically.
+        _do_search()
+    else:
+        # Reuse the candidates already fetched by the auto-match gate.
+        n = len(state["candidates"])
+        _set_status(f"{n} result(s) — no confident auto-match. Click one to select."
+                    if n else "No matches. Edit the title and Search.")
 
 
 # --------------------------------------------------------------------------- #
@@ -441,7 +497,8 @@ def _review_next(page, service, pending, i, on_done):
             on_done()
         _review_next(page, service, pending, i + 1, on_done)
 
-    open_match_picker(page, service, pending[i]["idx"], on_done=_next)
+    # These games already failed auto-match in the wizard, so force the picker.
+    open_match_picker(page, service, pending[i]["idx"], on_done=_next, allow_auto=False)
 
 
 def _info(page, title, message):
