@@ -23,7 +23,9 @@ external script). From source it stages against the repo; the UI is fully
 portable but that final install step is a packaged-build concern.
 """
 
+import html
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -88,6 +90,42 @@ def _info_dialog(page, title, message):
 def _downloads_dir():
     from config import get_config_dir
     return os.path.join(get_config_dir(), "downloads")
+
+
+# GitHub release bodies frequently embed images as raw HTML <img> tags (the
+# release editor inserts them when you paste/drag an image), e.g.
+#   <img width="860" alt="foo" src="https://github.com/user-attachments/...">
+# ft.Markdown does NOT parse raw inline HTML, so those tags render as literal
+# text. flutter_markdown *does* render Markdown image syntax (![alt](url)) as a
+# network image, so rewrite each <img> into that form before rendering.
+_IMG_TAG_RE = re.compile(r"<img\b[^>]*?/?>", re.IGNORECASE | re.DOTALL)
+
+
+def _attr(tag, name):
+    """Extract an HTML attribute value (double/single/unquoted) from a tag."""
+    m = re.search(
+        r"\b" + name + r"""\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))""",
+        tag, re.IGNORECASE,
+    )
+    if not m:
+        return None
+    return m.group(1) or m.group(2) or m.group(3)
+
+
+def _notes_to_markdown(text):
+    """Rewrite raw HTML <img> tags in release notes to Markdown image syntax."""
+    if not text:
+        return text
+
+    def _repl(m):
+        tag = m.group(0)
+        src = _attr(tag, "src")
+        if not src:
+            return ""  # drop a srcless tag rather than leave raw HTML behind
+        alt = _attr(tag, "alt") or "image"
+        return "![{0}]({1})".format(html.unescape(alt), html.unescape(src))
+
+    return _IMG_TAG_RE.sub(_repl, text)
 
 
 # --------------------------------------------------------------------------- #
@@ -240,7 +278,7 @@ def open_update_notification(page, update_info):
     current = update_info.get("current_version", "?")
     new = update_info.get("version", "?")
     name = update_info.get("name") or f"Version {new}"
-    notes = update_info.get("notes") or "_No release notes provided._"
+    notes = _notes_to_markdown(update_info.get("notes") or "_No release notes provided._")
     url = update_info.get("url")
 
     def _download(_):
@@ -269,6 +307,8 @@ def open_update_notification(page, update_info):
                     notes, selectable=True,
                     extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
                     on_tap_link=lambda e: webbrowser.open(e.data),
+                    image_error_content=ft.Text("🖼️ (image failed to load)",
+                                                italic=True, size=11),
                 )],
                 scroll=ft.ScrollMode.AUTO, tight=True,
             ),

@@ -8,15 +8,15 @@ VERSION = "1.11.3"
 _DEBUG = False
 
 # GitHub repository configuration for auto-updater
-GITHUB_OWNER = "YourName"
-GITHUB_REPO = "GameTracker"
+GITHUB_OWNER = "DrNefarius"
+GITHUB_REPO = "GameTrackerV2"
 GITHUB_API_BASE = "https://api.github.com"
 
 # Discord Rich Presence configuration
 # SETUP REQUIRED: Replace CLIENT_ID with your actual Discord Application ID
 # See DISCORD_SETUP.md for detailed setup instructions
-DISCORD_CLIENT_ID = "1234567890123456789"  # Placeholder - needs to be replaced with actual Discord app ID
-DISCORD_GITHUB_URL = "https://yourname.github.io/GameTracker/"
+DISCORD_CLIENT_ID = "1387760989843492947"  # Placeholder - needs to be replaced with actual Discord app ID
+DISCORD_GITHUB_URL = "https://drnefarius.github.io/GameTrackerV2/"
 
 # Special key constants for different platforms
 QT_ENTER_KEY1 = 'special 16777220'

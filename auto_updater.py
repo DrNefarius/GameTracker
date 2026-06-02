@@ -54,6 +54,105 @@ def _github_open(url: str, timeout: float = 30.0):
             print(f"GitHub API rate limited (HTTP {e.code}); remaining={remaining}, reset={reset}")
         raise
 
+
+def _log_update(msg: str) -> None:
+    """Append a timestamped line to a persistent updater log.
+
+    A packaged GUI app has no console, so ``print`` output is lost. This log
+    (``<config dir>/update_log.txt``) survives the staging->restart->relaunch
+    cycle and is the primary way to diagnose update problems in the field.
+    """
+    try:
+        line = f"[{datetime.now().isoformat(timespec='seconds')}] {msg}"
+        print(line)
+        with open(os.path.join(get_config_dir(), 'update_log.txt'), 'a', encoding='utf-8') as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
+def _process_image_path() -> Optional[str]:
+    """Full path of the .exe that started THIS process (Windows only).
+
+    A Flet desktop build embeds CPython *in-process* inside ``GameTracker.exe``
+    (loaded via ``python3*.dll``), so it sets neither ``sys.frozen`` nor a
+    meaningful ``sys.executable`` — the classic frozen-detection signals fail.
+    The Win32 ``GetModuleFileNameW(NULL)`` returns the real host .exe regardless
+    of how Python was embedded, so it correctly resolves to ``GameTracker.exe``.
+    """
+    if platform.system().lower() != 'windows':
+        return None
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        if ctypes.windll.kernel32.GetModuleFileNameW(None, buf, len(buf)):
+            return buf.value
+    except Exception as e:
+        print(f"Could not resolve process image path: {e}")
+    return None
+
+
+def _resolve_install_target():
+    """Return ``(install_dir, executable_name)`` for staging + relaunch.
+
+    Handles all three runtimes the project ships/runs as:
+      * **Flet packaged build** — Python embedded in the app .exe; detected via
+        the real process image path (``GetModuleFileNameW``), confirmed by the
+        embedded-runtime files sitting beside it.
+      * **classic cx_Freeze / PyInstaller** frozen build — sets ``sys.frozen``.
+      * **running from source** — relaunch the Flet entry ``app_flet.py`` (NOT
+        the legacy PySimpleGUI ``main.py``).
+    """
+    # 1) Classic frozen build (cx_Freeze / PyInstaller).
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable), os.path.basename(sys.executable)
+
+    # 2) Flet packaged desktop build (embedded in-process Python).
+    img = _process_image_path()
+    if img:
+        d = os.path.dirname(img)
+        base = os.path.basename(img)
+        # Guard: ignore a dev python.exe/flet.exe and only trust the image when
+        # the packaged embedded-runtime layout is present next to it.
+        if base.lower() not in ('python.exe', 'pythonw.exe', 'flet.exe') and (
+            os.path.exists(os.path.join(d, 'python3.dll'))
+            or os.path.exists(os.path.join(d, 'serious_python_windows_plugin.dll'))
+            or os.path.isdir(os.path.join(d, 'data', 'flutter_assets', 'app'))
+        ):
+            return d, base
+
+    # 3) Running from source -> the Flet entry point, not legacy main.py.
+    return os.path.dirname(os.path.abspath(__file__)), 'app_flet.py'
+
+
+def _serious_python_extract_dir() -> Optional[str]:
+    """Return the Flet (serious_python) app-extraction dir, or None.
+
+    A packaged Flet desktop app extracts ``app.zip`` to a per-user dir
+    (``…\\<company>\\<product>\\flet\\app``) and **re-extracts on launch whenever
+    app.zip changes** — which it always does right after an update. To re-extract
+    it must delete the previous extraction; if any file there is still locked
+    (notably ``gameslisticon.ico``, which the Windows Shell holds open while a
+    toast referencing it via AUMID IconUri is on screen / in Action Center), the
+    delete fails with a sharing violation and the app dies with a white window.
+
+    We let the updater script clear this dir (with retries) *after* the old
+    process is gone, so the relaunched app re-extracts cleanly instead of racing
+    that transient lock. Detected by serious_python's ``.hash`` marker beside our
+    own module; returns None from source / classic frozen builds (where
+    ``__file__`` is the repo / there is no ``.hash``), so we never delete those.
+    """
+    try:
+        d = os.path.dirname(os.path.abspath(__file__))
+    except Exception:
+        return None
+    if (os.path.basename(d).lower() == 'app'
+            and os.path.basename(os.path.dirname(d)).lower() == 'flet'
+            and os.path.exists(os.path.join(d, '.hash'))):
+        return d
+    return None
+
+
 class AutoUpdater:
     """Handles automatic updates from GitHub releases"""
     
@@ -356,15 +455,17 @@ class AutoUpdater:
             if progress_callback:
                 progress_callback(10, "Preparing installation...")
             
-            # Get current executable directory
-            if getattr(sys, 'frozen', False):
-                # Running as executable
-                current_dir = os.path.dirname(sys.executable)
-                executable_name = os.path.basename(sys.executable)
-            else:
-                # Running as script
-                current_dir = os.path.dirname(os.path.abspath(__file__))
-                executable_name = "main.py"
+            # Resolve the install dir + executable to relaunch. Works for the
+            # Flet packaged build (embedded Python in GameTracker.exe), classic
+            # frozen builds, and source runs.
+            current_dir, executable_name = _resolve_install_target()
+            _log_update("=== install_update staging ===")
+            _log_update(f"download_path={download_path!r}")
+            _log_update(f"__file__={os.path.abspath(__file__)!r}")
+            _log_update(f"sys.frozen={getattr(sys, 'frozen', False)!r} "
+                        f"sys.executable={sys.executable!r}")
+            _log_update(f"process_image={_process_image_path()!r}")
+            _log_update(f"install target: dir={current_dir!r}, executable={executable_name!r}")
             
             # Create staging and backup directories
             config_dir = get_config_dir()
@@ -408,8 +509,14 @@ class AutoUpdater:
             if progress_callback:
                 progress_callback(90, "Creating updater script...")
             
-            # Create updater script that will run after this process exits
-            updater_script = self._create_updater_script(staging_dir, current_dir, executable_name, backup_path)
+            # Create updater script that will run after this process exits. Pass
+            # the serious_python extraction dir (if any) so the script can clear
+            # it pre-relaunch and avoid the re-extract lock race.
+            sp_extract_dir = _serious_python_extract_dir()
+            _log_update(f"serious_python extract dir (to clear pre-relaunch): {sp_extract_dir!r}")
+            updater_script = self._create_updater_script(
+                staging_dir, current_dir, executable_name, backup_path, sp_extract_dir)
+            _log_update(f"updater script written: {updater_script!r}")
             
             if progress_callback:
                 progress_callback(100, "Staging complete!")
@@ -475,16 +582,16 @@ class AutoUpdater:
         except Exception as e:
             print(f"Error during backup cleanup: {e}")
     
-    def _create_updater_script(self, staging_dir: str, target_dir: str, executable_name: str, backup_path: str) -> str:
+    def _create_updater_script(self, staging_dir: str, target_dir: str, executable_name: str, backup_path: str, sp_extract_dir: Optional[str] = None) -> str:
         """Create an updater script that runs after the main process exits"""
         system_name = platform.system().lower()
-        
+
         if system_name == 'windows':
-            return self._create_windows_updater_script(staging_dir, target_dir, executable_name, backup_path)
+            return self._create_windows_updater_script(staging_dir, target_dir, executable_name, backup_path, sp_extract_dir)
         else:
-            return self._create_unix_updater_script(staging_dir, target_dir, executable_name, backup_path)
-    
-    def _create_windows_updater_script(self, staging_dir: str, target_dir: str, executable_name: str, backup_path: str) -> str:
+            return self._create_unix_updater_script(staging_dir, target_dir, executable_name, backup_path, sp_extract_dir)
+
+    def _create_windows_updater_script(self, staging_dir: str, target_dir: str, executable_name: str, backup_path: str, sp_extract_dir: Optional[str] = None) -> str:
         """Create Windows PowerShell updater script for better Unicode support"""
         script_path = os.path.join(get_config_dir(), 'updater.ps1')
         
@@ -498,12 +605,88 @@ class AutoUpdater:
         
         # Escape paths with quotes and handle Unicode properly
         staging_dir_escaped = staging_dir.replace("'", "''")
-        target_dir_escaped = target_dir.replace("'", "''") 
+        target_dir_escaped = target_dir.replace("'", "''")
         backup_path_escaped = backup_path.replace("'", "''")
         executable_name_escaped = executable_name.replace("'", "''")
-        
+        log_path_escaped = os.path.join(get_config_dir(), 'updater_log.txt').replace("'", "''")
+
+        # Optional: clear the Flet (serious_python) app-extraction cache before
+        # relaunch so the updated app re-extracts cleanly. The big failure mode:
+        # if a prior update relaunch failed to extract, that Flet process keeps
+        # running (a white window) with the extraction dir as its WORKING
+        # DIRECTORY — which the single-instance guard can't catch (it lives in
+        # Python, which never starts on a failed extract). That zombie holds the
+        # dir so every later update fails too. So before clearing, terminate any
+        # lingering app instances: the legit pre-update instance already exited
+        # (we waited on its PID above), so anything still running here is stale.
+        if sp_extract_dir:
+            sp_extract_dir_escaped = sp_extract_dir.replace("'", "''")
+            proc_name_escaped = os.path.splitext(os.path.basename(executable_name))[0].replace("'", "''")
+            flet_cache_clear = f'''
+# Clear the Flet (serious_python) extraction cache so the app re-extracts clean.
+# Move the PROCESS working directory out of the extraction dir first. This
+# PowerShell process inherits the old app's cwd (serious_python chdir's into the
+# extraction dir), and a directory cannot be deleted while it is a live
+# process's current directory. NOTE: Set-Location only changes PowerShell's $PWD,
+# NOT the OS-level process cwd that holds the lock -- so use the .NET call, which
+# maps to Win32 SetCurrentDirectory and actually releases the handle.
+[System.IO.Directory]::SetCurrentDirectory($env:TEMP)
+Set-Location -Path $env:TEMP
+Write-Host ("Updater process cwd is now: " + [System.IO.Directory]::GetCurrentDirectory())
+
+# Terminate any lingering/zombie app instances (e.g. a previous failed-extract
+# white window) still holding the extraction dir as their working directory.
+$stale = @(Get-Process -Name '{proc_name_escaped}' -ErrorAction SilentlyContinue)
+Write-Host ("Stale '{proc_name_escaped}' instances found: " + $stale.Count)
+if ($stale.Count -gt 0) {{
+    foreach ($p in $stale) {{
+        try {{ Stop-Process -Id $p.Id -Force -ErrorAction Stop; Write-Host ("  killed PID " + $p.Id) }}
+        catch {{ Write-Host ("  failed to kill PID " + $p.Id + ": " + $_) }}
+    }}
+    Start-Sleep -Milliseconds 500
+}}
+
+$fletApp = '{sp_extract_dir_escaped}'
+Write-Host "Flet extraction dir to clear: $fletApp"
+if (Test-Path $fletApp) {{
+    Write-Host "Clearing Flet extraction cache (exists=True)..."
+    $lastErr = $null
+    for ($i = 0; $i -lt 40; $i++) {{
+        try {{
+            Remove-Item -Path $fletApp -Recurse -Force -ErrorAction Stop
+            break
+        }} catch {{
+            $lastErr = $_
+            Start-Sleep -Milliseconds 250
+        }}
+    }}
+    if (Test-Path $fletApp) {{
+        Write-Host "WARNING: Flet cache still present after $i retries. Last error: $lastErr"
+        Write-Host "Remaining items (may reveal the locked file):"
+        Get-ChildItem -LiteralPath $fletApp -Recurse -ErrorAction SilentlyContinue | ForEach-Object {{ Write-Host ("  " + $_.FullName) }}
+    }} else {{
+        Write-Host "Flet extraction cache cleared after $i retries."
+    }}
+}} else {{
+    Write-Host "Flet extraction dir does not exist; nothing to clear."
+}}
+'''
+        else:
+            flet_cache_clear = (
+                '\nWrite-Host "No Flet extraction dir was resolved at staging time '
+                '(sp_extract_dir was None) - cache-clear skipped."\n'
+            )
+
         script_content = f'''# GamesList Manager Updater (PowerShell)
 # This script handles Unicode paths properly
+
+# Persistent log: a packaged GUI relaunch has no visible console, so transcribe
+# everything to a file we can inspect after the fact.
+try {{ Start-Transcript -Path '{log_path_escaped}' -Append -Force | Out-Null }} catch {{}}
+Write-Host ("===== Updater run @ " + (Get-Date -Format o) + " =====")
+Write-Host "Waiting on PID: {current_pid}"
+Write-Host "Target dir: '{target_dir_escaped}'"
+Write-Host "Executable: '{executable_name_escaped}'"
 
 Write-Host "GamesList Manager Updater"
 Write-Host ""
@@ -513,6 +696,7 @@ Write-Host "Waiting for main application to close..."
 while (Get-Process -Id {current_pid} -ErrorAction SilentlyContinue) {{
     Start-Sleep -Seconds 1
 }}
+Write-Host "Main application has exited."
 
 Write-Host "Updating application files..."
 
@@ -533,20 +717,47 @@ try {{
     # Clean up staging directory
     Write-Host "Cleaning up..."
     Remove-Item -Path '{staging_dir_escaped}' -Recurse -Force -ErrorAction SilentlyContinue
-    
-    # Start updated application
+    {flet_cache_clear}
+    # Strip the dying app's leaked Flet runtime env vars before relaunch. They are
+    # instance-specific (per-launch server/callback ports, console log, asset dir)
+    # and were inherited: old app -> this PowerShell -> the new app. If the new
+    # app inherits them, its serious_python bootstrap reuses the OLD (dead) ports
+    # instead of assigning fresh ones, so the window shows the theme but never
+    # renders controls; and PYTHONINSPECT=1 then opens a stray interactive console
+    # bound to the process. A normal double-click gets a clean env, which is why
+    # manual launch works. Clearing them here makes the relaunch behave the same.
+    Get-ChildItem Env: | Where-Object {{ $_.Name -like 'FLET_*' -or $_.Name -eq 'PYTHONINSPECT' }} | ForEach-Object {{
+        Write-Host ("Clearing inherited env before relaunch: " + $_.Name)
+        Remove-Item ("Env:" + $_.Name) -ErrorAction SilentlyContinue
+    }}
+
+    # Start the updated application like a user double-click: hand it to Explorer
+    # so its parent is the (console-less) shell, NOT this updater. The updater owns
+    # a console (CREATE_NEW_CONSOLE), and serious_python attaches the new app to
+    # its PARENT's console (AttachConsole(ATTACH_PARENT_PROCESS)) for Python output
+    # -- which tethers the app to a terminal window (close one -> close the other).
+    # Launching via Explorer gives the app no parent console (and a clean shell
+    # environment), exactly like a double-click, so there is no tether.
     Write-Host "Starting updated application..."
     Set-Location -Path '{target_dir_escaped}'
-    Start-Process -FilePath '{executable_name_escaped}' -WorkingDirectory '{target_dir_escaped}'
-    
+    $appPath = Join-Path '{target_dir_escaped}' '{executable_name_escaped}'
+    if ($appPath -like '*.py') {{
+        # Source/dev fallback (not a packaged build): run with the interpreter.
+        Start-Process -FilePath 'python' -ArgumentList ('"' + $appPath + '"') -WorkingDirectory '{target_dir_escaped}'
+    }} else {{
+        Start-Process -FilePath 'explorer.exe' -ArgumentList ('"' + $appPath + '"')
+    }}
+    Write-Host "Relaunched '{executable_name_escaped}' via Explorer (detached). Updater done."
+    try {{ Stop-Transcript | Out-Null }} catch {{}}
+
     # Wait a moment then clean up this script
     Start-Sleep -Seconds 2
     Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
-    
+
 }} catch {{
     Write-Host "ERROR: Failed to copy files!"
     Write-Host "Attempting to restore from backup..."
-    
+
     try {{
         robocopy '{backup_path_escaped}' '{target_dir_escaped}' /E /R:3 /W:1 /MT:1 | Out-Null
         # robocopy exit codes: 0-7 are success, 8+ are failures
@@ -558,9 +769,11 @@ try {{
     }} catch {{
         Write-Host "ERROR: Backup restoration failed: $_"
     }}
-    
+
     Write-Host ""
-    Write-Host "Update failed! Press any key to continue..."
+    Write-Host "Update failed!"
+    try {{ Stop-Transcript | Out-Null }} catch {{}}
+    Write-Host "Press any key to continue..."
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     exit 1
 }}
@@ -575,23 +788,38 @@ try {{
             print(f"Failed to create updater script: {e}")
             return None
     
-    def _create_unix_updater_script(self, staging_dir: str, target_dir: str, executable_name: str, backup_path: str) -> str:
+    def _create_unix_updater_script(self, staging_dir: str, target_dir: str, executable_name: str, backup_path: str, sp_extract_dir: Optional[str] = None) -> str:
         """Create Unix shell updater script with proper Unicode support"""
         script_path = os.path.join(get_config_dir(), 'updater.sh')
-        
+
         # Get current process ID to wait for it to exit
         current_pid = os.getpid()
-        
+
         # Extract version from backup path for success flag
         backup_name = os.path.basename(backup_path)
         parts = backup_name.split('_')
         previous_version = parts[1] if len(parts) >= 2 else 'Unknown'
-        
+
         # Properly escape paths for shell scripts
         staging_dir_escaped = shlex.quote(staging_dir)
         target_dir_escaped = shlex.quote(target_dir)
         backup_path_escaped = shlex.quote(backup_path)
         executable_name_escaped = shlex.quote(executable_name)
+
+        # See the Windows variant: clear the Flet (serious_python) extraction
+        # cache before relaunch so the app re-extracts cleanly. Retry briefly in
+        # case a file is momentarily held.
+        if sp_extract_dir:
+            flet_cache_clear = (
+                f'cd /tmp 2>/dev/null || cd /\n'
+                f'echo "Clearing Flet extraction cache: {shlex.quote(sp_extract_dir)}"\n'
+                f'for i in $(seq 1 40); do\n'
+                f'    rm -rf {shlex.quote(sp_extract_dir)} 2>/dev/null && break\n'
+                f'    sleep 0.25\n'
+                f'done\n'
+            )
+        else:
+            flet_cache_clear = ""
         
         script_content = f'''#!/bin/bash
 # GamesList Manager Updater (Bash)
@@ -648,6 +876,16 @@ fi
 # Clean up staging directory
 echo "Cleaning up..."
 rm -rf {staging_dir_escaped}
+{flet_cache_clear}
+# Strip the dying app's leaked Flet runtime env vars (per-launch ports etc.) so
+# the relaunched app's serious_python bootstrap assigns fresh ones instead of
+# reusing the old/dead ports (which leaves the window blank). See the Windows
+# updater for the full rationale.
+for _v in $(env | sed -n 's/^\\(FLET_[A-Za-z0-9_]*\\)=.*/\\1/p'); do
+    echo "Clearing inherited env before relaunch: $_v"
+    unset "$_v"
+done
+unset PYTHONINSPECT
 
 echo "Starting updated application..."
 cd {target_dir_escaped}
@@ -799,32 +1037,40 @@ rm "$0" 2>/dev/null
                 if self.latest_release_info:
                     self._create_update_flag(self.latest_release_info.get('version', 'Unknown'))
                 
-                # Start the updater script in the background
+                # Start the updater script in the background. IMPORTANT: launch it
+                # with cwd=config_dir. A child inherits the parent's working
+                # directory, and for a Flet build that cwd is the serious_python
+                # extraction dir (…\flet\app) — so without this the updater would
+                # be *sitting inside* the very directory it must delete, locking
+                # it (a directory cannot be removed while it is a live process's
+                # current directory). config_dir is neutral and always exists.
                 if system_name == 'windows':
                     # Use PowerShell to run the .ps1 script with proper Unicode support
                     # -WindowStyle Hidden hides the PowerShell window
                     # -ExecutionPolicy Bypass allows script execution
                     subprocess.Popen([
-                        'powershell.exe', 
+                        'powershell.exe',
                         '-WindowStyle', 'Hidden',
-                        '-ExecutionPolicy', 'Bypass', 
+                        '-ExecutionPolicy', 'Bypass',
                         '-File', updater_script
-                    ], creationflags=CREATE_NEW_CONSOLE)
+                    ], creationflags=CREATE_NEW_CONSOLE, cwd=config_dir)
                 else:
                     # Start the script in background
-                    subprocess.Popen(['/bin/bash', updater_script])
+                    subprocess.Popen(['/bin/bash', updater_script], cwd=config_dir)
                 
                 # Small delay to ensure script starts
                 time.sleep(0.5)
             else:
                 print("No updater script found. Restarting normally...")
-                # Fallback to normal restart if no update pending
-                if getattr(sys, 'frozen', False):
-                    subprocess.Popen([sys.executable])
+                # Fallback to a normal relaunch if no update is pending.
+                install_dir, exe_name = _resolve_install_target()
+                target = os.path.join(install_dir, exe_name)
+                if exe_name.lower().endswith('.py'):
+                    # Source run: relaunch the script with the current interpreter.
+                    subprocess.Popen([sys.executable, target])
                 else:
-                    # Find main.py in the current directory
-                    main_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'main.py')
-                    subprocess.Popen([sys.executable, main_script])
+                    # Packaged/frozen: relaunch the app executable directly.
+                    subprocess.Popen([target], cwd=install_dir)
             
             # Exit current instance to allow updater to work
             sys.exit(0)

@@ -74,6 +74,9 @@ exclude = [
     "tests",
     "docs",
     "scripts",
+    # Dev/test-only helpers for exercising the auto-updater — must never ship.
+    "test_update_ui.py",
+    "make_fake_update.py",
 ]
 
 [tool.flet.windows]
