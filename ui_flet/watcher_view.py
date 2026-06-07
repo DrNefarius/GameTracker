@@ -656,6 +656,17 @@ def open_watcher_settings_dialog(page, service, on_saved=None):
     except Exception:  # noqa: BLE001
         pass
 
+    # Pick up watcher-side config writes that the backend persisted to disk but
+    # not to the in-memory service.config — e.g. a toast "Don't track this exe"
+    # (add_ignore) or learned exe->game mappings. Without this they'd only show
+    # after an app restart, and saving this dialog could overwrite them. All
+    # in-memory changes are written to disk too, so reloading never loses any.
+    try:
+        from config import load_config as _load_config
+        service.config.update(_load_config())
+    except Exception:  # noqa: BLE001
+        pass
+
     content, get_values, wiring = _build_watcher_content(service)
 
     def _snack(message):
@@ -694,7 +705,8 @@ def open_watcher_settings_dialog(page, service, on_saved=None):
         content=content,
         actions=[
             ft.TextButton("Cancel", on_click=lambda _: page.pop_dialog()),
-            ft.Button("Save", icon=ft.Icons.SAVE, on_click=on_save),
+            ft.Button("Save", icon=ft.Icons.SAVE, on_click=on_save,
+                      bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )

@@ -27,6 +27,7 @@ It also exposes:
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional
@@ -81,6 +82,15 @@ class SessionWatcherBridge:
         self._active_sessions: Dict[str, int] = {}
         # detection_id -> payload, queued while user wasn't around to confirm.
         self._pending_matches: Dict[str, Dict[str, Any]] = {}
+        # detection_ids whose match-picker dialog is currently open. The
+        # focus-drain must NOT re-fire these (the user is already resolving them),
+        # otherwise focusing the window to open the picker re-fires the toast in
+        # an endless loop.
+        self._active_pickers: set = set()
+        # detection_id -> monotonic time of its last toast, so the focus-drain
+        # rate-limits re-fires (a focused window + toast can otherwise re-trigger
+        # the focus event repeatedly, spamming the toast).
+        self._last_refire: Dict[str, float] = {}
         # session_id -> last-seen pause start, so end events can patch
         # session shape with idle pauses if needed.
         self._session_pauses: Dict[str, Dict] = {}
@@ -392,9 +402,27 @@ class SessionWatcherBridge:
         return {'action': 'session_added', 'data': self._data()}
 
     def _on_match_ambiguous(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        detection_id = payload.get('detection_id') or uuid.uuid4().hex
+        # Collapse to ONE pending entry per exe: the watcher re-sees a running
+        # process every few seconds, and without this each detection created a
+        # fresh entry (new uuid) + toast, which then all got re-fired on focus.
+        exe_path = (payload.get('exe_path') or '').strip().lower()
+        detection_id = payload.get('detection_id')
+        if exe_path:
+            for did, info in self._pending_matches.items():
+                if (info.get('exe_path') or '').strip().lower() == exe_path:
+                    detection_id = did      # reuse the existing entry for this exe
+                    break
+        if not detection_id:
+            detection_id = uuid.uuid4().hex
+
+        already_pending = detection_id in self._pending_matches
         self._pending_matches[detection_id] = payload
-        # Surface a toast right away so engaged users can act on it instantly.
+
+        # Only toast on the FIRST detection of this exe; a repeat detection of an
+        # already-queued exe must not fire another toast (the focus-drain handles
+        # resurfacing, rate-limited).
+        if already_pending:
+            return None
         try:
             from notifications import notify_match_confirmation
             notify_match_confirmation(
@@ -403,6 +431,7 @@ class SessionWatcherBridge:
                 payload.get('install_dir') or '',
                 payload.get('best_guess'),
             )
+            self._last_refire[detection_id] = time.monotonic()
         except Exception as exc:  # noqa: BLE001
             _log.warning("notify_match_confirmation failed: %s", exc)
         return None
@@ -506,6 +535,12 @@ class SessionWatcherBridge:
                 # we don't need to whitelist its parent. But if it did
                 # reach us via a known root and the user is confirming a
                 # different mapping, the parent is already on the list.
+                if exe_path:
+                    watcher.add_user_root(os.path.dirname(exe_path))
+                # Start tracking the already-running process right away instead
+                # of waiting for a relaunch.
+                if exe_path:
+                    watcher.force_track_exe(exe_path, best)
         elif action == 'ignore':
             if watcher is not None and exe_path:
                 watcher.add_ignore(os.path.basename(exe_path))
@@ -521,14 +556,42 @@ class SessionWatcherBridge:
             self._open_match_picker_dialog(detection_id, info)
         return None
 
+    def begin_match_pick(self, detection_id: str) -> None:
+        """Mark a detection as 'being picked' so the focus-drain won't re-fire it.
+
+        Call this BEFORE focusing the window to open the picker, so the focus
+        event doesn't re-fire the very toast we're handling (the endless-loop bug).
+        """
+        if detection_id:
+            self._active_pickers.add(detection_id)
+
+    def cancel_match_pick(self, detection_id: str) -> None:
+        """Picker dismissed without a decision: stop treating it as active so it
+        can be re-fired on a later focus, but don't drop the queued detection."""
+        self._active_pickers.discard(detection_id)
+
+    #: Minimum seconds between re-firing the SAME detection's toast on focus.
+    _REFIRE_COOLDOWN_SEC = 60.0
+
     def drain_pending_matches_on_focus(self, parent_window) -> None:
-        """Show in-app pickers for any matches the user hasn't acted on yet."""
+        """Re-surface toasts for matches the user hasn't acted on yet.
+
+        Rate-limited and active-picker-aware: a focused window plus a toast can
+        re-trigger the focus event repeatedly, so without these guards the same
+        toast would spam endlessly.
+        """
         if not self._pending_matches:
             return
-        # Currently we just re-fire toasts for items still pending. A full
-        # in-app picker dialog can replace this in a follow-up.
         from notifications import notify_match_confirmation
+        now = time.monotonic()
         for det_id, info in list(self._pending_matches.items()):
+            # Skip detections whose picker is open right now (the user is already
+            # resolving them) ...
+            if det_id in self._active_pickers:
+                continue
+            # ... and those re-fired very recently (breaks the focus<->toast loop).
+            if now - self._last_refire.get(det_id, 0.0) < self._REFIRE_COOLDOWN_SEC:
+                continue
             try:
                 notify_match_confirmation(
                     det_id,
@@ -536,6 +599,7 @@ class SessionWatcherBridge:
                     info.get('install_dir') or '',
                     info.get('best_guess'),
                 )
+                self._last_refire[det_id] = now
             except Exception as exc:  # noqa: BLE001
                 _log.warning("re-fire ambiguous toast failed: %s", exc)
 
@@ -1056,9 +1120,13 @@ class SessionWatcherBridge:
             return None
 
         info = self._pending_matches.get(detection_id) or payload or {}
-        # Keep it queued until a decision is committed (cancel re-fires later).
-        if detection_id and detection_id not in self._pending_matches:
-            self._pending_matches[detection_id] = info
+        # Keep it queued until a decision is committed (cancel re-fires later),
+        # and mark it active so the focus-drain won't re-fire it while the picker
+        # is open.
+        if detection_id:
+            if detection_id not in self._pending_matches:
+                self._pending_matches[detection_id] = info
+            self._active_pickers.add(detection_id)
 
         exe_path = info.get('exe_path') or ''
         exe_basename = info.get('exe_basename') \
@@ -1114,8 +1182,10 @@ class SessionWatcherBridge:
         if watcher is None:
             return None
 
-        # Decision committed - drop this entry from the queue.
+        # Decision committed - drop this entry from the queue (and stop treating
+        # its picker as active).
         self._pending_matches.pop(detection_id, None)
+        self._active_pickers.discard(detection_id)
 
         try:
             if ignore and exe_basename:
@@ -1135,19 +1205,24 @@ class SessionWatcherBridge:
                 if exe_path:
                     watcher.add_user_root(os.path.dirname(exe_path))
 
-                # Force the resolver to re-examine the still-running
-                # process(es) so the mapping takes effect without a relaunch.
-                if scope_dir and install_dir:
-                    watcher.recheck_install_dir(install_dir)
-                elif exe_path:
-                    watcher.recheck_exe(exe_path)
+                # Start tracking the already-running process IMMEDIATELY. If it
+                # isn't running anymore (or a session is already active), fall
+                # back to re-examining on the next tick / relaunch.
+                started = bool(exe_path) and watcher.force_track_exe(exe_path, chosen)
+                if not started:
+                    if scope_dir and install_dir:
+                        watcher.recheck_install_dir(install_dir)
+                    elif exe_path:
+                        watcher.recheck_exe(exe_path)
 
                 # Drop any twin pending detections for the same exe.
                 self._resolve_twin_pending_matches(exe_path, chosen)
 
                 scope_label = "the install folder" if scope_dir else exe_basename
-                return (f"Mapped {scope_label} to {chosen}. The next launch "
-                        f"will be tracked automatically.")
+                if started:
+                    return f"Now tracking {chosen}."
+                return (f"Mapped {scope_label} to {chosen}. It'll be tracked "
+                        f"the next time it's running.")
         except Exception as exc:  # noqa: BLE001
             _log.warning("pick apply: applying decision failed: %s", exc)
             return None

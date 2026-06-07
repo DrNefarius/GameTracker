@@ -161,8 +161,13 @@ class FletWatcherSink:
             return True
 
         if kind == "match_confirmation" and action == "pick":
+            det_id = payload.get("detection_id") or ""
+            # Mark the picker active BEFORE focusing the window: focus() fires a
+            # FOCUS event whose drain would otherwise re-fire this very toast,
+            # looping endlessly.
+            self.bridge.begin_match_pick(det_id)
             self.notifier.focus()
-            self._open_match_picker_dialog(payload.get("detection_id") or "", payload)
+            self._open_match_picker_dialog(det_id, payload)
             return True
 
         return False

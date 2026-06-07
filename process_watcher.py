@@ -603,6 +603,56 @@ class ProcessWatcher:
                       install_dir, dropped)
         return dropped
 
+    def force_track_exe(self, exe_path: str, game_name: str) -> bool:
+        """Immediately begin tracking a currently-running exe as `game_name`.
+
+        Used when the user resolves an ambiguous-detection toast (the "best
+        guess" notification): the process is already running, so rather than
+        wait for a relaunch or the next debounce window we start the session
+        right now. Skips the start-debounce because the user has explicitly
+        confirmed the mapping. No-op (returns False) if the exe isn't running
+        or a session is already active. Mirrors the locked promotion path in
+        ``_promote_candidates``.
+        """
+        if not exe_path or not game_name:
+            return False
+        target = _normpath(exe_path)
+        found_pid = None
+        try:
+            for proc in psutil.process_iter(['pid', 'exe']):
+                try:
+                    if _normpath(proc.info.get('exe') or '') == target:
+                        found_pid = proc.info.get('pid')
+                        break
+                except Exception:
+                    continue
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("force_track_exe: process_iter failed: %s", exc)
+            return False
+        if found_pid is None:
+            _log.info("force_track_exe: %s is not currently running", exe_path)
+            return False
+
+        with self._lock:
+            if self._active is not None:
+                _log.info("force_track_exe: a session is already active; skipping")
+                return False
+            cand = _Candidate(
+                pid=found_pid,
+                exe_path=exe_path,
+                install_dir=os.path.dirname(exe_path),
+                game_name=game_name,
+                store=None,
+                store_id=None,
+                first_seen=time.monotonic(),
+            )
+            self._candidates.clear()
+            self._known_pids.add(found_pid)
+            _log.info("force_track_exe: starting session now for %r (pid=%s)",
+                      game_name, found_pid)
+            self._start_session(cand)
+        return True
+
     def add_user_root(self, folder: str) -> bool:
         """Add `folder` to the strict-mode whitelist.
 

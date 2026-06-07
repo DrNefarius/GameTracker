@@ -184,8 +184,10 @@ def open_remap_dialog(page, bridge, on_done=None, notify=None):
         actions=[
             ft.TextButton("Cancel", on_click=_on_cancel),
             ft.OutlinedButton("Don't track this process", icon=ft.Icons.BLOCK,
-                              on_click=_on_ignore),
-            ft.Button("Save mapping", icon=ft.Icons.SAVE, on_click=_on_save),
+                              on_click=_on_ignore, icon_color=ft.Colors.RED,
+                              style=ft.ButtonStyle(color=ft.Colors.RED)),
+            ft.Button("Save mapping", icon=ft.Icons.SAVE, on_click=_on_save,
+                      bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     ))
@@ -246,6 +248,12 @@ def open_match_picker_dialog(page, bridge, detection_id, payload,
 
     def _on_cancel(_):
         page.pop_dialog()
+        # No decision made: clear the "active picker" flag so a later focus can
+        # re-fire it, but keep it queued.
+        try:
+            bridge.cancel_match_pick(ctx.get("detection_id") or detection_id)
+        except Exception:
+            pass
         if on_done:
             on_done()
 
@@ -282,8 +290,10 @@ def open_match_picker_dialog(page, bridge, detection_id, payload,
         actions=[
             ft.TextButton("Cancel", on_click=_on_cancel),
             ft.OutlinedButton("Don't track this exe", icon=ft.Icons.BLOCK,
-                              on_click=_on_ignore),
-            ft.Button("Save & track", icon=ft.Icons.SAVE, on_click=_on_save),
+                              on_click=_on_ignore, icon_color=ft.Colors.RED,
+                              style=ft.ButtonStyle(color=ft.Colors.RED)),
+            ft.Button("Save & track", icon=ft.Icons.SAVE, on_click=_on_save,
+                      bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     ))
