@@ -15,10 +15,13 @@ Read this + `docs/VERSION2_PARITY_AUDIT.md` first.
   **Avoid backticks in `git commit -m`** (bash command-substitution mangles the message).
 
 ## 2. Architecture
-- **Backend = untouched & reused** (no GUI imports): `data_management`, `session_data`,
+- **Backend = reused** (no GUI imports): `data_management`, `session_data`,
   `config`, `constants`, `process_watcher`, `notifications` (OS toasts), `igdb_integration`,
   `auto_updater`, `discord_integration`, `store_manifests`, `pause_utils`, `idle_detection`,
   `utilities`, `visualizations`, `session_visualizations`, `tray_icon`, `watcher_log`.
+  (Mostly untouched, but this session **modified** `auto_updater` (install-target/cleanup, §10A),
+  `process_watcher` (`force_track_exe`, §10C), `session_watcher_bridge`, `session_management`
+  (heatmap relocation, §6), and added `legacy_cleanup` — all still GUI-free.)
 - **`single_instance.py`** (new, GUI-free): cross-platform single-instance guard. **Prevention** =
   exclusive non-blocking lock on `<config dir>/gametracker.lock` (`msvcrt.locking` on Windows,
   `fcntl.flock` elsewhere; OS frees it on crash, immune to Windows dynamic-range port exclusions).
@@ -71,6 +74,10 @@ Every one of these caused a real bug — honor them:
   `e.type == ft.WindowEventType.CLOSE`. To force-quit: `await window.destroy()` then `os._exit(0)`.
 - **`ElevatedButton` is deprecated** (since 0.80) → use `ft.Button` (same signature). `FilledButton /
   OutlinedButton / TextButton / IconButton` are fine.
+- **Button color params differ by type**: `Button`/`FilledButton` take `color` + `bgcolor` directly.
+  `OutlinedButton`/`TextButton` take **`icon_color` + `style` only** (NO `color`/`bgcolor` — passing
+  `color=` raises `TypeError`). For their text color use `style=ft.ButtonStyle(color=…)`. `IconButton`
+  uses `icon_color`. (Signal colors live on the action buttons — green add/save, red delete, blue edit.)
 - **Tabs** = `ft.Tabs(content=ft.Column([ft.TabBar(tabs=[ft.Tab(label=..)]), ft.TabBarView(controls=[..])]),
   length=N, selected_index=, on_change=)`. Statistics renders each tab's chart lazily into its own host.
 - **DatePicker**: a `DialogControl`; open via `page.show_dialog`; `on_change` → `e.control.value` is a
@@ -124,10 +131,16 @@ Every one of these caused a real bug — honor them:
   wired in `app.main`'s `window.on_event`). **Crash orphan-recovery** runs at startup via
   `app.main`'s `_post_startup` (`page.run_task`).
 
-## 6. The ONE sg leak in the new UI
-`statistics_view._render_chart_kind("heatmap")` lazy-imports `create_session_heatmap` from
-`session_management.py` (which imports PySimpleGUI). **Phase 5 must relocate `create_session_heatmap`
-AND `create_github_contributions_canvas` to a GUI-free module** before sg is removed. Tracked in the audit.
+## 6. sg leaks in the new UI — heatmap RESOLVED, one lazy import remains
+- **RESOLVED (Phase 5 step 1)**: `create_session_heatmap` was **relocated** from `session_management.py`
+  (imports PySimpleGUI) → GUI-free **`session_visualizations.py`** (re-exported from `session_management`
+  for the legacy UI). `statistics_view.py` now imports it at top-level from `session_visualizations`.
+  Verified: importing `session_visualizations` / `ui_flet.statistics_view` no longer pulls sg. The gaming
+  heatmap now renders in the packaged build. See §10.
+- **STILL OPEN**: `core/services.py` lazy-imports `migrate_all_game_sessions` from `session_management`
+  (best-effort, guarded) — relocate or guard it before sg removal. `create_github_contributions_canvas`
+  also still lives in `session_management`, but it is **legacy-only** (Flet uses its own native
+  contributions grid) → it goes away when the legacy UI is deleted in Phase 5 step 3.
 
 ## 7. Status
 - **Done**: Phase 0 (foundation), Phase 1 (Games List), Phase 2 (all screens, parity audit + all gaps
@@ -193,10 +206,15 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
   `build_windows.ps1` → `build/windows/GameTracker.exe` (embedded CPython 3.12), launches, loads the
   saved layout, and runs with no traceback. **Linux/ARM64 still need to be run on the target host** (no
   cross-compile) — the script is ready and carries the same `--arch`-free invocation.
-  - **Phase 5** cleanup: remove PySimpleGUI dep + legacy UI files (`main.py`, `ui_components.py`,
-    `event_handlers.py`, `*_ui.py`, legacy `game_hub.py`, `session_display.py` UI parts,
-    `date_activity_view.py`, `ratings.py` popup); relocate the two chart fns (§6); drop the bridge's sg
-    fallbacks. Gate on `docs/VERSION2_PARITY_AUDIT.md`.
+  - **Phase 5** cleanup (sg/legacy removal). **Step 1 DONE** — heatmap relocation (§6, §10). Remaining:
+    **(2)** relocate/guard `core/services.py`'s `migrate_all_game_sessions` import so it no longer reaches
+    into the sg-importing `session_management` (the last `core`/`ui_flet`→sg path); **(3)** delete legacy
+    UI files (`main.py`, `ui_components.py`, `event_handlers.py`, `*_ui.py`, legacy `game_hub.py`,
+    `session_display.py` UI parts, `date_activity_view.py`, `ratings.py` popup, the now-legacy-only
+    `create_github_contributions_canvas`); **(4)** drop the bridge's sg fallbacks (`notifier is None`
+    branches); **(5)** remove PySimpleGUI from `requirements.txt`; **(6)** rebuild Windows + update README.
+    Gate on `docs/VERSION2_PARITY_AUDIT.md`. The legacy 1.11.x→2.0.0 auto-update pipeline (§10) must keep
+    working after this — don't break `auto_updater.py`'s install-target/cleanup logic.
 
 ## 8. Verification workflow (reuse it)
 - **Headless tests** were kept in `C:\Users\Tobias\AppData\Local\Temp\claude\` (EPHEMERAL — recreate as
@@ -206,13 +224,125 @@ AND `create_github_contributions_canvas` to a GUI-free module** before sg is rem
   fake event objects (`types.SimpleNamespace(column_index=, ascending=)`). In watcher tests, monkeypatch
   `notifications.notify_*`, `session_watcher_bridge.save_data`, and `config.save_config` to no-ops to
   avoid real toasts / disk / config writes. (Consider moving these into a repo `tests/` dir.)
+- **⚠ CRITICAL — never let a test write the real config.** A headless test that builds a `FakeService`
+  with a minimal `config` dict and lets it reach `save_config()` will **silently overwrite the user's real
+  `%APPDATA%\GamesListManager\config.json`** (it writes the FIXED `get_config_file()` path), wiping
+  `last_file`, IGDB creds, and watcher mappings. This actually happened this session (clobbered the D:
+  `.gmd` path). In ANY test that could reach config I/O, **monkeypatch `config.get_config_file` to a temp
+  path** (and/or stub `save_config`/`load_config`) — never rely on the fake dict alone.
 - **Live launch**: run `app_flet.py` in background, `Start-Sleep ~10`, read the task output file
   (empty == clean startup), then kill via
   `Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*app_flet.py*' } | % { Stop-Process -Id $_.ProcessId -Force }`.
   The user validates GUI behavior (tabs, tray, real-game watcher detection) — those can't be auto-tested.
 
 ## 9. Git
-Branch `Version2` (do not push). Latest: `9b25f60` (3C watcher interactive dialogs). Earlier key
-commits include `835a07f` (3B tray Quit/close-to-tray fixes), `c1cd797` (3A watcher), `94a8cae`
-(3B tray), `f86478b` (parity gaps closed), `f592cf6` (audit doc), `e3e2ee9` (foundation).
-`main`/`master` carry the two pre-migration bug fixes; `Version2` branched off `main`.
+Branch `Version2` (**do not push** — kept local). The §10 work is now **committed** in logical chunks on
+top of `18a095f` ("fixed quite a few issues with the updater" — the updater pipeline / `auto_updater.py` /
+`pyproject.toml`, user's manual commit):
+- `42c297f` — Phase 5 step 1: heatmap relocation (`session_management.py` → `session_visualizations.py`).
+- `33adcad` — watcher fixes (`process_watcher.py`, `session_watcher_bridge.py`, `ui_flet/watcher_*`).
+- `05139c4` — pre-2.0.0 cx_Freeze leftover cleanup (`legacy_cleanup.py` + `ui_flet/update_view.py`).
+- `bc2a771` — UI/UX polish (`ui_flet/{app,loading,games_view,statistics_view,summary_view,game_hub,
+  game_dialog,igdb_view,session_dialogs}.py`).
+Earlier key commits: `9b25f60` (3C watcher dialogs), `835a07f` (3B tray Quit/close-to-tray),
+`c1cd797` (3A watcher), `94a8cae` (3B tray), `f86478b` (parity gaps closed), `f592cf6` (audit doc),
+`e3e2ee9` (foundation). `main`/`master` carry the two pre-migration bug fixes; `Version2` branched off `main`.
+
+**Intentionally NOT committed:** `constants.py` (local table-color tweaks — kept out of history at the
+user's request; still shows as modified). **Throwaway dev helpers (do NOT commit, gitignore or delete):**
+`test_update_ui.py`, `make_fake_update.py` (already in `tool.flet.app.exclude`); `.claude/` is local agent
+config.
+
+## 10. Latest session — updater 1.11.x→2.0.0 pipeline, UI/UX polish, Phase 5 step 1
+All uncommitted (see §9). `auto_updater.py` is **no longer "untouched"** — backend list in §2 is stale for it.
+
+### A. Auto-updater: legacy(cx_Freeze/PySimpleGUI)→Flet upgrade — hardened & VERIFIED end-to-end
+Shipped v1.11.3 is a **cx_Freeze / Python 3.10** build (`lib/`, `share/`, `python310.dll`, exe at zip root);
+v2.0.0 is **Flet/serious_python / Python 3.12** (`Lib/`, `DLLs/`, `data/`, `site-packages/`, `python312.dll`).
+The 1.11.3 updater (already shipped, immutable) relaunches the new exe; the new exe then owns Flet→Flet.
+Fixes (all in `auto_updater.py` unless noted):
+- **`_resolve_install_target()` / `_process_image_path()`** (Win32 `GetModuleFileNameW(NULL)`): the Flet build
+  sets neither `sys.frozen` nor a usable `sys.executable`, so the old code relaunched `main.py`. Now resolves
+  the real `GameTracker.exe` for packaged Flet builds (via process image + Flet markers), classic frozen
+  builds, and source (→ `app_flet.py`, never legacy `main.py`). `_serious_python_extract_dir()` finds the
+  `…\flet\app` extraction dir via its `.hash` file + path shape.
+- **serious_python re-extract / white-screen `PathAccessException`**: on relaunch the runtime re-extracts
+  `app.zip` into `%APPDATA%\DrNefarius\GameTracker\flet\app` and crashed because the dir was locked. The
+  generated `updater.ps1` now: runs with OS cwd moved out via `[System.IO.Directory]::SetCurrentDirectory($env:TEMP)`
+  (**PowerShell `Set-Location` does NOT move the OS process cwd** — that was the root cause); the Python side
+  Popen-launches it with `cwd=config_dir`; **kills stale `GameTracker.exe` zombies** (a failed extract leaves a
+  white-window process holding the dir as cwd — the single-instance guard can't catch it because Python never
+  starts); then **retry-deletes** the extraction dir.
+- **Blank window after relaunch (theme paints, zero controls)**: the dying app's per-launch env
+  (`FLET_SERVER_PORT`, `FLET_PYTHON_CALLBACK_SOCKET_ADDR`, `PYTHONINSPECT=1`, `FLET_APP_CONSOLE`, …) leaked
+  dying-app → updater → new-app, so the new app reused the dead port/socket. Updater now **strips `FLET_*` +
+  `PYTHONINSPECT`** before relaunch.
+- **Console tether**: serious_python's `AttachConsole(ATTACH_PARENT_PROCESS)` bound the relaunched app to the
+  updater's console window. Updater now launches via **`explorer.exe "<path>"`** (parent = console-less shell,
+  clean env) — like a double-click. (Verified the alternatives DON'T detach: `[Process]::Start(UseShellExecute)`
+  tethers *more*; plain `Start-Process` still lets `AttachConsole` bind the parent console.)
+- **Logging**: `%APPDATA%\GamesListManager\update_log.txt` (`_log_update()`, Python staging) + `updater_log.txt`
+  (PowerShell `Start-Transcript`).
+- **Legacy-leftover cleanup — new `legacy_cleanup.py`**: removes ~114 MB of pre-2.0.0 cx_Freeze files (whole
+  `share/`, `python310.dll`, 56 `lib/` package dirs, 31 `lib/` files — derived by diffing a fresh cx_Freeze
+  build vs the Flet build; excludes `gameslisticon.ico`; never touches Flet's `Lib/`). `cleanup_legacy_files()`
+  + `maybe_cleanup_after_upgrade(previous_version)` run off-thread from `update_view.startup_check` when the
+  upgrade marker's `previous_version` < 2.0.0 in a packaged Flet build. Verified: removes the leftovers, 0
+  Flet files touched.
+- **Release-notes images** (`update_view.py`): GitHub `<img …>` HTML is rewritten to Markdown (`_notes_to_markdown()`)
+  so `ft.Markdown` renders them (it doesn't parse raw HTML); added `image_error_content`.
+- **Packaging NB for the real v2.0.0 release**: the asset must be a `.zip` with `GameTracker.exe` at the zip
+  ROOT + the Flet support files (so the relaunch target exists); robocopy stages with `/E` (merge, NO purge),
+  so `legacy_cleanup.py` is what removes the orphaned legacy files. `releases/latest` ignores drafts/prereleases.
+
+### B. Phase 5 — step 1 DONE (chart relocation). See §6.
+`create_session_heatmap` → `session_visualizations.py` (GUI-free), re-exported for legacy; `statistics_view`
+imports it from there. The gaming heatmap now works in the packaged build. Remaining Phase 5 steps in §7.
+
+### C. Watcher fixes (`session_watcher_bridge.py`, `process_watcher.py`, `ui_flet/watcher_*`)
+- **Ambiguous-match toast endless loop** (`notify_match_confirmation`, weak/best-guess candidates): each poll of
+  the same exe created a new pending entry (fresh uuid) → all re-fired on window focus, and the toast↔focus
+  interaction looped while GameTracker was focused. Fixed: `_on_match_ambiguous` **dedupes by exe** (reuse the
+  detection_id, no re-toast if already pending); `drain_pending_matches_on_focus` **rate-limits** re-fire
+  (`_REFIRE_COOLDOWN_SEC = 60`, `_last_refire`) and **skips exes with an open picker** (`_active_pickers` set
+  via `begin_match_pick`/`cancel_match_pick` — `begin` is called in `watcher_runtime._handle_toast_action`
+  BEFORE `notifier.focus()`, `cancel` from the picker's Cancel/`_on_cancel`).
+- **Immediate tracking on resolve**: picking/confirming an ambiguous match used to only save a mapping ("tracked
+  after restart"). New **`ProcessWatcher.force_track_exe(exe_path, game_name)`** finds the running pid and, under
+  `self._lock`, builds a `_Candidate` + calls `_start_session` NOW (bypasses the 10 s debounce). Wired into BOTH
+  `confirm_pending_match('confirm')` and `apply_match_pick_decision(chosen)` (the `notify_match_confirmation`
+  path specifically), with fallback to `recheck_exe`/`recheck_install_dir` if the process already exited, and
+  message "Now tracking X." (Remap of an existing strong mapping already worked.)
+- **Ignore-list staleness**: a toast-added ignore wrote the config FILE but not in-memory `service.config`, so it
+  only appeared after restart. `open_watcher_settings_dialog` now does `service.config.update(load_config())` on
+  open (also stops Save from clobbering watcher-side writes).
+
+### D. UI/UX enhancements (all `ui_flet/`; tasks #1–#14 + follow-ups, all verified)
+- **Toolbar** redesigned into labeled **pill** PopupMenuButtons via a local `_pill()`/`_pill_bg()`: **File**
+  (Save/Open/Save As/Import/**Quit GameTracker** → sink `-TRAY-ACTION- quit`), **Library** (IGDB Settings/Enrich/
+  **Remember filter,page&rows** toggle), **Watcher** (Enabled toggle/Settings/**Rescan** moved here), **Discord**
+  toggle, **Updates**, **Help**, theme. **Enabled-state accents**: Discord = blue (`_DISCORD_ACCENT`), Watcher =
+  green (`_WATCHER_ACCENT`). A **DB-name chip** (`_refresh_db_label()`) shows the loaded `.gmd`; window title too.
+- **Startup splash + lazy charts** (fixes multi-second blank window): `main()` is a thin wrapper that paints a
+  centered spinner (via `page.vertical/horizontal_alignment`) then defers the heavy build to `_build_main` through
+  `page.run_task(_go)` after a one-loop-yield sleep. `SummaryView`/`StatisticsView` no longer build charts in
+  `__init__` — lazy on first nav, wrapped in the loading overlay.
+- **Window geometry persistence**: size/position/maximized saved (debounced `_schedule_geom_save`/`_capture_geometry`)
+  on move/resize/maximize via `window.on_event`, restored in `main()` (config `window_width/height/left/top/maximized`,
+  bounds-checked via `_num()`).
+- **`ui_flet/loading.py` (new)**: global translucent overlay `show_loading`/`hide_loading`/`run_with_loading(page,
+  msg, work, *args)` — used on Summary/Statistics nav, Open/Import, View-Statistics, and large table page changes.
+- **Games list** (`games_view.py`): persists sort (`games_sort_col`/`_asc`, always) + **opt-in** filter/page/rows
+  (`remember_library_view`, toggled from the Library menu, restores `library_query`/`library_page_size`/
+  `library_page_index`); page-change loading overlay for large pages; edit icon blue; Add-game button green.
+- **Statistics** (`statistics_view.py`): prominent **selected-game header** (`_render_game_header()`: cover via
+  `cover_path_for` + name + metadata chips + genres/summary); **Sessions & Status-history side-by-side**
+  (`ResponsiveRow` md=7/md=5); **Fetch metadata** button when the game is unmatched (→ `igdb_match.open_match_picker`,
+  `on_done=self.refresh`); dropdown labels rendered as external `_labeled()` text (the floating `label=` was clipped);
+  lazy (removed the `__init__` `self.refresh()`); Add-session button green.
+- **Game Hub** (`game_hub.py`): redundant Sessions & Status-history tables **removed** (dialog 640→560).
+- **Signal button colors** across hub/dialogs: green add/save, red delete/remove, blue edit. **GOTCHA fixed**
+  (see §3): `OutlinedButton`/`TextButton` reject `color=`/`bgcolor=` (`TypeError`) → use `icon_color=` +
+  `style=ft.ButtonStyle(color=…)`; only `Button`/`FilledButton` take `color`/`bgcolor`.
+- **#2 heatmap unicode crash**: `session_management.py` (~L114) was a non-raw f-string with an invalid `\s` escape
+  next to literal `★☆`; the SyntaxWarning's cp1252 re-encode crashed → fixed to a raw string.
