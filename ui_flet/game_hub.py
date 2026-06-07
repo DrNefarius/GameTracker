@@ -247,33 +247,13 @@ class GameHub:
         self.stop_btn = ft.Button("Stop", icon=ft.Icons.STOP,
                                           on_click=self._on_stop, disabled=True)
 
-        self.sessions_table = ft.DataTable(
-            columns=[
-                ft.DataColumn(label=ft.Text("Start", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(label=ft.Text("Duration", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(label=ft.Text("Feedback", weight=ft.FontWeight.BOLD)),
-            ],
-            rows=[],
-            show_checkbox_column=False,
-            column_spacing=24,
-            heading_row_color=ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE),
-        )
-        self.status_table = ft.DataTable(
-            columns=[
-                ft.DataColumn(label=ft.Text("Date", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(label=ft.Text("From", weight=ft.FontWeight.BOLD)),
-                ft.DataColumn(label=ft.Text("To", weight=ft.FontWeight.BOLD)),
-            ],
-            rows=[],
-            show_checkbox_column=False,
-            column_spacing=24,
-            heading_row_color=ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE),
-        )
+        # Sessions / status-history tables were removed from the Game Hub — that
+        # detail now lives in the Statistics tab (avoids duplicating it here).
 
         self.dialog = ft.AlertDialog(
             modal=True,
             title=ft.Text(self.game_name or "Game Hub", size=20, weight=ft.FontWeight.BOLD),
-            content=ft.Container(width=900, height=640, content=self._build_body()),
+            content=ft.Container(width=900, height=560, content=self._build_body()),
             actions=[ft.TextButton("Close", on_click=lambda _: self._close())],
             actions_alignment=ft.MainAxisAlignment.END,
             on_dismiss=lambda _: self._stop_timer_thread(),
@@ -312,9 +292,11 @@ class GameHub:
             on_click=self._on_fetch_metadata, visible=False)
         actions_row = ft.Row(
             [
-                ft.OutlinedButton("Edit", icon=ft.Icons.EDIT, on_click=self._on_edit),
+                ft.OutlinedButton("Edit", icon=ft.Icons.EDIT, on_click=self._on_edit,
+                                  icon_color=ft.Colors.BLUE, style=ft.ButtonStyle(color=ft.Colors.BLUE)),
                 ft.OutlinedButton("Add session", icon=ft.Icons.ADD,
-                                  on_click=self._on_add_session),
+                                  on_click=self._on_add_session,
+                                  icon_color=ft.Colors.GREEN, style=ft.ButtonStyle(color=ft.Colors.GREEN)),
                 ft.OutlinedButton("Rate", icon=ft.Icons.STAR, on_click=self._on_rate),
                 self.fetch_btn,
                 ft.OutlinedButton("Link executable", icon=ft.Icons.LINK,
@@ -322,7 +304,8 @@ class GameHub:
                 ft.OutlinedButton("View Statistics", icon=ft.Icons.BAR_CHART,
                                   on_click=self._on_view_statistics),
                 ft.OutlinedButton("Delete", icon=ft.Icons.DELETE_OUTLINE,
-                                  on_click=self._on_delete),
+                                  on_click=self._on_delete,
+                                  icon_color=ft.Colors.RED, style=ft.ButtonStyle(color=ft.Colors.RED)),
             ],
             spacing=10,
             wrap=True,
@@ -334,14 +317,6 @@ class GameHub:
                 self.igdb_holder,
                 timer_card,
                 actions_row,
-                ft.Divider(height=1),
-                ft.Text("Sessions", size=15, weight=ft.FontWeight.W_600),
-                ft.Container(height=240,
-                             content=ft.Column([self.sessions_table], scroll=ft.ScrollMode.AUTO)),
-                ft.Divider(height=1),
-                ft.Text("Status history", size=15, weight=ft.FontWeight.W_600),
-                ft.Container(height=160,
-                             content=ft.Column([self.status_table], scroll=ft.ScrollMode.AUTO)),
             ],
             spacing=14,
             scroll=ft.ScrollMode.AUTO,
@@ -448,7 +423,8 @@ class GameHub:
                         ft.OutlinedButton("Change match", icon=ft.Icons.FIND_REPLACE,
                                           on_click=self._on_change_match),
                         ft.OutlinedButton("Remove metadata", icon=ft.Icons.DELETE_SWEEP,
-                                          on_click=self._on_remove_metadata),
+                                          on_click=self._on_remove_metadata,
+                                          icon_color=ft.Colors.RED, style=ft.ButtonStyle(color=ft.Colors.RED)),
                     ],
                     spacing=8, wrap=True,
                 ),
@@ -484,36 +460,8 @@ class GameHub:
         initial_td = parse_hhmmss_to_timedelta(total)
         self.total_time_text.value = f"Total: {format_timedelta_with_seconds(initial_td)}"
 
-        # sessions table (newest first)
-        sessions = self.row[7] if len(self.row) > 7 and self.row[7] else []
-
-        def _skey(s):
-            try:
-                return datetime.fromisoformat(s.get("start", ""))
-            except (ValueError, TypeError):
-                return datetime.min
-
-        session_rows = []
-        for s in sorted(sessions, key=_skey, reverse=True):
-            def _open(e, sess=s):
-                self._on_session_tap(sess)
-            session_rows.append(ft.DataRow(cells=[
-                ft.DataCell(ft.Text(_format_session_start(s)), on_tap=_open),
-                ft.DataCell(ft.Text(str(s.get("duration", "00:00:00"))), on_tap=_open),
-                ft.DataCell(ft.Text(_session_feedback_summary(s)), on_tap=_open),
-            ]))
-        self.sessions_table.rows = session_rows
-
-        # status-history table (chronological)
-        history = self.row[8] if len(self.row) > 8 and self.row[8] else []
-        self.status_table.rows = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(_format_status_timestamp(c))),
-                ft.DataCell(ft.Text(str(c.get("from") or "—"))),
-                ft.DataCell(ft.Text(str(c.get("to") or "—"))),
-            ])
-            for c in sorted(history, key=lambda c: c.get("timestamp", ""))
-        ]
+        # Sessions / status-history tables intentionally not rendered here —
+        # that detail lives in the Statistics tab now.
 
         self._update()
 

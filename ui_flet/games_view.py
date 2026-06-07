@@ -15,6 +15,7 @@ import flet as ft
 
 from constants import STAR_FILLED, STAR_EMPTY
 from ui_flet import theme
+from ui_flet import loading
 from ui_flet.game_dialog import open_status_dialog
 
 PAGE_SIZE_OPTIONS = ["25", "50", "100", "200", "All"]
@@ -86,26 +87,51 @@ class GamesView:
         self.on_add = on_add
 
         self.query = ""
-        self.sort_col = _NAME_COL  # DataColumn (display) index currently sorted by
-        self.sort_asc = True
+        cfg = getattr(service, "config", None) or {}
+        # ---- sort: always remembered (default: Name, ascending) ----
+        sc = cfg.get("games_sort_col", _NAME_COL)
+        if not (isinstance(sc, int) and 0 <= sc < len(_COLUMNS)
+                and _COLUMNS[sc][1] is not None):
+            sc = _NAME_COL
+        self.sort_col = sc           # DataColumn (display) index currently sorted by
+        self.sort_asc = bool(cfg.get("games_sort_asc", True))
+
+        # ---- opt-in: remember filter / page / rows-per-page (#11) ----
+        self.remember_view = bool(cfg.get("remember_library_view", False))
         self.page_size = DEFAULT_PAGE_SIZE   # int, or None for "All"
         self.page_index = 0
+        size_value = str(DEFAULT_PAGE_SIZE)
+        raw_query = ""
+        if self.remember_view:
+            raw_query = str(cfg.get("library_query", "") or "")
+            self.query = raw_query.strip().lower()
+            sv = cfg.get("library_page_size")
+            if sv in PAGE_SIZE_OPTIONS:
+                size_value = sv
+                self.page_size = None if sv == "All" else int(sv)
+            try:
+                self.page_index = max(0, int(cfg.get("library_page_index", 0)))
+            except (TypeError, ValueError):
+                self.page_index = 0
 
         # ---- top controls --------------------------------------------------
         self.search_field = ft.TextField(
             hint_text="Search by name, platform or status...",
             prefix_icon=ft.Icons.SEARCH,
+            value=raw_query,
             on_change=self._on_search,
             expand=True,
             dense=True,
         )
         self.page_size_dd = ft.Dropdown(
             label="Per page",
-            value=str(DEFAULT_PAGE_SIZE),
+            value=size_value,
             width=120,
             options=[ft.dropdown.Option(key=o, text=o) for o in PAGE_SIZE_OPTIONS],
             on_select=self._on_page_size,
         )
+        # The opt-in "remember view" toggle lives in the toolbar's Library menu
+        # (see app.py); it calls set_remember_view() on this view.
         self.count_text = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
 
         # ---- table ---------------------------------------------------------
@@ -161,7 +187,8 @@ class GamesView:
                         self.search_field,
                         self.page_size_dd,
                         ft.FilledButton("Add game", icon=ft.Icons.ADD,
-                                        on_click=lambda _: self.on_add()),
+                                        on_click=lambda _: self.on_add(),
+                                        bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE),
                     ],
                     vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 ),
@@ -195,6 +222,7 @@ class GamesView:
     def _on_search(self, _):
         self.query = (self.search_field.value or "").strip().lower()
         self.page_index = 0
+        self._persist_view()
         self.refresh()
 
     def _on_sort(self, e):
@@ -202,17 +230,71 @@ class GamesView:
         self.sort_col = e.column_index
         self.sort_asc = bool(e.ascending)
         self.page_index = 0
+        self._persist_sort()
         self.refresh()
+
+    def _persist_sort(self):
+        try:
+            from config import save_config
+            self.service.config["games_sort_col"] = self.sort_col
+            self.service.config["games_sort_asc"] = self.sort_asc
+            save_config(self.service.config)
+        except Exception:
+            pass
 
     def _on_page_size(self, _):
         value = self.page_size_dd.value
         self.page_size = None if value == "All" else int(value)
         self.page_index = 0
-        self.refresh()
+        self._persist_view()
+        self._refresh_maybe_loading()
 
     def _go(self, index):
         self.page_index = max(0, min(index, self._page_count() - 1))
-        self.refresh()
+        self._persist_view()
+        self._refresh_maybe_loading()
+
+    # ------------------------------------------------------------------ #
+    # view persistence (opt-in) + page-change loading
+    # ------------------------------------------------------------------ #
+    def _persist_view(self):
+        """Persist filter / page / rows-per-page when the opt-in toggle is on."""
+        if not self.remember_view:
+            return
+        try:
+            from config import save_config
+            self.service.config["library_query"] = self.search_field.value or ""
+            self.service.config["library_page_size"] = (
+                "All" if self.page_size is None else str(self.page_size))
+            self.service.config["library_page_index"] = self.page_index
+            save_config(self.service.config)
+        except Exception:
+            pass
+
+    def set_remember_view(self, enabled):
+        """Enable/disable the opt-in 'remember filter/page/rows' feature.
+
+        Called from the toolbar Library menu. When enabling, the current view is
+        captured immediately so it's restored next launch even with no further
+        changes."""
+        self.remember_view = bool(enabled)
+        try:
+            from config import save_config
+            self.service.config["remember_library_view"] = self.remember_view
+            save_config(self.service.config)
+        except Exception:
+            pass
+        if self.remember_view:
+            self._persist_view()
+
+    def _refresh_maybe_loading(self):
+        """Refresh, showing the loading overlay while a *large* page renders."""
+        big = self.page_size is None or (self.page_size and self.page_size >= 100)
+        if big and self._is_mounted():
+            self.page.run_task(loading.run_with_loading, self.page,
+                               "Loading…", self.refresh)
+        else:
+            self.refresh()
 
     # ------------------------------------------------------------------ #
     # data shaping
@@ -277,7 +359,7 @@ class GamesView:
                 ft.Row(
                     [
                         ft.IconButton(ft.Icons.EDIT, tooltip="Edit", icon_size=18,
-                                      on_click=edit),
+                                      icon_color=ft.Colors.BLUE, on_click=edit),
                         ft.IconButton(ft.Icons.DELETE_OUTLINE, tooltip="Delete",
                                       icon_size=18, icon_color=ft.Colors.RED,
                                       on_click=delete),
@@ -338,8 +420,15 @@ class GamesView:
         if not width or width <= 0:
             return
         self.table.width = width
+        # The table can be unmounted even when the parent column is on the page
+        # (e.g. a window resize during the startup splash->UI swap). The width is
+        # stored regardless and applies on the next full render, so ignore a
+        # transient "not added to the page yet".
         if self._is_mounted():
-            self.table.update()
+            try:
+                self.table.update()
+            except (RuntimeError, AssertionError):
+                pass
 
     def _is_mounted(self):
         if self.page is None:

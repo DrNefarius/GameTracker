@@ -124,7 +124,8 @@ def open_game_dialog(page, service, orig_idx=None, on_saved=None):
         ),
         actions=[
             ft.TextButton("Cancel", on_click=lambda _: page.pop_dialog()),
-            ft.Button("Save", icon=ft.Icons.SAVE, on_click=on_save),
+            ft.Button("Save", icon=ft.Icons.SAVE, on_click=on_save,
+                      bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )

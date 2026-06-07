@@ -38,10 +38,12 @@ from session_visualizations import (
     create_session_timeline_chart,
     create_session_distribution_chart,
     create_status_timeline_chart,
+    create_session_heatmap,
 )
 from utilities import format_timedelta_with_seconds
 from pause_utils import total_session_pause_timedelta
 from core.ratings_logic import format_rating, get_session_rating_summary
+from ui_flet import theme
 from ui_flet.session_dialogs import (
     open_session_actions_dialog,
     open_manual_session_dialog,
@@ -166,6 +168,17 @@ def _normalize_picked_date(value):
     if isinstance(value, datetime):
         return (value + timedelta(hours=12)).date()
     return value
+
+
+def _labeled(label, control):
+    """A small text label stacked above a control.
+
+    Used instead of a Dropdown's built-in floating label, which gets clipped at
+    the top of a tightly-laid-out tab/row (see #3)."""
+    return ft.Column(
+        [ft.Text(label, size=12, color=ft.Colors.ON_SURFACE_VARIANT), control],
+        spacing=3, tight=True,
+    )
 
 
 def _intensity_color(count):
@@ -323,6 +336,10 @@ class StatisticsView:
             spacing=6,
         )
 
+        # ---- selected-game header (cover + name + metadata) ---------------
+        # Prominently identifies the game the rest of the screen is scoped to.
+        self.game_header = ft.Container(visible=False)
+
         # ---- contributions heatmap ----------------------------------------
         self.heatmap_caption = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         self.heatmap_host = ft.Container(content=ft.Text("…"))
@@ -399,25 +416,54 @@ class StatisticsView:
             rows=[], show_checkbox_column=False, column_spacing=24,
             heading_row_color=ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE),
         )
+        # Shown only when the selected game has no IGDB match yet (#10).
+        self.fetch_meta_btn = ft.OutlinedButton(
+            "Fetch metadata", icon=ft.Icons.CLOUD_DOWNLOAD,
+            on_click=self._on_fetch_metadata, visible=False)
         self._game_detail = ft.Column(
             [
                 self.game_totals,
                 ft.Row(
                     [
                         ft.FilledButton("Add session", icon=ft.Icons.ADD,
-                                        on_click=self._on_add_session),
+                                        on_click=self._on_add_session,
+                                        bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE),
                         ft.OutlinedButton("View activity log", icon=ft.Icons.HISTORY_EDU,
                                           on_click=self._on_view_activity_log),
+                        self.fetch_meta_btn,
                     ],
                     spacing=10, wrap=True,
                 ),
-                ft.Text("Sessions", size=15, weight=ft.FontWeight.W_600),
-                ft.Container(height=300,
-                             content=ft.Column([self.sessions_table], scroll=ft.ScrollMode.AUTO)),
-                ft.Divider(height=1),
-                ft.Text("Status history", size=15, weight=ft.FontWeight.W_600),
-                ft.Container(height=200,
-                             content=ft.Column([self.status_table], scroll=ft.ScrollMode.AUTO)),
+                # Sessions + Status history side by side to conserve vertical
+                # space (stacks on narrow widths).
+                ft.ResponsiveRow(
+                    [
+                        ft.Container(
+                            col={"xs": 12, "md": 7},
+                            content=ft.Column(
+                                [
+                                    ft.Text("Sessions", size=15, weight=ft.FontWeight.W_600),
+                                    ft.Container(height=320, content=ft.Column(
+                                        [self.sessions_table], scroll=ft.ScrollMode.AUTO)),
+                                ],
+                                spacing=8, tight=True,
+                            ),
+                        ),
+                        ft.Container(
+                            col={"xs": 12, "md": 5},
+                            content=ft.Column(
+                                [
+                                    ft.Text("Status history", size=15,
+                                            weight=ft.FontWeight.W_600),
+                                    ft.Container(height=320, content=ft.Column(
+                                        [self.status_table], scroll=ft.ScrollMode.AUTO)),
+                                ],
+                                spacing=8, tight=True,
+                            ),
+                        ),
+                    ],
+                    run_spacing=10, spacing=10,
+                ),
             ],
             spacing=10, visible=False,
         )
@@ -428,15 +474,17 @@ class StatisticsView:
         )
 
         # ---- charts (tabbed; scope follows the game selection) ------------
+        # Labels are rendered ABOVE the dropdowns via _labeled() rather than the
+        # Dropdown's floating label, which gets clipped at the top of the tab (#3).
         self.dist_type_dd = ft.Dropdown(
-            label="Distribution type", value="line", width=190, dense=True,
+            value="line", width=190,
             options=[ft.dropdown.Option(key=k, text=t) for k, t in
                      (("line", "Line Chart"), ("scatter", "Scatter Plot"),
                       ("box", "Box Plot"), ("histogram", "Histogram"))],
             on_select=self._on_dist_type_select,
         )
         self.hm_window_dd = ft.Dropdown(
-            label="Window", value="1", width=170, dense=True,
+            value="1", width=170,
             options=[ft.dropdown.Option(key=k, text=t) for k, t in
                      (("1", "1 Month"), ("3", "3 Months"), ("6", "6 Months"), ("12", "1 Year"))],
             on_select=self._on_hm_window,
@@ -444,7 +492,7 @@ class StatisticsView:
         self.hm_period = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
         self._heatmap_controls = ft.Row(
             [
-                self.hm_window_dd,
+                _labeled("Window", self.hm_window_dd),
                 ft.IconButton(ft.Icons.CHEVRON_LEFT, tooltip="Earlier", on_click=self._hm_prev),
                 ft.IconButton(ft.Icons.CHEVRON_RIGHT, tooltip="Later", on_click=self._hm_next),
                 ft.OutlinedButton("Latest", on_click=self._hm_latest),
@@ -464,7 +512,8 @@ class StatisticsView:
         tab_views = ft.TabBarView(
             controls=[
                 ft.Column([self._chart_hosts["timeline"]]),
-                ft.Column([self.dist_type_dd, self._chart_hosts["distribution"]]),
+                ft.Column([_labeled("Distribution type", self.dist_type_dd),
+                           self._chart_hosts["distribution"]]),
                 ft.Column([self._chart_hosts["status"]]),
                 ft.Column([self._heatmap_controls, self._chart_hosts["heatmap"]]),
             ],
@@ -476,10 +525,10 @@ class StatisticsView:
                 [
                     ft.TabBar(tabs=[ft.Tab(label=lbl) for _, lbl in _CHART_TABS],
                               scrollable=True),
-                    # Top padding so the first control's label (e.g. the
+                    # Top padding so the first control's floating label (e.g. the
                     # Distribution dropdown) isn't clipped by the tab bar. Taller
                     # than before to fit dropdown + graph without an inner scroll.
-                    ft.Container(tab_views, height=480, padding=ft.Padding(0, 14, 0, 0)),
+                    ft.Container(tab_views, height=500, padding=ft.Padding(0, 22, 0, 0)),
                 ],
                 spacing=8,
             ),
@@ -492,6 +541,7 @@ class StatisticsView:
                 header,
                 ft.Divider(height=1),
                 self._game_panel,
+                self.game_header,
                 heatmap_section,
                 ft.Divider(height=1),
                 self.rating_section,
@@ -504,7 +554,9 @@ class StatisticsView:
             expand=True, scroll=ft.ScrollMode.AUTO, spacing=12,
         )
 
-        self.refresh()
+        # Stats + charts render lazily on the first navigation to this tab (see
+        # app.on_nav_change, wrapped in a loading overlay) rather than in the
+        # constructor — generating a chart on startup slows the first paint.
 
     # ------------------------------------------------------------------ #
     # construction helpers
@@ -597,6 +649,7 @@ class StatisticsView:
     def _select_scope(self, value):
         self.selected_game = value  # None == All games
         self._refresh_game_list()
+        self._render_game_header()
         self._render_contributions()
         self._render_rating_comparison()
         self._render_game_detail()
@@ -671,6 +724,17 @@ class StatisticsView:
     def _on_view_activity_log(self, _):
         if self.selected_game:
             open_activity_log_dialog(self.page, self.service, self.selected_game)
+
+    def _on_fetch_metadata(self, _):
+        """Fetch IGDB metadata for the selected game (when it has none yet)."""
+        name = self.selected_game
+        if not name:
+            return
+        orig_idx = next((idx for idx, row in self.service.data if row[0] == name), None)
+        if orig_idx is None:
+            return
+        from ui_flet.igdb_match import open_match_picker
+        open_match_picker(self.page, self.service, orig_idx, on_done=self.refresh)
 
     def select_game(self, name):
         """Programmatically focus a game (used by Game Hub's 'View Statistics')."""
@@ -794,6 +858,102 @@ class StatisticsView:
             f"{'s' if active_days != 1 else ''} (click a day for details)"
         )
 
+    def _row_for_selected(self):
+        for _, row in self.service.data:
+            if row[0] == self.selected_game:
+                return row
+        return None
+
+    @staticmethod
+    def _meta_chip(icon, text):
+        return ft.Container(
+            padding=ft.Padding(8, 4, 10, 4), border_radius=8,
+            bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE),
+            content=ft.Row(
+                [ft.Icon(icon, size=14, color=ft.Colors.ON_SURFACE_VARIANT),
+                 ft.Text(text, size=12)],
+                spacing=5, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+        )
+
+    def _render_game_header(self):
+        """Prominent header for the selected game: cover + name + key metadata."""
+        name = self.selected_game
+        row = self._row_for_selected() if name else None
+        if not name or row is None:
+            self.game_header.visible = False
+            self.game_header.content = None
+            return
+        self.game_header.visible = True
+        igdb = row[10] if len(row) > 10 and isinstance(row[10], dict) else None
+
+        # cover (IGDB cached image) or a placeholder tile
+        cover = None
+        if igdb:
+            try:
+                from ui_flet.game_hub import cover_path_for
+                cp = cover_path_for(igdb)
+                if cp:
+                    cover = ft.Image(
+                        src=cp, width=92, height=128, fit=ft.BoxFit.COVER, border_radius=8,
+                        error_content=ft.Icon(ft.Icons.IMAGE_NOT_SUPPORTED_OUTLINED, size=32))
+            except Exception:
+                cover = None
+        if cover is None:
+            cover = ft.Container(
+                width=92, height=128, border_radius=8, alignment=ft.Alignment(0, 0),
+                bgcolor=ft.Colors.with_opacity(0.06, ft.Colors.ON_SURFACE),
+                content=ft.Icon(ft.Icons.VIDEOGAME_ASSET, size=34,
+                                color=ft.Colors.ON_SURFACE_VARIANT))
+
+        # metadata chips
+        chips = []
+        if row[2]:
+            chips.append(self._meta_chip(ft.Icons.DEVICES, str(row[2])))
+        chips.append(ft.Container(content=theme.status_badge(row)))
+        if row[3]:
+            chips.append(self._meta_chip(ft.Icons.SCHEDULE, str(row[3])))
+        released = row[1] if len(row) > 1 else None
+        if released and released != "-":
+            chips.append(self._meta_chip(ft.Icons.EVENT, str(released)))
+
+        # rating line: manual stars + IGDB aggregated rating when present
+        manual = row[9] if len(row) > 9 and isinstance(row[9], dict) else None
+        rating_bits = []
+        if manual:
+            rating_bits.append(ft.Text(format_rating(manual) or "", size=16))
+        agg = (igdb or {}).get("aggregated_rating")
+        if agg:
+            rating_bits.append(ft.Text(f"IGDB {round(float(agg))}/100", size=12,
+                                       color=ft.Colors.ON_SURFACE_VARIANT))
+
+        right = [ft.Text(name, size=22, weight=ft.FontWeight.BOLD,
+                         selectable=True, max_lines=2)]
+        right.append(ft.Row(chips, wrap=True, spacing=8, run_spacing=6))
+        if rating_bits:
+            right.append(ft.Row(rating_bits, spacing=12,
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        if igdb:
+            genres = ", ".join(igdb.get("genres") or [])
+            if genres:
+                right.append(ft.Text(f"Genres: {genres}", size=12,
+                                     color=ft.Colors.ON_SURFACE_VARIANT))
+            summary = igdb.get("summary")
+            if summary:
+                flat = " ".join(str(summary).split())
+                right.append(ft.Text(
+                    flat[:240] + ("…" if len(flat) > 240 else ""),
+                    size=12, color=ft.Colors.ON_SURFACE_VARIANT, max_lines=3))
+
+        self.game_header.content = ft.Container(
+            padding=ft.Padding(14, 12, 14, 12), border_radius=12,
+            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE),
+            content=ft.Row(
+                [cover, ft.Column(right, spacing=8, expand=True, tight=True)],
+                spacing=16, vertical_alignment=ft.CrossAxisAlignment.START,
+            ),
+        )
+
     def _render_rating_comparison(self):
         if not self.selected_game:
             self.rating_section.visible = False
@@ -849,6 +1009,11 @@ class StatisticsView:
             return
         self._game_empty.visible = False
         self._game_detail.visible = True
+
+        # Offer "Fetch metadata" only when the game has no real IGDB match (#10).
+        row = self._row_for_selected()
+        igdb = row[10] if row and len(row) > 10 and isinstance(row[10], dict) else None
+        self.fetch_meta_btn.visible = not bool(igdb and igdb.get("igdb_id"))
 
         sessions = get_game_sessions(self.service.data, name) or []
         history = get_status_history(self.service.data, name) or []
@@ -926,10 +1091,9 @@ class StatisticsView:
                 buf = create_status_timeline_chart(
                     get_status_history(self.service.data, game), game_name=game)
             elif kind == "heatmap":
-                # create_session_heatmap currently lives in session_management
-                # (imports PySimpleGUI); lazy-import keeps it off ui_flet's import
-                # graph. Phase 5 relocates it to a GUI-free module.
-                from session_management import create_session_heatmap
+                # create_session_heatmap now lives in the GUI-free
+                # session_visualizations module (imported at top), so the Flet UI
+                # no longer touches the PySimpleGUI-importing session_management.
                 buf = create_session_heatmap(scope, game, self.heatmap_window_months,
                                              self.heatmap_end_date)
                 end = self.heatmap_end_date or date.today()
@@ -958,6 +1122,7 @@ class StatisticsView:
             self.selected_game = None
         self._refresh_game_list()
 
+        self._render_game_header()
         self._render_contributions()
         self._render_rating_comparison()
         self._render_game_detail()

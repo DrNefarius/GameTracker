@@ -291,7 +291,8 @@ def open_feedback_dialog(page, existing=None, on_result=None):
         content=ft.Container(width=520, content=content),
         actions=[
             ft.TextButton("Cancel", on_click=_on_cancel),
-            ft.Button("Save", icon=ft.Icons.SAVE, on_click=_on_save),
+            ft.Button("Save", icon=ft.Icons.SAVE, on_click=_on_save,
+                      bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )
@@ -458,7 +459,8 @@ def open_manual_session_dialog(page, service, game_name, on_saved=None):
         content=ft.Container(width=560, content=content),
         actions=[
             ft.TextButton("Cancel", on_click=lambda _: page.pop_dialog()),
-            ft.Button("Add Session", icon=ft.Icons.ADD, on_click=_on_save),
+            ft.Button("Add Session", icon=ft.Icons.ADD, on_click=_on_save,
+                      bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )
@@ -544,12 +546,15 @@ def open_session_actions_dialog(page, service, game_name, session, on_done=None)
         ))
 
     buttons = [ft.Button("Edit feedback", icon=ft.Icons.EDIT,
-                                 on_click=_edit_feedback)]
+                                 on_click=_edit_feedback,
+                                 color=ft.Colors.BLUE, icon_color=ft.Colors.BLUE)]
     if fb:
         buttons.append(ft.OutlinedButton("Remove feedback", icon=ft.Icons.CLEAR,
-                                         on_click=_remove_feedback))
+                                         on_click=_remove_feedback,
+                                         icon_color=ft.Colors.RED, style=ft.ButtonStyle(color=ft.Colors.RED)))
     buttons.append(ft.OutlinedButton("Delete session", icon=ft.Icons.DELETE_OUTLINE,
-                                     on_click=_delete_session))
+                                     on_click=_delete_session,
+                                     icon_color=ft.Colors.RED, style=ft.ButtonStyle(color=ft.Colors.RED)))
 
     page.show_dialog(ft.AlertDialog(
         modal=True,

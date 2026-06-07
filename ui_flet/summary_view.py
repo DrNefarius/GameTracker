@@ -72,7 +72,10 @@ class SummaryView:
             spacing=12,
         )
 
-        self.refresh()
+        # NOTE: charts are generated lazily on the first navigation to this tab
+        # (see app.on_nav_change, which wraps refresh() in a loading overlay), not
+        # in the constructor — generating five matplotlib charts on startup is the
+        # main cause of the slow first paint.
 
     # ------------------------------------------------------------------ #
     # rendering

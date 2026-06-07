@@ -3,12 +3,17 @@
 Entry point ``main(page)`` is invoked by ``app_flet.py`` via ``ft.run``.
 """
 
+import asyncio
+import os
+import threading
+
 import flet as ft
 
-from config import save_config
+from config import load_config, save_config
 from core.services import GameLibraryService
 from ui_flet import theme
 from ui_flet import help_view
+from ui_flet import loading
 from ui_flet.games_view import GamesView
 from ui_flet.game_dialog import open_game_dialog, confirm_delete
 from ui_flet.game_hub import open_game_hub
@@ -40,23 +45,89 @@ def _placeholder(icon, title):
 
 
 def main(page: ft.Page):
+    """Paint a splash immediately, then defer the heavy build.
+
+    The real build reads the library and generates matplotlib charts, which
+    blocks the event loop; running it after one loop yield lets Flutter paint the
+    spinner first instead of leaving the window blank for a couple of seconds.
+    """
+    page.title = "GameTracker"
+    page.padding = 0
+    try:
+        page.theme = theme.build_theme()
+    except Exception:
+        pass
+
+    # Restore the last window size + position (saved on move/resize), or fall
+    # back to sensible defaults. Applied here in the wrapper so the window opens
+    # at the right geometry before the splash paints.
+    try:
+        cfg = load_config()
+    except Exception:
+        cfg = {}
+    def _num(v, lo, hi):
+        try:
+            v = float(v)
+            return v if lo <= v <= hi else None
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        page.window.min_width = 900
+        page.window.min_height = 600
+        page.window.width = _num(cfg.get("window_width"), 600, 20000) or 1200
+        page.window.height = _num(cfg.get("window_height"), 400, 20000) or 800
+        left = _num(cfg.get("window_left"), -20000, 20000)
+        top = _num(cfg.get("window_top"), -20000, 20000)
+        if left is not None and top is not None:
+            page.window.left = left
+            page.window.top = top
+        if cfg.get("window_maximized"):
+            page.window.maximized = True
+    except Exception:
+        pass
+
+    # Center via the page's root view (robust against the initial window-resize
+    # reflow, which otherwise left the spinner clipped at the top).
+    try:
+        page.vertical_alignment = ft.MainAxisAlignment.CENTER
+        page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
+    except Exception:
+        pass
+    splash = ft.Column(
+        [
+            ft.ProgressRing(width=42, height=42, stroke_width=4),
+            ft.Text("Loading GameTracker…", size=15, color=ft.Colors.ON_SURFACE_VARIANT),
+        ],
+        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        alignment=ft.MainAxisAlignment.CENTER, spacing=18, tight=True,
+    )
+    page.add(splash)
+    page.update()
+
+    async def _go():
+        # Let the window settle (it resizes to the configured size on first show)
+        # and the splash paint before kicking off the blocking build.
+        try:
+            await asyncio.sleep(0.15)
+        except Exception:
+            pass
+        _build_main(page)
+
+    page.run_task(_go)
+
+
+def _build_main(page: ft.Page):
     service = GameLibraryService()
     service.bootstrap()
 
-    # ---- window / theme -------------------------------------------------
+    # ---- theme ----------------------------------------------------------
+    # Window geometry was already restored in the splash wrapper (main); don't
+    # reset it here or we'd clobber the restored size/position.
     page.title = "GameTracker"
     page.padding = 0
     page.theme = theme.build_theme()
     page.theme_mode = theme.str_to_mode(service.config.get("theme_mode", "system"))
-    try:
-        page.window.width = 1200
-        page.window.height = 800
-        page.window.min_width = 900
-        page.window.min_height = 600
-        # Note: page.window.center() is async in Flet 0.85; setting an explicit
-        # size is enough and avoids an un-awaited-coroutine warning in sync main().
-    except Exception:
-        pass  # window object unavailable in web mode
 
     # ---- file picker (lives in services in Flet 0.85) -------------------
     file_picker = ft.FilePicker()
@@ -83,8 +154,9 @@ def main(page: ft.Page):
         # defined later in main(); resolved at call time.
         rail.selected_index = 2
         content_area.content = pages[2]
-        statistics_view.select_game(game_name)
         page.update()
+        page.run_task(loading.run_with_loading, page, "Loading statistics…",
+                      statistics_view.select_game, game_name)
 
     def do_edit(orig_idx):
         # A row click / edit icon opens the full Game Hub (which itself offers
@@ -116,13 +188,18 @@ def main(page: ft.Page):
         path = _picked_path(result)
         if not path:
             return
+        loading.show_loading(page, "Opening library…")
+        await asyncio.sleep(0.02)
         try:
             service.open_path(path)
             games_view.refresh()
             discord_runtime.notify_tab(service, rail.selected_index)  # refresh stats
+            _refresh_db_label()
             snack(f"Loaded {len(service.data)} games")
         except Exception as exc:
             snack(f"Open failed: {exc}", error=True)
+        finally:
+            loading.hide_loading(page)
 
     async def do_import(_):
         result = await file_picker.pick_files(
@@ -133,13 +210,18 @@ def main(page: ft.Page):
         path = _picked_path(result)
         if not path:
             return
+        loading.show_loading(page, "Importing from Excel…")
+        await asyncio.sleep(0.02)
         try:
             service.import_excel(path)
             games_view.refresh()
             discord_runtime.notify_tab(service, rail.selected_index)  # refresh stats
+            _refresh_db_label()
             snack(f"Imported {len(service.data)} games")
         except Exception as exc:
             snack(f"Import failed: {exc}", error=True)
+        finally:
+            loading.hide_loading(page)
 
     async def do_save_as(_):
         path = await file_picker.save_file(
@@ -150,10 +232,66 @@ def main(page: ft.Page):
         )
         if not path:
             return
-        snack("Saved" if service.save_as(path) else "Save failed", error=not service.filename)
+        ok = service.save_as(path)
+        _refresh_db_label()
+        snack("Saved" if ok else "Save failed", error=not ok)
 
     def do_save(_):
         snack("Saved" if service.save() else "Save failed", error=False)
+
+    # ---- helpers: pill-styled toolbar buttons + loaded-database chip ----
+    # PopupMenuButton(content=...) and a bare Row render as an unstyled
+    # rectangle; wrapping the content in a rounded, padded Container gives every
+    # toolbar button the same "pill" shape (matching a Material button) and lets
+    # the Row's spacing separate them.
+    def _pill_bg(active=False, accent=None):
+        if active and accent:
+            return ft.Colors.with_opacity(0.20, accent)
+        return ft.Colors.with_opacity(0.07, ft.Colors.ON_SURFACE)
+
+    def _pill(content, on_click=None, tooltip=None, active=False, accent=None):
+        return ft.Container(
+            padding=ft.Padding(13, 7, 11, 7), border_radius=18,
+            bgcolor=_pill_bg(active, accent),
+            content=content, on_click=on_click, tooltip=tooltip,
+            ink=bool(on_click),
+        )
+
+    # Accent colors that signal an "enabled" toggle.
+    _DISCORD_ACCENT = ft.Colors.BLUE
+    _WATCHER_ACCENT = ft.Colors.GREEN
+
+    def _menu_label(icon, text):
+        """Pill content for a menu button: icon + text + a dropdown caret."""
+        return _pill(ft.Row(
+            [ft.Icon(icon, size=18), ft.Text(text, size=13),
+             ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=16, color=ft.Colors.ON_SURFACE_VARIANT)],
+            spacing=4, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ))
+
+    def _db_display():
+        fn = getattr(service, "filename", None)
+        return os.path.basename(fn) if fn else "No database loaded"
+
+    db_label = ft.Text(_db_display(), size=12, weight=ft.FontWeight.W_500)
+    db_chip = ft.Container(
+        padding=ft.Padding(8, 3, 10, 3), border_radius=8,
+        bgcolor=ft.Colors.with_opacity(0.07, ft.Colors.ON_SURFACE),
+        tooltip="Currently loaded game database",
+        content=ft.Row(
+            [ft.Icon(ft.Icons.STORAGE, size=14, color=ft.Colors.ON_SURFACE_VARIANT), db_label],
+            spacing=5, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+    )
+
+    def _refresh_db_label():
+        name = _db_display()
+        db_label.value = name
+        page.title = f"GameTracker — {name}"
+        try:
+            page.update()
+        except Exception:
+            pass
 
     # ---- theme toggle ----------------------------------------------------
     def toggle_theme(_):
@@ -170,7 +308,20 @@ def main(page: ft.Page):
         on_click=toggle_theme,
     )
 
-    # ---- process-watcher On/Off toggle ----------------------------------
+    # ---- process-watcher On/Off toggle (lives in the Watcher menu) ------
+    def _watcher_content(enabled):
+        col = _WATCHER_ACCENT if enabled else ft.Colors.ON_SURFACE_VARIANT
+        return _pill(
+            ft.Row(
+                [ft.Icon(ft.Icons.VISIBILITY if enabled else ft.Icons.VISIBILITY_OFF,
+                         size=18, color=col),
+                 ft.Text("Watcher", size=13, color=col),
+                 ft.Icon(ft.Icons.ARROW_DROP_DOWN, size=16, color=ft.Colors.ON_SURFACE_VARIANT)],
+                spacing=4, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
+            active=enabled, accent=_WATCHER_ACCENT,
+        )
+
     def toggle_watcher(_):
         from process_watcher import get_watcher
         new_enabled = not bool(service.config.get("watcher_enabled", False))
@@ -182,100 +333,161 @@ def main(page: ft.Page):
                 w.start() if new_enabled else w.stop()
             except Exception as ex:  # pragma: no cover - defensive
                 print("watcher toggle failed:", ex)
-        watcher_btn.icon = ft.Icons.VISIBILITY if new_enabled else ft.Icons.VISIBILITY_OFF
-        watcher_btn.tooltip = f"Process Watcher: {'On' if new_enabled else 'Off'}"
+        _sync_watcher_btn(new_enabled)
         snack(f"Process Watcher {'enabled' if new_enabled else 'disabled'}")
-        page.update()
 
     _watcher_on = bool(service.config.get("watcher_enabled", False))
-    watcher_btn = ft.IconButton(
-        icon=ft.Icons.VISIBILITY if _watcher_on else ft.Icons.VISIBILITY_OFF,
-        tooltip=f"Process Watcher: {'On' if _watcher_on else 'Off'}",
-        on_click=toggle_watcher,
+    watcher_enabled_item = ft.PopupMenuItem(
+        content=ft.Text("Enabled"), checked=_watcher_on, on_click=toggle_watcher)
+    watcher_menu = ft.PopupMenuButton(
+        content=_watcher_content(_watcher_on),
+        tooltip="Process Watcher",
+        items=[
+            watcher_enabled_item,
+            ft.PopupMenuItem(content=ft.Text("Settings…"), icon=ft.Icons.SETTINGS,
+                             on_click=lambda e: open_watcher_settings_dialog(page, service)),
+            ft.PopupMenuItem(content=ft.Text("Rescan Game Libraries"), icon=ft.Icons.RADAR,
+                             on_click=lambda e: igdb_match.rescan_game_libraries(page)),
+        ],
     )
 
+    def _sync_watcher_btn(enabled):
+        watcher_menu.content = _watcher_content(enabled)
+        watcher_enabled_item.checked = bool(enabled)
+        watcher_menu.tooltip = f"Process Watcher: {'On' if enabled else 'Off'}"
+        try:
+            page.update()
+        except Exception:
+            pass
+
     # ---- Discord Rich Presence On/Off toggle ----------------------------
+    def _discord_row(enabled):
+        col = _DISCORD_ACCENT if enabled else ft.Colors.ON_SURFACE_VARIANT
+        return ft.Row(
+            [ft.Icon(ft.Icons.DISCORD, size=18, color=col),
+             ft.Text("Discord", size=13, color=col)],
+            spacing=6, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+
     def toggle_discord(_):
         new_enabled = not bool(service.config.get("discord_enabled", True))
         discord_runtime.set_enabled(service, new_enabled)
-        discord_btn.icon_color = None if new_enabled else ft.Colors.ON_SURFACE_VARIANT
+        discord_btn.content = _discord_row(new_enabled)
+        discord_btn.bgcolor = _pill_bg(new_enabled, _DISCORD_ACCENT)
         discord_btn.tooltip = f"Discord Rich Presence: {'On' if new_enabled else 'Off'}"
         snack(f"Discord Rich Presence {'enabled' if new_enabled else 'disabled'}")
         page.update()
 
     _discord_on = bool(service.config.get("discord_enabled", True))
-    discord_btn = ft.IconButton(
-        icon=ft.Icons.DISCORD,
-        icon_color=None if _discord_on else ft.Colors.ON_SURFACE_VARIANT,
+    discord_btn = _pill(
+        _discord_row(_discord_on), on_click=toggle_discord,
         tooltip=f"Discord Rich Presence: {'On' if _discord_on else 'Off'}",
-        on_click=toggle_discord,
+        active=_discord_on, accent=_DISCORD_ACCENT,
     )
 
-    # ---- toolbar ---------------------------------------------------------
+    # ---- toolbar: labeled, consolidated menus ---------------------------
+    file_menu = ft.PopupMenuButton(
+        content=_menu_label(ft.Icons.FOLDER, "File"),
+        tooltip="Open, save and import",
+        items=[
+            ft.PopupMenuItem(content=ft.Text("Save"), icon=ft.Icons.SAVE, on_click=do_save),
+            ft.PopupMenuItem(content=ft.Text("Open .gmd…"), icon=ft.Icons.FOLDER_OPEN,
+                             on_click=do_open),
+            ft.PopupMenuItem(content=ft.Text("Save As…"), icon=ft.Icons.SAVE_AS,
+                             on_click=do_save_as),
+            ft.PopupMenuItem(),
+            ft.PopupMenuItem(content=ft.Text("Import from Excel…"), icon=ft.Icons.UPLOAD_FILE,
+                             on_click=do_import),
+            ft.PopupMenuItem(),
+            # Fully quit (not close-to-tray). Reuses the tray "quit" path so the
+            # watcher/Discord/tray are torn down cleanly. watcher_sink is assigned
+            # later in this function; the closure resolves it at click time.
+            ft.PopupMenuItem(content=ft.Text("Quit GameTracker"), icon=ft.Icons.LOGOUT,
+                             on_click=lambda e: watcher_sink.write_event_value(
+                                 "-TRAY-ACTION-", {"action": "quit"})),
+        ],
+    )
+    # Opt-in: remember the Games list filter / page / rows-per-page across runs.
+    remember_view_item = ft.PopupMenuItem(
+        content=ft.Text("Remember filter, page & rows on exit"),
+        checked=bool(getattr(games_view, "remember_view", False)),
+    )
+
+    def _toggle_remember_view(_):
+        new_enabled = not bool(getattr(games_view, "remember_view", False))
+        games_view.set_remember_view(new_enabled)
+        remember_view_item.checked = new_enabled
+        snack(f"Remembering library view: {'on' if new_enabled else 'off'}")
+        page.update()
+
+    remember_view_item.on_click = _toggle_remember_view
+
+    library_menu = ft.PopupMenuButton(
+        content=_menu_label(ft.Icons.CLOUD_SYNC, "Library"),
+        tooltip="IGDB metadata tools & library view settings",
+        items=[
+            ft.PopupMenuItem(content=ft.Text("IGDB Settings…"), icon=ft.Icons.SETTINGS,
+                             on_click=lambda e: open_igdb_settings_dialog(page, service)),
+            ft.PopupMenuItem(content=ft.Text("Enrich Library from IGDB"),
+                             icon=ft.Icons.AUTO_FIX_HIGH,
+                             on_click=lambda e: igdb_match.open_enrich_library(
+                                 page, service, on_done=games_view.refresh)),
+            ft.PopupMenuItem(),
+            remember_view_item,
+        ],
+    )
+    updates_menu = ft.PopupMenuButton(
+        content=_menu_label(ft.Icons.SYSTEM_UPDATE, "Updates"),
+        tooltip="Check for and install updates",
+        items=[
+            ft.PopupMenuItem(content=ft.Text("Check for Updates"), icon=ft.Icons.REFRESH,
+                             on_click=lambda e: update_view.check_for_updates_manual(page)),
+            ft.PopupMenuItem(content=ft.Text("Update Settings…"), icon=ft.Icons.TUNE,
+                             on_click=lambda e: update_view.open_update_settings_dialog(page, service)),
+        ],
+    )
+    help_menu = ft.PopupMenuButton(
+        content=_menu_label(ft.Icons.HELP_OUTLINE, "Help"),
+        tooltip="Guides, troubleshooting and about",
+        items=[
+            ft.PopupMenuItem(content=ft.Text("User Guide"), icon=ft.Icons.MENU_BOOK,
+                             on_click=lambda e: help_view.open_user_guide(page)),
+            ft.PopupMenuItem(content=ft.Text("Feature Tour"), icon=ft.Icons.TOUR,
+                             on_click=lambda e: help_view.open_feature_tour(page)),
+            ft.PopupMenuItem(content=ft.Text("Data Format"), icon=ft.Icons.DATA_OBJECT,
+                             on_click=lambda e: help_view.open_data_format_info(page)),
+            ft.PopupMenuItem(content=ft.Text("Troubleshooting"), icon=ft.Icons.BUILD,
+                             on_click=lambda e: help_view.open_troubleshooting(page)),
+            ft.PopupMenuItem(content=ft.Text("Release Notes"), icon=ft.Icons.NEW_RELEASES,
+                             on_click=lambda e: help_view.open_release_notes(page)),
+            ft.PopupMenuItem(content=ft.Text("Report a Bug"), icon=ft.Icons.BUG_REPORT,
+                             on_click=lambda e: help_view.open_bug_report_info(page)),
+            ft.PopupMenuItem(),
+            ft.PopupMenuItem(content=ft.Text("About GameTracker"), icon=ft.Icons.INFO_OUTLINE,
+                             on_click=lambda e: help_view.open_about_dialog(page)),
+        ],
+    )
+
     toolbar = ft.Container(
         bgcolor=ft.Colors.with_opacity(0.04, ft.Colors.ON_SURFACE),
-        padding=ft.Padding(14, 8, 14, 8),
+        padding=ft.Padding(14, 6, 10, 6),
         content=ft.Row(
             [
                 ft.Icon(ft.Icons.SPORTS_ESPORTS),
                 ft.Text("GameTracker", size=18, weight=ft.FontWeight.BOLD),
+                db_chip,
                 ft.Container(expand=True),
-                ft.IconButton(ft.Icons.SAVE, tooltip="Save", on_click=do_save),
-                ft.IconButton(ft.Icons.FOLDER_OPEN, tooltip="Open .gmd", on_click=do_open),
-                ft.IconButton(ft.Icons.SAVE_AS, tooltip="Save As", on_click=do_save_as),
-                ft.IconButton(ft.Icons.UPLOAD_FILE, tooltip="Import Excel", on_click=do_import),
-                ft.PopupMenuButton(
-                    icon=ft.Icons.CLOUD_SYNC,
-                    tooltip="IGDB",
-                    items=[
-                        ft.PopupMenuItem(content=ft.Text("IGDB Settings"),
-                                         on_click=lambda e: open_igdb_settings_dialog(page, service)),
-                        ft.PopupMenuItem(content=ft.Text("Enrich Library from IGDB"),
-                                         on_click=lambda e: igdb_match.open_enrich_library(
-                                             page, service, on_done=games_view.refresh)),
-                        ft.PopupMenuItem(),
-                        ft.PopupMenuItem(content=ft.Text("Rescan Game Libraries"),
-                                         on_click=lambda e: igdb_match.rescan_game_libraries(page)),
-                    ],
-                ),
-                watcher_btn,
+                file_menu,
+                library_menu,
+                watcher_menu,
                 discord_btn,
-                ft.IconButton(ft.Icons.SETTINGS, tooltip="Process Watcher settings",
-                              on_click=lambda e: open_watcher_settings_dialog(page, service)),
-                ft.PopupMenuButton(
-                    icon=ft.Icons.SYSTEM_UPDATE,
-                    tooltip="Updates",
-                    items=[
-                        ft.PopupMenuItem(content=ft.Text("Check for Updates"),
-                                         on_click=lambda e: update_view.check_for_updates_manual(page)),
-                        ft.PopupMenuItem(content=ft.Text("Update Settings"),
-                                         on_click=lambda e: update_view.open_update_settings_dialog(page, service)),
-                    ],
-                ),
-                ft.PopupMenuButton(
-                    icon=ft.Icons.HELP_OUTLINE,
-                    tooltip="Help",
-                    items=[
-                        ft.PopupMenuItem(content=ft.Text("User Guide"),
-                                         on_click=lambda e: help_view.open_user_guide(page)),
-                        ft.PopupMenuItem(content=ft.Text("Feature Tour"),
-                                         on_click=lambda e: help_view.open_feature_tour(page)),
-                        ft.PopupMenuItem(content=ft.Text("Data Format"),
-                                         on_click=lambda e: help_view.open_data_format_info(page)),
-                        ft.PopupMenuItem(content=ft.Text("Troubleshooting"),
-                                         on_click=lambda e: help_view.open_troubleshooting(page)),
-                        ft.PopupMenuItem(content=ft.Text("Release Notes"),
-                                         on_click=lambda e: help_view.open_release_notes(page)),
-                        ft.PopupMenuItem(content=ft.Text("Report a Bug"),
-                                         on_click=lambda e: help_view.open_bug_report_info(page)),
-                        ft.PopupMenuItem(),
-                        ft.PopupMenuItem(content=ft.Text("About GameTracker"),
-                                         on_click=lambda e: help_view.open_about_dialog(page)),
-                    ],
-                ),
+                updates_menu,
+                help_menu,
+                ft.VerticalDivider(width=1),
                 theme_btn,
             ],
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=8,
         ),
     )
 
@@ -290,12 +502,16 @@ def main(page: ft.Page):
     def on_nav_change(e):
         idx = e.control.selected_index
         content_area.content = pages[idx]
-        if idx == 1:
-            summary_view.refresh()      # regenerate charts from current data
-        elif idx == 2:
-            statistics_view.refresh()   # recompute stats + repopulate pickers
         discord_runtime.notify_tab(service, idx)  # browsing-presence per tab
         page.update()
+        # Summary/Statistics regenerate matplotlib charts (can block briefly on a
+        # big library) — show the loading overlay while they render.
+        if idx == 1:
+            page.run_task(loading.run_with_loading, page,
+                          "Generating summary…", summary_view.refresh)
+        elif idx == 2:
+            page.run_task(loading.run_with_loading, page,
+                          "Crunching statistics…", statistics_view.refresh)
 
     # Stretch the games table to fill the width, and keep it responsive.
     # Subtract the nav rail + divider + content padding + scrollbar slack.
@@ -321,6 +537,14 @@ def main(page: ft.Page):
         on_change=on_nav_change,
     )
 
+    # Replace the startup splash with the real UI (restore the root alignment
+    # the splash centered with, so the real layout fills normally).
+    try:
+        page.vertical_alignment = ft.MainAxisAlignment.START
+        page.horizontal_alignment = ft.CrossAxisAlignment.START
+    except Exception:
+        pass
+    page.controls.clear()
     page.add(
         ft.Column(
             [
@@ -338,6 +562,7 @@ def main(page: ft.Page):
 
     # Initial table width (page.width may not be known until the first resize).
     apply_table_width(getattr(page, "width", None) or 1200)
+    _refresh_db_label()  # reflect the loaded database name in the title bar
 
     # ---- Discord Rich Presence -----------------------------------------
     # Initializes off the UI thread (the IPC handshake can block); the watcher
@@ -349,11 +574,9 @@ def main(page: ft.Page):
     # auto-recorded sessions refresh the games list.
     watcher_sink = start_watcher(page, service, refresh_cb=games_view.refresh)
 
-    def _sync_watcher_btn(enabled):
-        watcher_btn.icon = ft.Icons.VISIBILITY if enabled else ft.Icons.VISIBILITY_OFF
-        watcher_btn.tooltip = f"Process Watcher: {'On' if enabled else 'Off'}"
-        page.update()
-
+    # Keep the Watcher menu's icon/checkmark in sync when the watcher state is
+    # changed elsewhere (tray, auto idle-pause). Uses the menu-aware helper
+    # defined alongside the toolbar.
     watcher_sink.on_watcher_state_changed = _sync_watcher_btn
 
     # Single-instance activation: when a second launch is blocked, it pings this
@@ -369,14 +592,60 @@ def main(page: ft.Page):
     except Exception:
         pass
 
-    # Window events: close-to-tray + drain ambiguous matches on focus.
+    # Window events: persist geometry + close-to-tray + drain matches on focus.
     _has_tray = getattr(watcher_sink, "tray", None) is not None
+    _geom = {"timer": None}
+
+    def _capture_geometry():
+        """Read the current window geometry into config (call on the UI thread)."""
+        try:
+            w = page.window
+            maximized = bool(getattr(w, "maximized", False))
+            service.config["window_maximized"] = maximized
+            # Only record size/position while NOT maximized, so restoring an
+            # un-maximized window returns to the user's chosen size.
+            if not maximized:
+                if w.width:
+                    service.config["window_width"] = int(w.width)
+                if w.height:
+                    service.config["window_height"] = int(w.height)
+                if w.left is not None:
+                    service.config["window_left"] = int(w.left)
+                if w.top is not None:
+                    service.config["window_top"] = int(w.top)
+        except Exception:
+            pass
+
+    def _schedule_geom_save():
+        # Capture now (on the loop thread), debounce the disk write so a drag
+        # doesn't write config.json on every pixel.
+        _capture_geometry()
+        t = _geom.get("timer")
+        if t is not None:
+            t.cancel()
+        nt = threading.Timer(0.8, lambda: save_config(service.config))
+        nt.daemon = True
+        _geom["timer"] = nt
+        nt.start()
+
+    _GEOM_EVENTS = (
+        ft.WindowEventType.RESIZED, ft.WindowEventType.RESIZE,
+        ft.WindowEventType.MOVED, ft.WindowEventType.MOVE,
+        ft.WindowEventType.MAXIMIZE, ft.WindowEventType.UNMAXIMIZE,
+        "resized", "resize", "moved", "move", "maximize", "unmaximize",
+    )
 
     def _on_window_event(e):
         etype = getattr(e, "type", None)
+        # Persist size/position as the user moves/resizes/maximizes the window.
+        if etype in _GEOM_EVENTS:
+            _schedule_geom_save()
         # Close-to-tray: with a tray icon active, the window's X hides to the
         # tray (use tray -> Quit to actually exit) so the watcher keeps running.
         if _has_tray and etype in (ft.WindowEventType.CLOSE, "close"):
+            # Save the final geometry synchronously before the window hides.
+            _capture_geometry()
+            save_config(service.config)
             page.window.visible = False
             page.update()
             # One-time hint so the user knows the app didn't actually quit.

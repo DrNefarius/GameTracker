@@ -191,7 +191,8 @@ def open_igdb_settings_dialog(page, service, on_saved=None):
         actions=[
             test_button,
             ft.TextButton("Cancel", on_click=lambda _: page.pop_dialog()),
-            ft.Button("Save", icon=ft.Icons.SAVE, on_click=on_save),
+            ft.Button("Save", icon=ft.Icons.SAVE, on_click=on_save,
+                      bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     )
