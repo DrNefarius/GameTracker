@@ -25,6 +25,7 @@ from data_management import (
     save_data,
     convert_excel_to_gmd,
 )
+from session_data import migrate_all_game_sessions
 
 
 def _sort_key(item):
@@ -49,11 +50,9 @@ class GameLibraryService:
     def _apply_loaded(self, data, needs_migration, filename):
         """Run optional migration, sort, store, and refresh the index counter."""
         if data and needs_migration:
-            # Best-effort: the migration helper lives in session_management which
-            # (today) still pulls the legacy UI; tolerate its absence rather than
-            # block loading a file.
+            # Best-effort: tolerate a migration failure rather than block loading
+            # a file. (migrate_all_game_sessions lives in the GUI-free session_data.)
             try:
-                from session_management import migrate_all_game_sessions
                 data = migrate_all_game_sessions(data)
                 save_data(data, filename)
             except Exception as exc:  # pragma: no cover - defensive

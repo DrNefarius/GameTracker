@@ -3,9 +3,11 @@ Session data operations and extraction functions.
 Handles session data retrieval, statistics calculation, and basic session operations.
 """
 
+import re
 from datetime import datetime, timedelta
 from collections import defaultdict, Counter
 from utilities import format_timedelta_with_seconds
+from pause_utils import normalize_session_pauses
 
 
 def get_latest_session_end_time(sessions):
@@ -353,5 +355,143 @@ def find_most_active_period(sessions, window_months=1):
         
         # Move back by 30 days for next sample
         current_date -= timedelta(days=30)
-    
-    return best_end_date 
+
+    return best_end_date
+
+
+# --------------------------------------------------------------------------- #
+# Session-format migrations (GUI-free)
+#
+# These convert legacy on-disk session shapes to the current unified-feedback /
+# integrated-pause structure. They live here (not in session_management, which
+# imports PySimpleGUI) so the Flet UI and core/ can run them without pulling in
+# the legacy UI. session_management re-exports them for the legacy UI until it
+# is removed in Phase 5 step 3.
+# --------------------------------------------------------------------------- #
+def migrate_pauses_to_integrated_structure(session_pauses):
+    """Convert old pause structure (separate pause/resume events) to new integrated structure"""
+    if not session_pauses:
+        return []
+
+    integrated_pauses = []
+    current_pause = None
+
+    for event in session_pauses:
+        if 'paused_at' in event:
+            current_pause = {
+                'paused_at': event['paused_at'],
+                'elapsed_so_far': event.get('elapsed_so_far', '00:00:00')
+            }
+        elif 'resumed_at' in event and current_pause:
+            current_pause['resumed_at'] = event['resumed_at']
+
+            try:
+                pause_start = datetime.fromisoformat(current_pause['paused_at'])
+                pause_end = datetime.fromisoformat(current_pause['resumed_at'])
+                pause_duration = pause_end - pause_start
+
+                hours, remainder = divmod(pause_duration.total_seconds(), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                current_pause['pause_duration'] = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
+            except (ValueError, TypeError):
+                current_pause['pause_duration'] = "00:00:00"
+
+            integrated_pauses.append(current_pause)
+            current_pause = None
+
+    # Handle any incomplete pause at the end
+    if current_pause:
+        current_pause['incomplete'] = True
+        integrated_pauses.append(current_pause)
+
+    return integrated_pauses
+
+
+def migrate_session_to_unified_feedback(session):
+    """Migrate session from old format (notes + rating) to new unified feedback format"""
+    if 'feedback' in session:
+        return session
+
+    feedback_parts = []
+    feedback_obj = {
+        'text': '',
+        'timestamp': session.get('start', datetime.now().isoformat())
+    }
+
+    existing_note = session.get('note', '')
+    existing_rating = session.get('rating')
+
+    if existing_rating and 'stars' in existing_rating:
+        feedback_obj['rating'] = {
+            'stars': existing_rating['stars'],
+            'tags': existing_rating.get('tags', []),
+            'timestamp': existing_rating.get('timestamp', feedback_obj['timestamp'])
+        }
+
+    if existing_note:
+        note_lines = existing_note.split('\n')
+        clean_note_lines = []
+
+        for line in note_lines:
+            line_stripped = line.strip()
+            if not (re.match(r"^Rating:\s*[★☆]+.*Tags:", line_stripped) or
+                   line_stripped.startswith("Rating:") and any(star in line_stripped for star in ['★', '☆'])):
+                clean_note_lines.append(line)
+
+        clean_note = '\n'.join(clean_note_lines).strip()
+        if clean_note:
+            feedback_parts.append(clean_note)
+
+    if existing_rating and 'comment' in existing_rating and existing_rating['comment']:
+        rating_comment = existing_rating['comment']
+        clean_note_text = feedback_parts[0] if feedback_parts else ''
+        if rating_comment != clean_note_text and rating_comment not in clean_note_text:
+            feedback_parts.append(f"Rating comment: {rating_comment}")
+
+    if feedback_parts:
+        feedback_obj['text'] = '\n\n'.join(feedback_parts)
+
+    new_session = {}
+    for key, value in session.items():
+        if key not in ['note', 'rating']:
+            new_session[key] = value
+
+    if feedback_obj['text'] or 'rating' in feedback_obj:
+        new_session['feedback'] = feedback_obj
+
+    return new_session
+
+
+def migrate_all_game_sessions(data_with_indices):
+    """Migrate all sessions in the dataset to unified feedback format and integrated pause structure"""
+    migrated_data = []
+
+    for idx, game_data in data_with_indices:
+        new_game_data = game_data.copy()
+
+        if len(new_game_data) > 7 and new_game_data[7]:
+            migrated_sessions = []
+            for session in new_game_data[7]:
+                migrated_session = migrate_session_to_unified_feedback(session)
+                migrated_session = normalize_session_pauses(migrated_session)
+
+                if 'pauses' in migrated_session and migrated_session['pauses']:
+                    needs_pause_migration = False
+                    for pause_event in migrated_session['pauses']:
+                        if isinstance(pause_event, dict):
+                            has_paused_at = 'paused_at' in pause_event
+                            has_resumed_at = 'resumed_at' in pause_event
+                            if (has_paused_at and not has_resumed_at) or (has_resumed_at and not has_paused_at):
+                                needs_pause_migration = True
+                                break
+
+                    if needs_pause_migration:
+                        print(f"Migrating pause structure for session in {game_data[0] if game_data else 'unknown game'}")
+                        migrated_session['pauses'] = migrate_pauses_to_integrated_structure(migrated_session['pauses'])
+
+                migrated_sessions.append(migrated_session)
+            new_game_data[7] = migrated_sessions
+
+        migrated_data.append((idx, new_game_data))
+
+    return migrated_data 

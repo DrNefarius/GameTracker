@@ -131,16 +131,22 @@ Every one of these caused a real bug — honor them:
   wired in `app.main`'s `window.on_event`). **Crash orphan-recovery** runs at startup via
   `app.main`'s `_post_startup` (`page.run_task`).
 
-## 6. sg leaks in the new UI — heatmap RESOLVED, one lazy import remains
+## 6. sg leaks in the new UI — RESOLVED (steps 1 & 2); only legacy-only helpers remain
 - **RESOLVED (Phase 5 step 1)**: `create_session_heatmap` was **relocated** from `session_management.py`
   (imports PySimpleGUI) → GUI-free **`session_visualizations.py`** (re-exported from `session_management`
   for the legacy UI). `statistics_view.py` now imports it at top-level from `session_visualizations`.
   Verified: importing `session_visualizations` / `ui_flet.statistics_view` no longer pulls sg. The gaming
   heatmap now renders in the packaged build. See §10.
-- **STILL OPEN**: `core/services.py` lazy-imports `migrate_all_game_sessions` from `session_management`
-  (best-effort, guarded) — relocate or guard it before sg removal. `create_github_contributions_canvas`
-  also still lives in `session_management`, but it is **legacy-only** (Flet uses its own native
-  contributions grid) → it goes away when the legacy UI is deleted in Phase 5 step 3.
+- **RESOLVED (Phase 5 step 2)**: the session-format migrations (`migrate_all_game_sessions`,
+  `migrate_session_to_unified_feedback`, `migrate_pauses_to_integrated_structure`) were **relocated** from
+  `session_management.py` → the GUI-free **`session_data.py`** (re-exported from `session_management` for the
+  legacy UI). `core/services.py` now imports `migrate_all_game_sessions` at **top level** from `session_data`
+  (the old lazy/guarded import into the sg-importing `session_management` is gone). **Verified end-to-end**:
+  importing `session_data` / `core.services` / **`ui_flet.app`** no longer pulls in PySimpleGUI — the entire
+  Flet UI import chain is now sg-free. This was the last `core`/`ui_flet`→sg path.
+- **Legacy-only leftover (fine until step 3)**: `create_github_contributions_canvas` still lives in
+  `session_management`, but it is **legacy-only** (Flet uses its own native contributions grid) → it goes away
+  when the legacy UI is deleted in Phase 5 step 3.
 
 ## 7. Status
 - **Done**: Phase 0 (foundation), Phase 1 (Games List), Phase 2 (all screens, parity audit + all gaps
@@ -206,9 +212,10 @@ Every one of these caused a real bug — honor them:
   `build_windows.ps1` → `build/windows/GameTracker.exe` (embedded CPython 3.12), launches, loads the
   saved layout, and runs with no traceback. **Linux/ARM64 still need to be run on the target host** (no
   cross-compile) — the script is ready and carries the same `--arch`-free invocation.
-  - **Phase 5** cleanup (sg/legacy removal). **Step 1 DONE** — heatmap relocation (§6, §10). Remaining:
-    **(2)** relocate/guard `core/services.py`'s `migrate_all_game_sessions` import so it no longer reaches
-    into the sg-importing `session_management` (the last `core`/`ui_flet`→sg path); **(3)** delete legacy
+  - **Phase 5** cleanup (sg/legacy removal). **Steps 1 & 2 DONE** — step 1: heatmap relocation (§6, §10);
+    step 2: session-migration relocation to GUI-free `session_data.py` + `core/services.py` top-level import,
+    so the entire Flet UI import chain (`session_data`/`core.services`/`ui_flet.app`) is now sg-free (§6).
+    Remaining: **(3)** delete legacy
     UI files (`main.py`, `ui_components.py`, `event_handlers.py`, `*_ui.py`, legacy `game_hub.py`,
     `session_display.py` UI parts, `date_activity_view.py`, `ratings.py` popup, the now-legacy-only
     `create_github_contributions_canvas`); **(4)** drop the bridge's sg fallbacks (`notifier is None`
