@@ -10,6 +10,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from collections import defaultdict, Counter
 from visualizations import isolate_matplotlib_env
+from pause_utils import session_pause_periods
 
 
 def create_session_timeline_chart(sessions, game_name=None):
@@ -495,4 +496,250 @@ def create_comments_word_cloud_visualization(comments):
     buf.seek(0)
     plt.close(fig)
     
-    return buf 
+    return buf
+
+
+def create_session_heatmap(sessions, game_name=None, window_months=1, end_date=None):
+    """Create a heatmap visualization showing gaming intensity and pauses with time-based windowing"""
+    # Isolate matplotlib from the main application
+    isolate_matplotlib_env()
+    
+    # Check if we have session data
+    if not sessions:
+        fig, ax = plt.subplots(figsize=(9, 2.5))
+        ax.text(0.5, 0.5, "No session data available for heatmap", 
+                ha='center', va='center', fontsize=10)
+        ax.set_title("Session Activity Heatmap", fontsize=12)
+        
+        # Save to a buffer
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight')
+        buf.seek(0)
+        plt.close(fig)
+        return buf
+    
+    # Determine date range for windowing
+    if end_date is None:
+        # Find the latest session date, or use current date if no sessions
+        latest_session_date = None
+        for session in sessions:
+            try:
+                session_date = datetime.fromisoformat(session['start']).date()
+                if latest_session_date is None or session_date > latest_session_date:
+                    latest_session_date = session_date
+            except:
+                continue
+        end_date = latest_session_date if latest_session_date else datetime.now().date()
+    
+    # Calculate start date based on window size (approximate months to days)
+    days_in_window = window_months * 30
+    start_date = end_date - timedelta(days=days_in_window)
+    
+    # Filter sessions to the current window
+    windowed_sessions = []
+    for session in sessions:
+        try:
+            if 'start' in session:
+                session_date = datetime.fromisoformat(session['start']).date()
+                if start_date <= session_date <= end_date:
+                    windowed_sessions.append(session)
+        except Exception as e:
+            print(f"Error filtering session for heatmap window: {str(e)}")
+            continue
+    
+    if not windowed_sessions:
+        fig, ax = plt.subplots(figsize=(9, 2.5))
+        period_str = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+        ax.text(0.5, 0.5, f"No session data available for period:\n{period_str}", 
+                ha='center', va='center', fontsize=10)
+        title = f"Gaming Heatmap for {game_name}" if game_name else "Gaming Sessions Heatmap"
+        title += f"\n({period_str})"
+        ax.set_title(title, fontsize=12)
+        
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', bbox_inches='tight')
+        buf.seek(0)
+        plt.close(fig)
+        return buf
+    
+    session_segments = []
+    
+    for session in windowed_sessions:
+        try:
+            if 'start' in session and 'end' in session:
+                start_time = datetime.fromisoformat(session['start'])
+                end_time = datetime.fromisoformat(session['end'])
+                pause_periods = session_pause_periods(session)
+                
+                current_time = start_time
+                original_session_id = id(session)
+                
+                while current_time < end_time:
+                    current_date = current_time.date()
+                    next_midnight = datetime.combine(current_date + timedelta(days=1), datetime.min.time())
+                    
+                    segment_end = min(end_time, next_midnight)
+                    
+                    segment_info = {
+                        'start': current_time,
+                        'end': segment_end,
+                        'date': current_date,
+                        'pauses': [],
+                        'is_continuation': current_time != start_time,
+                        'continues_next_day': segment_end == next_midnight and segment_end < end_time,
+                        'original_session_id': original_session_id
+                    }
+                    
+                    for pause in pause_periods:
+                        if (pause['start'] < segment_end and pause['end'] > current_time):
+                            segment_pause = {
+                                'start': max(pause['start'], current_time),
+                                'end': min(pause['end'], segment_end),
+                                'duration': 0
+                            }
+                            segment_pause['duration'] = (segment_pause['end'] - segment_pause['start']).total_seconds() / 60
+                            segment_info['pauses'].append(segment_pause)
+                    
+                    session_segments.append(segment_info)
+                    current_time = next_midnight
+                    
+        except Exception as e:
+            print(f"Error processing session for heatmap: {str(e)}")
+            continue
+    
+    session_segments.sort(key=lambda x: (x['start']))
+    
+    date_sessions = {}
+    for segment in session_segments:
+        date_str = segment['date'].strftime('%Y-%m-%d')
+        if date_str not in date_sessions:
+            date_sessions[date_str] = []
+        date_sessions[date_str].append(segment)
+    
+    fig, ax = plt.subplots(figsize=(9, 3.5))
+    
+    if date_sessions:
+        dates = sorted(date_sessions.keys())
+        y_pos = len(dates)
+        
+        ax.set_ylim(0, len(dates))
+        ax.set_xlim(0, 24)
+        
+        for hour in range(1, 24):
+            ax.axvline(x=hour, color='lightgray', linestyle='-', alpha=0.5, linewidth=0.5)
+        
+        ax.set_xticks(range(0, 25, 3))
+        ax.set_xticklabels([f"{i:02d}:00" for i in range(0, 25, 3)], fontsize=8)
+        
+        for i, date in enumerate(dates):
+            ax.text(-0.5, i + 0.5, date, ha='right', va='center', fontsize=8)
+            
+            for segment in date_sessions[date]:
+                start_hour = segment['start'].hour + segment['start'].minute / 60
+                end_hour = segment['end'].hour + segment['end'].minute / 60
+                
+                if end_hour == 0 and segment['end'].time() == datetime.min.time():
+                    end_hour = 24
+                
+                if segment['is_continuation'] and segment['continues_next_day']:
+                    facecolor = '#4a9a4a'
+                    edgecolor = '#2d5a2d'
+                    linestyle = ':'
+                elif segment['is_continuation']:
+                    facecolor = '#5cb85c'
+                    edgecolor = '#2d5a2d'
+                    linestyle = '-'
+                elif segment['continues_next_day']:
+                    facecolor = '#5cb85c'
+                    edgecolor = '#2d5a2d'
+                    linestyle = '-'
+                else:
+                    facecolor = '#5cb85c'
+                    edgecolor = None
+                    linestyle = '-'
+                
+                rect = plt.Rectangle((start_hour, i), end_hour - start_hour, 0.8, 
+                                   alpha=0.7, edgecolor=edgecolor, linewidth=1 if edgecolor else 0,
+                                   linestyle=linestyle, facecolor=facecolor)
+                ax.add_patch(rect)
+                
+                for pause in segment['pauses']:
+                    pause_start = pause['start'].hour + pause['start'].minute / 60
+                    pause_end = pause['end'].hour + pause['end'].minute / 60
+                    
+                    if pause_end == 0 and pause['end'].time() == datetime.min.time():
+                        pause_end = 24
+                    
+                    if pause_start >= start_hour and pause_end <= end_hour:
+                        pause_rect = plt.Rectangle((pause_start, i), pause_end - pause_start, 0.8,
+                                                 alpha=0.8, edgecolor='none',
+                                                 facecolor='#ff9933')
+                        ax.add_patch(pause_rect)
+                
+                mid_point = (start_hour + end_hour) / 2
+                
+                if segment['is_continuation'] and segment['continues_next_day']:
+                    ax.text(mid_point, i + 0.4, "↔", ha='center', va='center', fontsize=12, fontweight='bold')
+                elif segment['is_continuation']:
+                    ax.text(mid_point, i + 0.4, "←", ha='center', va='center', fontsize=12, fontweight='bold')
+                elif segment['continues_next_day']:
+                    ax.text(mid_point, i + 0.4, "→", ha='center', va='center', fontsize=12, fontweight='bold')
+                else:
+                    if len(segment['pauses']) == 0:
+                        ax.text(mid_point, i + 0.4, "★", ha='center', va='center', fontsize=12, fontweight='bold')
+                    elif len(segment['pauses']) == 1:
+                        ax.text(mid_point, i + 0.4, "◉", ha='center', va='center', fontsize=12)
+                    elif len(segment['pauses']) < 4:
+                        ax.text(mid_point, i + 0.4, "◯", ha='center', va='center', fontsize=12)
+                    else:
+                        ax.text(mid_point, i + 0.4, "×", ha='center', va='center', fontsize=12)
+        
+        ax.set_yticks([])
+        ax.grid(True, which='major', axis='x', linestyle='-', alpha=0.3)
+        
+        period_str = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+        title = f"Gaming Heatmap for {game_name}" if game_name else "Gaming Sessions Heatmap"
+        title += f"\n({period_str})"
+        ax.set_title(title, fontsize=12)
+        ax.set_xlabel("Time of Day", fontsize=10)
+        
+        unique_sessions = len(set(segment['original_session_id'] for segment in session_segments))
+        ax.text(1.05, 0.15, f"Sessions: {unique_sessions}", transform=ax.transAxes, 
+                fontsize=10, horizontalalignment='left', verticalalignment='top',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8))
+        
+        legend_elements = [
+            plt.Rectangle((0, 0), 1, 1, facecolor='#5cb85c', alpha=0.7, label='Active Gaming'),
+            plt.Rectangle((0, 0), 1, 1, facecolor='#ff9933', alpha=0.8, label='Pauses'),
+            plt.Line2D([0], [0], marker='$→$', color='black', label='Session Continues Next Day', linestyle='',
+                      markerfacecolor='k', markersize=10),
+            plt.Line2D([0], [0], marker='$←$', color='black', label='Session From Previous Day', linestyle='', 
+                      markerfacecolor='k', markersize=10),
+            plt.Line2D([0], [0], marker='$↔$', color='black', label='Multi-Day Session Middle', linestyle='', 
+                      markerfacecolor='k', markersize=10),
+            plt.Line2D([0], [0], marker='$★$', color='black', label='Focused Session (No Pauses)', linestyle='',
+                      markerfacecolor='k', markersize=7),
+            plt.Line2D([0], [0], marker='$◉$', color='black', label='Brief Pause (1 Pause)', linestyle='', 
+                      markerfacecolor='k', markersize=7),
+            plt.Line2D([0], [0], marker='$◯$', color='black', label='Few Breaks (2-3 Pauses)', linestyle='', 
+                      markerfacecolor='k', markersize=7),
+            plt.Line2D([0], [0], marker='$×$', color='black', label='Many Interruptions (4+ Pauses)', linestyle='', 
+                      markerfacecolor='k', markersize=7)
+        ]
+        ax.legend(handles=legend_elements, bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8, framealpha=0.7)
+    else:
+        period_str = f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}"
+        ax.text(0.5, 0.5, f"No session data available with pause information for period:\n{period_str}", 
+                ha='center', va='center', fontsize=10)
+        title = f"Gaming Heatmap for {game_name}" if game_name else "Gaming Sessions Heatmap"
+        title += f"\n({period_str})"
+        ax.set_title(title, fontsize=12)
+    
+    plt.tight_layout()
+    
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    plt.close(fig)
+    
+    return buf
