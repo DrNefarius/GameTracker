@@ -188,7 +188,8 @@ def open_update_settings_dialog(page, service=None):
         )),
         actions=[
             ft.TextButton("Cancel", on_click=lambda e: page.pop_dialog()),
-            ft.Button("Save", icon=ft.Icons.SAVE, on_click=_save),
+            ft.Button("Save", icon=ft.Icons.SAVE, on_click=_save,
+                      bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE),
         ],
         actions_alignment=ft.MainAxisAlignment.END,
     ))
@@ -571,6 +572,18 @@ def startup_check(page, service=None):
         success_info = updater.check_for_update_success()
         if success_info:
             show_update_success(page, success_info)
+            # Upgrading from a pre-2.0.0 (PySimpleGUI/cx_Freeze) build leaves the
+            # old runtime behind in the install dir (the legacy updater merges
+            # without purging). Clean it up off-thread so it never blocks startup.
+            try:
+                from legacy_cleanup import maybe_cleanup_after_upgrade
+                prev = success_info.get("previous_version")
+                threading.Thread(
+                    target=maybe_cleanup_after_upgrade, args=(prev,),
+                    name="legacy-cleanup", daemon=True,
+                ).start()
+            except Exception:
+                pass
     except Exception:
         pass
 
