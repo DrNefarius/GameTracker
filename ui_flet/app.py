@@ -87,6 +87,16 @@ def main(page: ft.Page):
     except Exception:
         pass
 
+    # Optionally start hidden in the system tray. main() only runs once the
+    # Flutter client has connected, so hiding here is the earliest possible point
+    # (minimizes any launch flash). If the tray turns out to be unavailable,
+    # _build_main re-shows the window so the user isn't locked out.
+    try:
+        if cfg.get("start_in_tray"):
+            page.window.visible = False
+    except Exception:
+        pass
+
     # Center via the page's root view (robust against the initial window-resize
     # reflow, which otherwise left the spinner clipped at the top).
     try:
@@ -339,11 +349,32 @@ def _build_main(page: ft.Page):
     _watcher_on = bool(service.config.get("watcher_enabled", False))
     watcher_enabled_item = ft.PopupMenuItem(
         content=ft.Text("Enabled"), checked=_watcher_on, on_click=toggle_watcher)
+
+    # Start-in-tray: launch directly to the system tray instead of showing the
+    # window. Persisted to config; applied on the next launch (see main()).
+    def toggle_start_in_tray(e):
+        new_val = not bool(service.config.get("start_in_tray", False))
+        service.config["start_in_tray"] = new_val
+        save_config(service.config)
+        start_in_tray_item.checked = new_val
+        try:
+            page.update()
+        except Exception:
+            pass
+        snack("Start minimized to tray enabled — takes effect on next launch"
+              if new_val else "Start minimized to tray disabled")
+
+    start_in_tray_item = ft.PopupMenuItem(
+        content=ft.Text("Start minimized to tray"),
+        checked=bool(service.config.get("start_in_tray", False)),
+        on_click=toggle_start_in_tray)
+
     watcher_menu = ft.PopupMenuButton(
         content=_watcher_content(_watcher_on),
         tooltip="Process Watcher",
         items=[
             watcher_enabled_item,
+            start_in_tray_item,
             ft.PopupMenuItem(content=ft.Text("Settings…"), icon=ft.Icons.SETTINGS,
                              on_click=lambda e: open_watcher_settings_dialog(page, service)),
             ft.PopupMenuItem(content=ft.Text("Rescan Game Libraries"), icon=ft.Icons.RADAR,
@@ -594,6 +625,14 @@ def _build_main(page: ft.Page):
 
     # Window events: persist geometry + close-to-tray + drain matches on focus.
     _has_tray = getattr(watcher_sink, "tray", None) is not None
+    # Start-in-tray fallback: main() pre-hid the window when configured. Without a
+    # tray icon the user would have no way to reopen it, so re-show it instead.
+    if service.config.get("start_in_tray") and not _has_tray:
+        try:
+            page.window.visible = True
+            page.update()
+        except Exception:
+            pass
     _geom = {"timer": None}
 
     def _capture_geometry():
