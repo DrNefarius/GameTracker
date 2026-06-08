@@ -794,8 +794,17 @@ class StatisticsView:
     def _day_cell(self, day, count, seconds):
         tip = (f"{day.isoformat()}: {count} session{'s' if count != 1 else ''}"
                f", {format_timedelta_with_seconds(timedelta(seconds=int(seconds)))}")
+        # Mark today with a red border so it stands out in a full Jan–Dec year
+        # grid (mirrors the legacy contributions calendar). INSIDE stroke-align
+        # keeps the cell the same 13x13 size as the others.
+        border = None
+        if day == date.today():
+            tip += "  (today)"
+            _side = ft.BorderSide(1.5, ft.Colors.RED)
+            border = ft.Border(top=_side, right=_side, bottom=_side, left=_side)
         return ft.Container(
             width=13, height=13, border_radius=2, bgcolor=_intensity_color(count),
+            border=border,
             tooltip=tip,
             on_click=(lambda e, d=day: open_date_activity_dialog(
                 self.page, self.service.data, d, self.selected_game)),
