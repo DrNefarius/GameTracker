@@ -625,14 +625,28 @@ def _build_main(page: ft.Page):
 
     # Window events: persist geometry + close-to-tray + drain matches on focus.
     _has_tray = getattr(watcher_sink, "tray", None) is not None
-    # Start-in-tray fallback: main() pre-hid the window when configured. Without a
-    # tray icon the user would have no way to reopen it, so re-show it instead.
-    if service.config.get("start_in_tray") and not _has_tray:
-        try:
-            page.window.visible = True
-            page.update()
-        except Exception:
-            pass
+    # Start-in-tray: main() pre-hid the window when configured.
+    if service.config.get("start_in_tray"):
+        if _has_tray:
+            # Confirm a successful launch with an OS toast (a Flet SnackBar would
+            # render inside the hidden window, so it must be a native toast) so
+            # the user knows the app started and didn't silently crash.
+            try:
+                from notifications import notify_info
+                notify_info(
+                    "GameTracker is running",
+                    "Started in the system tray — session tracking is active. "
+                    "Use the tray icon to open the window or quit.")
+            except Exception:
+                pass
+        else:
+            # No tray icon: the user would have no way to reopen a hidden window,
+            # so re-show it instead.
+            try:
+                page.window.visible = True
+                page.update()
+            except Exception:
+                pass
     _geom = {"timer": None}
 
     def _capture_geometry():
