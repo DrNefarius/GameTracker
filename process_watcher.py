@@ -978,19 +978,31 @@ class ProcessWatcher:
             with self._lock:
                 if self._active is not None:
                     active = self._active
-                    # Is this process a handoff/restart of the tracked game
-                    # (same install dir)? If so, _check_active_session re-attaches
-                    # it; we just drop the candidate here.
-                    same_dir = bool(active.install_dir) and exe_norm.lower().startswith(
-                        _normpath_with_sep(active.install_dir).lower())
-                    if active.pending_end_at is not None and not same_dir:
-                        # The tracked game is in its end-grace and a *different*
-                        # game just launched. That's proof the old session really
-                        # ended, so finalize it now (anchored to when its process
-                        # died) and let this new game be tracked instead of
-                        # dropped-and-forgotten (a process is only resolved once).
+                    same_game = ((active.game_name or '').strip().lower()
+                                 == (game_name or '').strip().lower())
+                    if active.pending_end_at is not None and same_game:
+                        # The SAME game reappeared while the session was in its
+                        # end-grace: a relaunch / launcher->engine handoff (e.g. a
+                        # custom-mapped openmw.exe -> Morrowind that runs from a
+                        # different folder than _find_sibling expects). Continue
+                        # the existing session on the new pid rather than dropping
+                        # it or splitting into a second session.
                         _state_log.info(
-                            "new game %r launched during end-grace of %r; "
+                            "same game %r relaunched during end-grace "
+                            "(pid %s -> %s); continuing the session",
+                            active.game_name, active.pid, proc.pid)
+                        active.pid = proc.pid
+                        active.pending_end_at = None
+                        active.pending_end_iso = None
+                        return
+                    if active.pending_end_at is not None:
+                        # A *different* game launched during the end-grace -> the
+                        # old session really ended. Finalize it now (anchored to
+                        # when its process died) and let the new game be tracked
+                        # instead of dropped-and-forgotten (a process is only
+                        # resolved once).
+                        _state_log.info(
+                            "different game %r launched during end-grace of %r; "
                             "finalizing the ending session early",
                             game_name, active.game_name)
                         self._end_active_session(reason='superseded_by_new_game')
