@@ -215,7 +215,7 @@ Every one of these caused a real bug — honor them:
   `build_windows.ps1` → `build/windows/GameTracker.exe` (embedded CPython 3.12), launches, loads the
   saved layout, and runs with no traceback. **Linux/ARM64 still need to be run on the target host** (no
   cross-compile) — the script is ready and carries the same `--arch`-free invocation.
-  - **Phase 5** cleanup (sg/legacy removal). **Steps 1–5 DONE; only step 6 (rebuild) remains.**
+  - **Phase 5** cleanup (sg/legacy removal). **COMPLETE — all 6 steps done.**
     - **Step 1**: heatmap relocation → GUI-free `session_visualizations.py` (§6, §10).
     - **Step 2**: session-migration relocation → GUI-free `session_data.py` + `core/services.py` top-level
       import (§6).
@@ -230,9 +230,12 @@ Every one of these caused a real bug — honor them:
       `app_flet.py` launch starts clean (watcher + store scan, no traceback).
     - **Step 5**: `PySimpleGUI` removed from `requirements.txt`; `pyproject.toml` sg comments refreshed; README
       rewritten (Flet install + `flet build`, no more PySimpleGUI/cx_Freeze/`main.py`).
-    - **Step 6 (REMAINING)**: rebuild the Windows package via `scripts/build_windows.ps1` and do a final
-      from-packaged smoke test. Gate on `docs/VERSION2_PARITY_AUDIT.md`. The legacy 1.11.x→2.0.0 auto-update
-      pipeline (§10) must keep working — don't break `auto_updater.py`'s install-target/cleanup logic.
+    - **Step 6**: DONE — the Windows package was rebuilt from the cleaned (PySimpleGUI-free) tree and
+      verified working. The legacy 1.11.x→2.0.0 auto-update pipeline (§10) remains intact.
+    - **→ The PySimpleGUI→Flet migration (Phases 0–5) is COMPLETE.** Remaining loose ends are housekeeping
+      only: `constants.py` is still uncommitted (local table-color tweaks, kept out at the user's request);
+      the untracked throwaways `test_update_ui.py` / `make_fake_update.py` reference deleted modules and can
+      be deleted. Possible next move (user's call): merge `Version2` into `main`.
 
 ## 8. Verification workflow (reuse it)
 - **Headless tests** were kept in `C:\Users\Tobias\AppData\Local\Temp\claude\` (EPHEMERAL — recreate as

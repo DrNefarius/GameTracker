@@ -130,7 +130,8 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
   `date_activity_view.py`, `watcher_link_dialog.py`, `emoji_utils.py`), plus the orphaned cx_Freeze
   `setup.py`. `create_github_contributions_canvas` went away with `session_management` (legacy-only).
 - **Step 5**: `PySimpleGUI` removed from `requirements.txt`; `pyproject.toml` comments refreshed.
-- **Step 6 (pending)**: rebuild the Windows package + final README pass.
+- **Step 6**: DONE — Windows package rebuilt from the cleaned (PySimpleGUI-free) tree and verified
+  working; README rewritten for the Flet stack. **Phase 5 complete → the PySimpleGUI→Flet migration is done.**
 
 ## Phase 3 — DONE
 Discord toggle/presence (3D) · Watcher on/off + Rescan (3F) + detection/toasts/match-confirm (3A/3C) ·
