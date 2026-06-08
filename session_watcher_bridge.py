@@ -73,9 +73,8 @@ class SessionWatcherBridge:
         self._data_storage = data_storage_provider
         self._filename = filename_provider
         self._discord = discord_provider
-        # Optional UI-agnostic notifier (core.notifier.UINotifier). When set
-        # (the Flet UI), the bridge routes its UI interactions through it instead
-        # of PySimpleGUI; when None (legacy), the sg fallbacks below are used.
+        # UI-agnostic notifier (core.notifier.UINotifier). The bridge routes all
+        # of its UI interactions through it; the Flet UI always supplies one.
         self._notifier = notifier
 
         # Active session ids -> the row index they are accumulating on.
@@ -491,14 +490,8 @@ class SessionWatcherBridge:
                     dismiss_live_toast(payload.get('session_id') or '')
                 except Exception:
                     pass
-            elif action == 'remap':
-                self._focus_main_window()
-                self._open_remap_dialog()
         elif kind == 'session_ended':
-            if action == 'rate':
-                self._focus_main_window()
-                self._launch_feedback_for_last_session(payload.get('game'))
-            elif action in ('dismiss', 'close', 'open'):
+            if action in ('dismiss', 'close', 'open'):
                 # `close` / `open` are older toasts; all three only clear the
                 # notification (no app focus).
                 try:
@@ -544,16 +537,6 @@ class SessionWatcherBridge:
         elif action == 'ignore':
             if watcher is not None and exe_path:
                 watcher.add_ignore(os.path.basename(exe_path))
-        elif action == 'pick':
-            # Re-queue this detection for the picker dialog (we popped it
-            # above on the assumption that the action was decisive; the
-            # picker may end with the user cancelling, in which case we
-            # want to keep the entry around so 'drain on focus' can fire
-            # the toast again later).
-            if detection_id and detection_id not in self._pending_matches:
-                self._pending_matches[detection_id] = info
-            self._focus_main_window()
-            self._open_match_picker_dialog(detection_id, info)
         return None
 
     def begin_match_pick(self, detection_id: str) -> None:
@@ -673,30 +656,6 @@ class SessionWatcherBridge:
             return {'action': 'session_added', 'data': self._data()}
         return None
 
-    def recover_orphan_session_if_any(self, parent_window) -> Optional[Dict[str, Any]]:
-        """Legacy (PySimpleGUI) crash recovery: prompt, then record if accepted."""
-        ctx = self.get_orphan_recovery_context()
-        if not ctx:
-            return None
-        try:
-            import PySimpleGUI as sg
-            from utilities import calculate_popup_center_location
-            loc = calculate_popup_center_location(parent_window, popup_width=480, popup_height=180) \
-                if parent_window else None
-            answer = sg.popup_yes_no(
-                f"It looks like a session for '{ctx['game_name']}' was interrupted "
-                f"(approx {ctx['duration_str']}).\n\n"
-                "Would you like to record it now?",
-                title="Recover crashed session?",
-                location=loc,
-            )
-        except Exception:
-            answer = 'No'
-
-        if answer != 'Yes':
-            return None
-        return self.apply_orphan_recovery(ctx)
-
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
@@ -757,25 +716,6 @@ class SessionWatcherBridge:
             pass
         return None
 
-    def _focus_main_window(self) -> None:
-        if self._notifier is not None:
-            try:
-                self._notifier.focus()
-            except Exception:
-                pass
-            return
-        win = self._window()
-        if win is None:
-            return
-        try:
-            win.bring_to_front()
-        except Exception:
-            try:
-                win.TKroot.deiconify()  # type: ignore[attr-defined]
-                win.TKroot.focus_force()  # type: ignore[attr-defined]
-            except Exception:
-                pass
-
     def _discard_session_via_user(self, session_id: Optional[str]) -> None:
         """Toast-driven "Don't track this session" handler.
 
@@ -825,13 +765,6 @@ class SessionWatcherBridge:
         if self._notifier is not None:
             try:
                 self._notifier.notify("Session not tracked", msg)
-            except Exception:
-                pass
-        else:
-            try:
-                import PySimpleGUI as sg
-                sg.popup_quick_message(msg, keep_on_top=True,
-                                       background_color='#2d6a4f', text_color='white')
             except Exception:
                 pass
 
@@ -989,114 +922,6 @@ class SessionWatcherBridge:
             _log.warning("remap apply: applying decision failed: %s", exc)
             return None
 
-    def _open_remap_dialog(self) -> None:
-        """Legacy (PySimpleGUI) picker for the toast's "Wrong game?" action.
-
-        Collects the correct title (or never-track), then delegates the actual
-        mutation to :meth:`apply_remap_decision`. The watcher re-detects the
-        still-running process on its next tick under the corrected title.
-        """
-        ctx = self.get_remap_context()
-        if ctx is None:
-            self._show_simple_info(
-                "Wrong game?",
-                "No game is currently being tracked, so there's nothing to remap.")
-            return
-
-        wrong_name = ctx['wrong_name']
-        exe_basename = ctx['exe_basename']
-        library_names = ctx['library_names']
-        preselect = ctx['preselect']
-        seen_lower = {n.lower() for n in library_names}
-
-        try:
-            import PySimpleGUI as sg
-            from utilities import calculate_popup_center_location
-        except Exception as exc:  # noqa: BLE001
-            _log.warning("remap dialog: PySimpleGUI unavailable: %s", exc)
-            return
-
-        layout = [
-            [sg.Text("We're currently tracking this process as:")],
-            [sg.Text(wrong_name, font=('Arial', 11, 'bold'))],
-            [sg.Text(f"Process: {exe_basename}", text_color='#555555')],
-            [sg.HorizontalSeparator()],
-            [sg.Text("Pick the correct game from your library:")],
-            [sg.Combo(library_names, default_value=preselect,
-                      key='-REMAP-PICK-', size=(48, 1),
-                      enable_events=False)],
-            [sg.Text(
-                "Tip: if the right title isn't listed, add it via 'Add Entry'\n"
-                "first, then re-launch the game.",
-                font=('Arial', 8), text_color='#555555')],
-            [sg.HorizontalSeparator()],
-            [sg.Push(),
-             sg.Button("Save mapping", key='-REMAP-SAVE-'),
-             sg.Button("Don't track this process", key='-REMAP-IGNORE-'),
-             sg.Button("Cancel", key='-REMAP-CANCEL-')],
-        ]
-        parent = self._window()
-        try:
-            location = calculate_popup_center_location(parent, 520, 280) if parent else (None, None)
-        except Exception:
-            location = (None, None)
-        win = sg.Window(
-            "Wrong game?",
-            layout,
-            modal=True,
-            keep_on_top=True,
-            finalize=True,
-            location=location,
-        )
-
-        chosen: Optional[str] = None
-        ignore = False
-        while True:
-            ev, vals = win.read()
-            if ev in (sg.WIN_CLOSED, '-REMAP-CANCEL-'):
-                break
-            if ev == '-REMAP-SAVE-':
-                pick = (vals.get('-REMAP-PICK-') or '').strip()
-                if not pick:
-                    sg.popup_quick_message(
-                        "Pick a game first.",
-                        keep_on_top=True, background_color='#444',
-                        text_color='white')
-                    continue
-                if pick.lower() not in seen_lower:
-                    sg.popup_quick_message(
-                        "That title isn't in your library yet. Add it via 'Add Entry'.",
-                        keep_on_top=True, background_color='#444',
-                        text_color='white')
-                    continue
-                # Use the canonical-cased name from the library.
-                for n in library_names:
-                    if n.lower() == pick.lower():
-                        chosen = n
-                        break
-                break
-            if ev == '-REMAP-IGNORE-':
-                ignore = True
-                break
-        win.close()
-
-        if not chosen and not ignore:
-            _log.info("remap dialog: cancelled by user (was tracking %r)",
-                      wrong_name)
-            return
-
-        # Mutation + confirmation message live in the shared, GUI-free apply
-        # method so the Flet path behaves identically.
-        message = self.apply_remap_decision(ctx, chosen=chosen, ignore=ignore)
-        if message:
-            try:
-                import PySimpleGUI as sg
-                sg.popup_quick_message(
-                    message, keep_on_top=True,
-                    background_color='#2d6a4f', text_color='white')
-            except Exception:
-                pass
-
     def get_match_pick_context(
         self,
         detection_id: str,
@@ -1228,146 +1053,6 @@ class SessionWatcherBridge:
             return None
         return None
 
-    def _open_match_picker_dialog(
-        self,
-        detection_id: str,
-        info: Dict[str, Any],
-    ) -> None:
-        """Legacy (PySimpleGUI) picker for the toast's "Pick another" action.
-
-        Collects a library title + match scope (single exe vs. install folder)
-        or a never-track decision, then delegates the mutation to
-        :meth:`apply_match_pick_decision`. Once a mapping is saved the watcher's
-        Layer 1 lookup picks it up on the next tick - no game restart required.
-        """
-        ctx = self.get_match_pick_context(detection_id, info)
-        if ctx is None:
-            return
-
-        exe_basename = ctx['exe_basename']
-        install_dir = ctx['install_dir']
-        best_guess = ctx['best_guess']
-        library_names = ctx['library_names']
-        preselect = ctx['preselect']
-        seen_lower = {n.lower() for n in library_names}
-
-        try:
-            import PySimpleGUI as sg
-            from utilities import calculate_popup_center_location
-        except Exception as exc:  # noqa: BLE001
-            _log.warning("pick dialog: PySimpleGUI unavailable: %s", exc)
-            return
-
-        guess_line = (f"Best guess: {best_guess} (low confidence)"
-                      if best_guess else
-                      "No close match in your library.")
-
-        layout = [
-            [sg.Text("Detected an unrecognized game",
-                     font=('Arial', 12, 'bold'))],
-            [sg.Text(f"Process: {exe_basename}",
-                     text_color='#555555')],
-            [sg.Text(f"Install folder: {install_dir or '(unknown)'}",
-                     text_color='#555555')],
-            [sg.Text(guess_line, text_color='#555555')],
-            [sg.HorizontalSeparator()],
-            [sg.Text("Which game in your library is this?")],
-            [sg.Combo(library_names, default_value=preselect,
-                      key='-PICK-NAME-', size=(48, 1),
-                      enable_events=False)],
-
-            [sg.Frame("Match scope", [
-                [sg.Radio(
-                    "Just this executable",
-                    group_id='-PICK-SCOPE-', default=True,
-                    key='-PICK-SCOPE-EXE-',
-                    tooltip=("Only this specific .exe will be tracked\n"
-                             "as the picked game."))],
-                [sg.Radio(
-                    "Any executable in this folder",
-                    group_id='-PICK-SCOPE-', default=False,
-                    key='-PICK-SCOPE-DIR-',
-                    tooltip=("Treat every .exe under the install folder\n"
-                             "as this game. Useful for MMOs and games\n"
-                             "whose launcher .exe spawns a separate\n"
-                             "renderer .exe."))],
-            ], expand_x=True)],
-
-            [sg.Text(
-                "Tip: if the right title isn't listed, add it via 'Add Entry'\n"
-                "first, then re-launch the game.",
-                font=('Arial', 8), text_color='#555555')],
-            [sg.HorizontalSeparator()],
-            [sg.Push(),
-             sg.Button("Save & track", key='-PICK-SAVE-'),
-             sg.Button("Don't track this exe", key='-PICK-IGNORE-'),
-             sg.Button("Cancel", key='-PICK-CANCEL-')],
-        ]
-
-        parent = self._window()
-        try:
-            location = calculate_popup_center_location(
-                parent, 560, 360) if parent else (None, None)
-        except Exception:
-            location = (None, None)
-        win = sg.Window(
-            "Pick the matching game",
-            layout,
-            modal=True,
-            keep_on_top=True,
-            finalize=True,
-            icon='gameslisticon.ico',
-            location=location,
-        )
-
-        chosen: Optional[str] = None
-        ignore = False
-        scope_dir = False
-        while True:
-            ev, vals = win.read()
-            if ev in (sg.WIN_CLOSED, '-PICK-CANCEL-'):
-                break
-            if ev == '-PICK-SAVE-':
-                pick = (vals.get('-PICK-NAME-') or '').strip()
-                if not pick:
-                    sg.popup_quick_message(
-                        "Pick a game first.",
-                        keep_on_top=True, background_color='#444',
-                        text_color='white')
-                    continue
-                if pick.lower() not in seen_lower:
-                    sg.popup_quick_message(
-                        "That title isn't in your library yet. "
-                        "Add it via 'Add Entry'.",
-                        keep_on_top=True, background_color='#444',
-                        text_color='white')
-                    continue
-                # Use the canonical-cased library name.
-                for n in library_names:
-                    if n.lower() == pick.lower():
-                        chosen = n
-                        break
-                scope_dir = bool(vals.get('-PICK-SCOPE-DIR-'))
-                break
-            if ev == '-PICK-IGNORE-':
-                ignore = True
-                break
-        win.close()
-
-        # Mutation + confirmation message live in the shared, GUI-free apply
-        # method so the Flet path behaves identically. A cancel leaves the
-        # entry on _pending_matches so drain-on-focus can re-fire it later.
-        message = self.apply_match_pick_decision(
-            ctx, chosen=chosen, ignore=ignore, scope_dir=scope_dir)
-        if message:
-            try:
-                import PySimpleGUI as sg
-                sg.popup_quick_message(
-                    message, keep_on_top=True,
-                    background_color='#2d6a4f', text_color='white')
-            except Exception:
-                pass
-
     def _resolve_twin_pending_matches(
         self,
         exe_path: str,
@@ -1407,37 +1092,6 @@ class SessionWatcherBridge:
                 self._notifier.info(title, message)
             except Exception:
                 pass
-            return
-        try:
-            import PySimpleGUI as sg
-            sg.popup(message, title=title, keep_on_top=True)
-        except Exception:
-            pass
-
-    def _launch_feedback_for_last_session(self, game_name: Optional[str]) -> None:
-        if not game_name:
-            return
-        row_index = self._find_row_index(game_name)
-        if row_index is None:
-            return
-        data = self._data()
-        try:
-            sessions = data[row_index][1][7]
-        except Exception:
-            sessions = None
-        if not sessions:
-            return
-        last_session = sessions[-1]
-        try:
-            from session_ui import show_session_feedback_popup
-            existing = last_session.get('feedback')
-            feedback = show_session_feedback_popup(existing, parent_window=self._window())
-            if feedback:
-                last_session['feedback'] = feedback
-                save_data(self._data(), self._filename(), self._data_storage())
-        except Exception as exc:  # noqa: BLE001
-            _log.warning("launching feedback popup failed: %s", exc)
-
 
 # ---------------------------------------------------------------------------
 # Helpers

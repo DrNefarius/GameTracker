@@ -938,11 +938,10 @@ rm "$0" 2>/dev/null
         """Check for updates on application startup if enabled and show success message if update completed"""
         # First, check if we just completed an update
         try:
-            update_success_info = self.check_for_update_success()
-            if update_success_info:
-                # Import here to avoid circular imports
-                from update_ui import show_update_success_popup
-                show_update_success_popup(update_success_info)
+            # Detect a just-completed update. The success popup is owned by the
+            # UI layer (the Flet UI shows it via update_view.startup_check); this
+            # backend method only records the check.
+            self.check_for_update_success()
         except Exception as e:
             print(f"Error checking for update success: {str(e)}")
         
