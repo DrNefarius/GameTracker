@@ -26,9 +26,10 @@ UX mirrors the legacy PySimpleGUI dialog's grouping:
 Every variable-length list is wrapped in a fixed-height scrolling Container so a
 large library / many learned mappings can't make the dialog explode vertically.
 
-Flet 0.85.2 has no Spin control, so the two integer fields (idle minutes,
-foreground grace seconds) are plain ``TextField`` widgets coerced to ``int`` in
-``get_values`` (non-numeric input falls back to the existing/default value).
+Flet 0.85.2 has no Spin control, so the integer fields (idle minutes, foreground
+grace seconds, end-grace seconds) are plain ``TextField`` widgets coerced to
+``int`` in ``get_values`` (non-numeric input falls back to the existing/default
+value).
 
 ``_build_watcher_content`` is split out so the body can be constructed and
 inspected without a live Flet page (used by the headless tests); it returns
@@ -43,6 +44,7 @@ import sys
 import flet as ft
 
 import config as config_module
+from constants import WATCHER_END_GRACE_SEC
 from watcher_log import get_log_dir, get_log_path, set_level as set_watcher_log_level
 from ui_flet.watcher_dialogs import _build_game_picker
 
@@ -338,6 +340,19 @@ def _build_watcher_content(service):
         width=320,
         keyboard_type=ft.KeyboardType.NUMBER,
     )
+    end_grace = ft.TextField(
+        label="End session after the game has been gone for (seconds)",
+        value=str(_coerce_int(
+            cfg.get("watcher_end_grace_seconds", WATCHER_END_GRACE_SEC),
+            WATCHER_END_GRACE_SEC)),
+        width=320,
+        keyboard_type=ft.KeyboardType.NUMBER,
+        tooltip=(
+            "How long the game's process can be missing before the watcher "
+            "concludes the session. A longer window tolerates quick restarts "
+            "and launcher hand-offs (e.g. launcher.exe -> game.exe)."
+        ),
+    )
 
     # ---- Notifications --------------------------------------------------
     notif_start = ft.Switch(
@@ -441,6 +456,13 @@ def _build_watcher_content(service):
                 foreground_only,
                 fg_grace,
                 idle_minutes,
+                end_grace,
+                _hint(
+                    "The 'session ended / rate it' toast only appears after this "
+                    "full delay has elapsed — the watcher waits the whole window "
+                    "to be sure the game really closed (and to catch quick "
+                    "restarts) before concluding the session."
+                ),
                 ft.Divider(),
 
                 _section_title("Notifications"),
@@ -512,6 +534,12 @@ def _build_watcher_content(service):
                 cfg.get("watcher_idle_pause_minutes", 10),
                 minimum=0,
                 maximum=120,
+            ),
+            "watcher_end_grace_seconds": _coerce_int(
+                end_grace.value,
+                cfg.get("watcher_end_grace_seconds", WATCHER_END_GRACE_SEC),
+                minimum=0,
+                maximum=600,
             ),
             "notifications_on_start": bool(notif_start.value),
             "notifications_on_end": bool(notif_end.value),

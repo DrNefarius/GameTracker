@@ -197,9 +197,11 @@ class ProcessWatcher:
             target=self._run, name="ProcessWatcherThread", daemon=True
         )
         self._thread.start()
+        _end_grace = int(load_config().get('watcher_end_grace_seconds',
+                                           WATCHER_END_GRACE_SEC) or 0)
         _log.info("watcher started (poll=%ds, debounce=%ds, end_grace=%ds)",
                   WATCHER_POLL_INTERVAL_SEC, WATCHER_START_DEBOUNCE_SEC,
-                  WATCHER_END_GRACE_SEC)
+                  _end_grace)
         self._emit_status('idle')
         return True
 
@@ -1055,14 +1057,23 @@ class ProcessWatcher:
         if active.pid in alive_pids:
             return  # still running
 
-        # Process is gone. If we already started the end grace, see if a
-        # sibling under the same install dir appeared.
+        # The process is gone. The end-grace window (how long it can stay gone
+        # before we conclude the session) is user-configurable; fall back to the
+        # built-in default. Read here (only while a tracked process is missing,
+        # i.e. the few Ending ticks) so a settings change applies without a
+        # restart. NB: the end-of-session / "rate it" toast only fires once this
+        # whole window has elapsed.
+        end_grace_sec = int(load_config().get('watcher_end_grace_seconds',
+                                              WATCHER_END_GRACE_SEC) or 0)
+
+        # If we already started the end grace, see if a sibling under the same
+        # install dir appeared.
         if active.pending_end_at is None:
             active.pending_end_at = now_mono
             active.pending_end_iso = datetime.now().isoformat()
             _state_log.info(
                 "tracked pid=%s gone; entering Ending (grace %ds)",
-                active.pid, WATCHER_END_GRACE_SEC)
+                active.pid, end_grace_sec)
 
         # Look for a sibling.
         sibling = self._find_sibling(active.install_dir, alive_pids)
@@ -1077,10 +1088,10 @@ class ProcessWatcher:
             active.pending_end_iso = None
             return
 
-        if now_mono - active.pending_end_at >= WATCHER_END_GRACE_SEC:
+        if now_mono - active.pending_end_at >= end_grace_sec:
             _state_log.info(
                 "end grace expired (%.1fs >= %ds); transition Ending -> Idle",
-                now_mono - active.pending_end_at, WATCHER_END_GRACE_SEC)
+                now_mono - active.pending_end_at, end_grace_sec)
             self._end_active_session(reason='process_gone')
 
     def _find_sibling(
