@@ -7,17 +7,13 @@ flet>=0.85,<0.86
 # to open a native window (not pulled in automatically by `flet`).
 flet-desktop>=0.85,<0.86
 
-# Legacy GUI framework (deprecated). Still imported by the old PySimpleGUI UI
-# during the Version2 migration; removed once the Flet UI reaches parity.
-PySimpleGUI>=4.60.0,<5.0.0
-
 # Data visualization
 matplotlib>=3.5.0
 
 # Excel file support
 openpyxl>=3.0.0
 
-# Image processing for emoji rendering
+# Image processing (IGDB cover art and other in-app images)
 Pillow>=9.0.0
 
 # Discord Rich Presence integration

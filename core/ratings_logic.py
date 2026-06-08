@@ -1,9 +1,8 @@
 """Pure rating calculations (no GUI imports).
 
-These are GUI-free copies of the logic in the legacy ``ratings.py`` (which can't
-be imported by the new UI because it does ``import PySimpleGUI`` at module top).
-Phase 5 cleanup can collapse the duplication by having ``ratings.py`` re-export
-from here.
+GUI-free rating logic for the Flet UI. (Originally split out of the legacy
+PySimpleGUI ``ratings.py``, which was removed in Phase 5; this is now the sole
+home for the logic.)
 """
 
 from collections import Counter

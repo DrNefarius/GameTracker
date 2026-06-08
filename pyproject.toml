@@ -1,9 +1,9 @@
 # Packaging configuration for the Version2 (Flet) build of GameTracker.
 #
-# This drives `flet build <platform>` (Phase 4). The legacy PySimpleGUI app
-# (main.py) is NOT packaged — `tool.flet.app.module` points the build at the
-# Flet entry point (app_flet.py); without it `flet build` would default to
-# `main` and bundle the wrong, deprecated UI.
+# This drives `flet build <platform>` (Phase 4). `tool.flet.app.module` points
+# the build at the Flet entry point (app_flet.py); without it `flet build`
+# defaults to a `main` module, which no longer exists (the legacy PySimpleGUI UI,
+# including main.py, was removed in Phase 5).
 #
 # Build prerequisites (NOT pip-installable — install once on the build machine):
 #   * Flutter SDK (stable channel) on PATH — `flet build` invokes it.
@@ -21,12 +21,9 @@ description = "GameTracker — track your game library, playtime, sessions and r
 requires-python = ">=3.10"
 
 # Build-scoped dependencies. `flet build` bundles exactly these (it prefers
-# [project.dependencies] over requirements.txt). Deliberately EXCLUDES
-# PySimpleGUI: the Flet UI only reaches it via one lazy import (the Statistics
-# "Gaming heatmap" chart, the known sg leak tracked for Phase 5), and that render
-# path already degrades to a placeholder when the import fails — so the packaged
-# app runs without tkinter/PySimpleGUI. requirements.txt still carries it for the
-# legacy dev entry point (main.py).
+# [project.dependencies] over requirements.txt). PySimpleGUI is intentionally
+# absent: the Flet UI is entirely PySimpleGUI-free (the legacy UI was removed in
+# Phase 5), so the packaged app runs without tkinter/PySimpleGUI.
 dependencies = [
     "flet>=0.85,<0.86",
     "flet-desktop>=0.85,<0.86",

@@ -117,11 +117,20 @@ Legend: ✅ ported · ❌ missing (Phase-2 gap to fix) · 🔶 deferred to Phase
 7. ✅ View menu **Today's / Yesterday's Activity** quick entries (Statistics contributions header).
 8. ✅ Games list **row numbers** ("#" column).
 
-### Phase-5 cleanup carried from these fixes
-- Relocate `create_session_heatmap` (and `create_github_contributions_canvas`) out of
-  `session_management.py` (which imports PySimpleGUI) into a GUI-free chart module. The new UI
-  currently reaches `create_session_heatmap` via a localized lazy import; this is the only place
-  `ui_flet` touches an sg-importing module, and it must be cut before sg is removed.
+### Phase-5 cleanup — DONE (legacy PySimpleGUI stack removed)
+- **Step 1**: `create_session_heatmap` relocated to GUI-free `session_visualizations.py`.
+- **Step 2**: session-format migrations relocated to GUI-free `session_data.py`; `core/services.py`
+  imports them at top level — the entire Flet import chain (`session_data`/`core.services`/`ui_flet.app`)
+  is PySimpleGUI-free.
+- **Step 4**: `session_watcher_bridge.py` PySimpleGUI fallbacks dropped; `auto_updater` no longer imports
+  the legacy `update_ui` popup.
+- **Step 3**: the 16 legacy UI modules deleted (`main.py`, `event_handlers.py`, `ui_components.py`,
+  `game_statistics.py`, `game_hub.py`, `igdb_ui.py`, `session_ui.py`, `session_display.py`,
+  `session_management.py`, `update_ui.py`, `help_dialogs.py`, `process_watcher_settings.py`, `ratings.py`,
+  `date_activity_view.py`, `watcher_link_dialog.py`, `emoji_utils.py`), plus the orphaned cx_Freeze
+  `setup.py`. `create_github_contributions_canvas` went away with `session_management` (legacy-only).
+- **Step 5**: `PySimpleGUI` removed from `requirements.txt`; `pyproject.toml` comments refreshed.
+- **Step 6 (pending)**: rebuild the Windows package + final README pass.
 
 ## Phase 3 — DONE
 Discord toggle/presence (3D) · Watcher on/off + Rescan (3F) + detection/toasts/match-confirm (3A/3C) ·

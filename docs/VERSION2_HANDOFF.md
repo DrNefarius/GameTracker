@@ -131,7 +131,10 @@ Every one of these caused a real bug — honor them:
   wired in `app.main`'s `window.on_event`). **Crash orphan-recovery** runs at startup via
   `app.main`'s `_post_startup` (`page.run_task`).
 
-## 6. sg leaks in the new UI — RESOLVED (steps 1 & 2); only legacy-only helpers remain
+## 6. sg leaks in the new UI — RESOLVED (Phase 5 complete; legacy UI deleted)
+> NB: the "re-exported from `session_management` for the legacy UI" notes below are historical —
+> `session_management.py` was **deleted** in step 3. The canonical homes are now
+> `session_visualizations.py` (charts/heatmap) and `session_data.py` (migrations).
 - **RESOLVED (Phase 5 step 1)**: `create_session_heatmap` was **relocated** from `session_management.py`
   (imports PySimpleGUI) → GUI-free **`session_visualizations.py`** (re-exported from `session_management`
   for the legacy UI). `statistics_view.py` now imports it at top-level from `session_visualizations`.
@@ -144,9 +147,9 @@ Every one of these caused a real bug — honor them:
   (the old lazy/guarded import into the sg-importing `session_management` is gone). **Verified end-to-end**:
   importing `session_data` / `core.services` / **`ui_flet.app`** no longer pulls in PySimpleGUI — the entire
   Flet UI import chain is now sg-free. This was the last `core`/`ui_flet`→sg path.
-- **Legacy-only leftover (fine until step 3)**: `create_github_contributions_canvas` still lives in
-  `session_management`, but it is **legacy-only** (Flet uses its own native contributions grid) → it goes away
-  when the legacy UI is deleted in Phase 5 step 3.
+- **DONE (Phase 5 step 3)**: `create_github_contributions_canvas` was deleted along with
+  `session_management.py` (legacy-only; the Flet UI uses its own native contributions grid). No `core`/`ui_flet`
+  module imports PySimpleGUI at any level anymore; `PySimpleGUI` is no longer a dependency.
 
 ## 7. Status
 - **Done**: Phase 0 (foundation), Phase 1 (Games List), Phase 2 (all screens, parity audit + all gaps
@@ -212,16 +215,24 @@ Every one of these caused a real bug — honor them:
   `build_windows.ps1` → `build/windows/GameTracker.exe` (embedded CPython 3.12), launches, loads the
   saved layout, and runs with no traceback. **Linux/ARM64 still need to be run on the target host** (no
   cross-compile) — the script is ready and carries the same `--arch`-free invocation.
-  - **Phase 5** cleanup (sg/legacy removal). **Steps 1 & 2 DONE** — step 1: heatmap relocation (§6, §10);
-    step 2: session-migration relocation to GUI-free `session_data.py` + `core/services.py` top-level import,
-    so the entire Flet UI import chain (`session_data`/`core.services`/`ui_flet.app`) is now sg-free (§6).
-    Remaining: **(3)** delete legacy
-    UI files (`main.py`, `ui_components.py`, `event_handlers.py`, `*_ui.py`, legacy `game_hub.py`,
-    `session_display.py` UI parts, `date_activity_view.py`, `ratings.py` popup, the now-legacy-only
-    `create_github_contributions_canvas`); **(4)** drop the bridge's sg fallbacks (`notifier is None`
-    branches); **(5)** remove PySimpleGUI from `requirements.txt`; **(6)** rebuild Windows + update README.
-    Gate on `docs/VERSION2_PARITY_AUDIT.md`. The legacy 1.11.x→2.0.0 auto-update pipeline (§10) must keep
-    working after this — don't break `auto_updater.py`'s install-target/cleanup logic.
+  - **Phase 5** cleanup (sg/legacy removal). **Steps 1–5 DONE; only step 6 (rebuild) remains.**
+    - **Step 1**: heatmap relocation → GUI-free `session_visualizations.py` (§6, §10).
+    - **Step 2**: session-migration relocation → GUI-free `session_data.py` + `core/services.py` top-level
+      import (§6).
+    - **Step 4**: bridge PySimpleGUI fallbacks dropped + legacy-only sg dialog methods deleted; `auto_updater`
+      no longer imports `update_ui`'s success popup. (Commit `da8e789`.)
+    - **Step 3**: the 16 legacy UI modules deleted (`main.py`, `event_handlers.py`, `ui_components.py`,
+      `game_statistics.py`, `game_hub.py`, `igdb_ui.py`, `session_ui.py`, `session_display.py`,
+      `session_management.py`, `update_ui.py`, `help_dialogs.py`, `process_watcher_settings.py`, `ratings.py`,
+      `date_activity_view.py`, `watcher_link_dialog.py`, `emoji_utils.py`) + the orphaned cx_Freeze `setup.py`.
+      `create_github_contributions_canvas` went away with `session_management` (legacy-only). (Commit `e19f668`.)
+      Verified: every kept module compiles, `ui_flet.app`/`core.services` import sg-free, and a headless
+      `app_flet.py` launch starts clean (watcher + store scan, no traceback).
+    - **Step 5**: `PySimpleGUI` removed from `requirements.txt`; `pyproject.toml` sg comments refreshed; README
+      rewritten (Flet install + `flet build`, no more PySimpleGUI/cx_Freeze/`main.py`).
+    - **Step 6 (REMAINING)**: rebuild the Windows package via `scripts/build_windows.ps1` and do a final
+      from-packaged smoke test. Gate on `docs/VERSION2_PARITY_AUDIT.md`. The legacy 1.11.x→2.0.0 auto-update
+      pipeline (§10) must keep working — don't break `auto_updater.py`'s install-target/cleanup logic.
 
 ## 8. Verification workflow (reuse it)
 - **Headless tests** were kept in `C:\Users\Tobias\AppData\Local\Temp\claude\` (EPHEMERAL — recreate as

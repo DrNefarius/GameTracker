@@ -12,7 +12,7 @@
 - [Installation](#installation)
 - [Build From Source](#build-from-source)
 - [Running the Application](#running-the-application)
-- [Building Executable with cx_Freeze](#building-executable-with-cx_freeze)
+- [Building a Native Executable](#building-a-native-executable)
 - [File Formats](#file-formats)
 - [Quick Start Guide](#quick-start-guide)
 - [Troubleshooting](#troubleshooting)
@@ -21,7 +21,7 @@
 
 ## Overview
 
-GamesList Manager is a comprehensive desktop application for managing your video game collection and tracking your gaming sessions. Built with Python and PySimpleGUI, it provides powerful features for organizing games, tracking playtime, rating experiences, and analyzing your gaming habits.
+GamesList Manager is a comprehensive desktop application for managing your video game collection and tracking your gaming sessions. Built with Python and Flet (Flutter), it provides powerful features for organizing games, tracking playtime, rating experiences, and analyzing your gaming habits.
 
 ## Features
 
@@ -150,23 +150,15 @@ If you prefer to build from source or are using macOS/Linux, see the [Build From
 
 ## Build From Source
 
-### Important Note: PySimpleGUI Availability
-⚠️ **Critical Information**: The required PySimpleGUI version (4.60.5) is **no longer officially available** from the original developers. PySimpleGUI moved to a licensed model for versions 5+ and removed all free older versions from official distribution channels.
-
-**You will need to use a community fork to run this application:**
-- **Recommended Source**: [https://github.com/markreading/PySimpleGUI_4_60_5](https://github.com/markreading/PySimpleGUI_4_60_5)
-- This repository contains PySimpleGUI version 4.60.5, which was used in the development of this application
-- Version 4.60.5 was one of the last free versions before the licensing changes
-
 ### 1. Clone or Download the Project
 ```bash
 git clone <repository-url>
 cd GamesList
 ```
 
-### 2. Set Up Python Environment (Recommended)
+### 2. Set Up a Python Environment (Recommended)
 ```bash
-# Create virtual environment
+# Create virtual environment (Python 3.10+)
 python -m venv .venv
 
 # Activate virtual environment
@@ -176,40 +168,24 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-### 3. Install PySimpleGUI from Community Fork
-Since PySimpleGUI 4.60.5 is no longer officially available, you have two options:
-
-#### Option A: Manual Installation (Recommended)
-1. Download or clone the PySimpleGUI fork: [https://github.com/markreading/PySimpleGUI_4_60_5](https://github.com/markreading/PySimpleGUI_4_60_5)
-2. Copy the `PySimpleGUI` folder to your project directory, or
-3. Install it to your Python site-packages directory:
-   - **Windows**: `AppData/Local/Programs/Python/Python3XX/Lib/site-packages`
-   - **macOS/Linux**: Check your Python installation's site-packages location
-
-#### Option B: Install Other Dependencies First
-```bash
-# Install all other dependencies except PySimpleGUI
-pip install matplotlib>=3.5.0 openpyxl>=3.0.0 Pillow>=9.0.0
-```
-Then follow Option A for PySimpleGUI installation.
-
-### 4. Install Remaining Dependencies
+### 3. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
-*Note: This may fail for PySimpleGUI if using the standard requirements.txt. Follow the PySimpleGUI community fork installation above.*
 
 ### Required Dependencies:
-- **PySimpleGUI** (4.60.0+, <5.0.0) - ⚠️ **Must use community fork** - GUI framework
-- **matplotlib** (3.5.0+) - Data visualization  
+- **flet** (0.85.x) - GUI framework (Flutter-based)
+- **flet-desktop** (0.85.x) - native desktop window for `flet run` / `python app_flet.py`
+- **matplotlib** (3.5.0+) - Data visualization
 - **openpyxl** (3.0.0+) - Excel file support
-- **Pillow** (9.0.0+) - Image processing for emoji rendering
+- **Pillow** (9.0.0+) - Image processing (cover art and other in-app images)
+- **pypresence**, **psutil**, **rapidfuzz**, **pystray**, and (Windows) **windows-toasts** - Discord Rich Presence, process watcher, fuzzy matching, system-tray icon, and toast notifications
 
 ## Running the Application
 
 ### Development Mode
 ```bash
-python main.py
+python app_flet.py
 ```
 
 ### First Launch
@@ -222,54 +198,24 @@ python main.py
 ### Discord Rich Presence Setup (Optional)
 Want to show your gaming library management activity on Discord? See [DISCORD_SETUP.md](docs/DISCORD_SETUP.md) for detailed instructions on setting up Discord Rich Presence integration.
 
-## Building Executable with cx_Freeze
+## Building a Native Executable
 
-### 1. Install cx_Freeze
+The packaged app is built with **Flet** (`flet build`), which bundles an embedded
+Python runtime — no separate Python install is needed on the target machine.
+
 ```bash
-pip install cx_Freeze
+# Windows (tested)
+scripts/build_windows.ps1   # -> build/windows/GameTracker.exe
+
+# Linux (run on a Linux host — no cross-compile)
+scripts/build_linux.sh
 ```
 
-### 2. Build the Executable
-```bash
-python setup.py build
-```
-
-### 3. Locate the Built Application
-The executable will be created in:
-```
-build/exe.[platform]-[python_version]/
-```
-
-### Build Configuration Details
-The `setup.py` file configures:
-- **Entry Point**: `main.py`
-- **Executable Name**: `GameTracker.exe` (Windows) or `GameTracker` (Unix)
-- **Version**: Automatically set from `constants.py`
-- **Icon**: `gameslisticon.ico`
-- **Dependencies**: Automatically detected; Windows builds also bundle `windows-toasts` and pywinrt (`winrt._winrt_*.pyd`) for toast notifications
-- **Included Files**: Application icon
-
-### Platform-Specific Build Notes
-
-**⚠️ Important**: Building and running on macOS and Linux has not been thoroughly tested. The instructions below are provided for reference, but may require additional troubleshooting and platform-specific adjustments.
-
-#### Windows (Tested)
-```bash
-python setup.py build
-# Output: build/exe.win-amd64-[python_version]/GameTracker.exe
-```
-
-#### macOS (Not Tested)
-```bash
-python setup.py build
-# Output: build/exe.macosx-[version]-[python_version]/GameTracker
-```
-
-#### Linux (Not Tested)
-```bash
-python setup.py build
-# Output: build/exe.linux-[arch]-[python_version]/GameTracker
-```
+The build is configured under `[tool.flet.app]` in `pyproject.toml`
+(`module = "app_flet"` so the Flet entry point is packaged, not a legacy `main`).
+The full guide — prerequisites (Flutter SDK on PATH, plus the platform C/C++
+toolchain), configuration, and a detailed troubleshooting section — lives in
+**[docs/BUILD.md](docs/BUILD.md)**.
 
 ## File Formats
 
@@ -298,15 +244,12 @@ python setup.py build
 
 #### Import Errors
 - Ensure all dependencies are installed: `pip install -r requirements.txt`
-- Check Python version compatibility (3.7+)
+- Check Python version compatibility (3.10+)
 
 #### Build Issues
-- Verify cx_Freeze is installed: `pip install cx_Freeze`
-- Ensure `gameslisticon.ico` is in the project directory
-- Check for missing dependencies in the build output
-
-#### Process watcher toasts missing in frozen build
-If logs show `winrt.windows.foundation.collections has no attribute '_IMap'`, rebuild with the current `setup.py` (it explicitly includes pywinrt native modules). Optional: `pip install "cx_Freeze>=8.5"` adds automatic winrt packaging via cx_Freeze's module hook.
+- See **[docs/BUILD.md](docs/BUILD.md)** for the Flet build prerequisites and a
+  detailed troubleshooting section.
+- Ensure the Flutter SDK is on PATH (`flet build` can auto-download it on first run).
 
 #### Data Issues  
 - .gmd files are JSON format - can be opened in text editor for manual recovery
@@ -333,4 +276,4 @@ This project is licensed under the terms included with the distribution.
 
 ---
 
-**Built with ❤️ using Python, PySimpleGUI, and matplotlib**
+**Built with ❤️ using Python, Flet, and matplotlib**

@@ -1,7 +1,7 @@
 """Session + feedback dialogs for the Flet UI.
 
-Flet port of the legacy ``session_ui.show_session_feedback_popup`` and
-``session_ui.show_manual_session_popup`` (which import PySimpleGUI). Nothing
+Flet port of the legacy ``session_ui`` feedback / manual-session popups
+(the PySimpleGUI ``session_ui`` was removed in Phase 5). Nothing
 here imports a GUI toolkit beyond Flet, and the validation / feedback-building
 logic is split into dependency-free helpers so it can be unit-tested without a
 running ``Page``.
