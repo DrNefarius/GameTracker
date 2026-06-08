@@ -977,10 +977,29 @@ class ProcessWatcher:
                 install_dir = _guess_install_dir(exe_norm, roots)
             with self._lock:
                 if self._active is not None:
-                    _resolver_log.debug(
-                        "drop candidate pid=%s game=%s reason=session_active",
-                        proc.pid, game_name)
-                    return
+                    active = self._active
+                    # Is this process a handoff/restart of the tracked game
+                    # (same install dir)? If so, _check_active_session re-attaches
+                    # it; we just drop the candidate here.
+                    same_dir = bool(active.install_dir) and exe_norm.lower().startswith(
+                        _normpath_with_sep(active.install_dir).lower())
+                    if active.pending_end_at is not None and not same_dir:
+                        # The tracked game is in its end-grace and a *different*
+                        # game just launched. That's proof the old session really
+                        # ended, so finalize it now (anchored to when its process
+                        # died) and let this new game be tracked instead of
+                        # dropped-and-forgotten (a process is only resolved once).
+                        _state_log.info(
+                            "new game %r launched during end-grace of %r; "
+                            "finalizing the ending session early",
+                            game_name, active.game_name)
+                        self._end_active_session(reason='superseded_by_new_game')
+                        # _active is now None; fall through to stash the candidate.
+                    else:
+                        _resolver_log.debug(
+                            "drop candidate pid=%s game=%s reason=session_active",
+                            proc.pid, game_name)
+                        return
                 if proc.pid in self._candidates:
                     continue
                 _resolver_log.info(
@@ -1166,12 +1185,13 @@ class ProcessWatcher:
         if active is None:
             return
 
-        # Anchor the session's true end time. If the process has already
-        # been observed dead (process_gone path) we use the moment we
-        # first saw it disappear, NOT the much-later moment when the end
-        # grace period elapsed - otherwise every auto-tracked session
-        # would appear ~15s longer than reality.
-        if reason == 'process_gone' and active.pending_end_iso is not None:
+        # Anchor the session's true end time. If the process was already
+        # observed dead (the session is in its end-grace, pending_end_iso set)
+        # we use the moment we first saw it disappear, NOT the much-later
+        # moment we finalize - whether that's the grace expiring, a shutdown,
+        # or a newly launched game superseding it. Otherwise an auto-tracked
+        # session would appear up to the full grace window longer than reality.
+        if active.pending_end_iso is not None:
             try:
                 end_dt = datetime.fromisoformat(active.pending_end_iso)
             except Exception:
