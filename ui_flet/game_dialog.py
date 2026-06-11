@@ -7,7 +7,7 @@ required; release date YYYY-MM-DD or '-'; time HH:MM:SS with minutes/seconds
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import flet as ft
 
@@ -50,6 +50,21 @@ def _normalise_time(value):
     return None if value in _EMPTY_TIMES else value
 
 
+def _picked_to_iso(value):
+    """A DatePicker value -> 'YYYY-MM-DD'.
+
+    Flet's DatePicker returns a UTC-shifted datetime, so +12h rounds to the
+    calendar day the user actually tapped (same fix as
+    ``statistics_view._normalize_picked_date``).
+    """
+    if isinstance(value, datetime):
+        return (value + timedelta(hours=12)).date().isoformat()
+    try:
+        return value.isoformat()[:10]
+    except Exception:  # noqa: BLE001
+        return str(value)
+
+
 def open_game_dialog(page, service, orig_idx=None, on_saved=None):
     """Open the add (orig_idx=None) or edit dialog. Calls on_saved() after a save."""
     existing = service.get_game(orig_idx) if orig_idx is not None else None
@@ -60,6 +75,42 @@ def open_game_dialog(page, service, orig_idx=None, on_saved=None):
         label="Release date (YYYY-MM-DD or -)",
         value=(existing[1] if is_edit else ""),
         hint_text="2024-01-31 or -",
+        expand=True,
+    )
+
+    def _pick_release_date(_):
+        # Seed the calendar with the current valid date, else today.
+        try:
+            seed = datetime.strptime((release.value or "").strip(), "%Y-%m-%d")
+        except ValueError:
+            seed = datetime.now()
+
+        def _on_pick(e):
+            if e.control.value:
+                release.value = _picked_to_iso(e.control.value)
+                try:
+                    release.update()
+                except Exception:  # noqa: BLE001
+                    page.update()
+
+        # The DatePicker overlays this dialog (Flet stacks dialogs); confirming
+        # fills the field, cancelling leaves the form untouched.
+        page.show_dialog(ft.DatePicker(
+            first_date=datetime(1950, 1, 1),
+            last_date=datetime(2100, 12, 31),
+            value=seed,
+            help_text="Select release date",
+            on_change=_on_pick,
+        ))
+
+    date_btn = ft.IconButton(
+        icon=ft.Icons.CALENDAR_MONTH,
+        tooltip="Pick a release date",
+        on_click=_pick_release_date,
+    )
+    release_row = ft.Row(
+        [release, date_btn],
+        vertical_alignment=ft.CrossAxisAlignment.CENTER, spacing=4,
     )
     platform = ft.TextField(label="Platform", value=(existing[2] if is_edit else ""))
     time_field = ft.TextField(
@@ -117,7 +168,7 @@ def open_game_dialog(page, service, orig_idx=None, on_saved=None):
         content=ft.Container(
             width=440,
             content=ft.Column(
-                [name, release, platform, time_field, status, owned, error_text],
+                [name, release_row, platform, time_field, status, owned, error_text],
                 tight=True,
                 spacing=12,
             ),
