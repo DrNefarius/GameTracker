@@ -30,7 +30,7 @@ import flet as ft
 
 from constants import VERSION
 
-GITHUB_URL = "https://github.com/DrNefarius/GameTrackerV2"
+GITHUB_URL = "https://github.com/DrNefarius/GameTracker"
 
 # Width/height of the scrollable body shared by the long informational dialogs.
 _BODY_WIDTH = 580
@@ -486,7 +486,7 @@ _RELEASE_NOTES_MD = f"""\
 - Persistent filtering: optionally remember search, page and rows-per-page between launches (sort is always kept)
 - Start minimized to the system tray, with a launch-confirmation toast
 - Window size/position/maximized state remembered; the loaded database is shown in the title bar
-- Native contributions calendar with a year picker; today is outlined in red and days are clickable
+- Interactive contributions calendar: click any day to jump to that day's activity
 - Smarter session watcher: configurable end-of-session grace, instant tracking on confirm, and same-game relaunches continue the session
 - Release-date picker when adding/editing games
 - Rate prompt after stopping the inline session timer
