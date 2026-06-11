@@ -705,14 +705,89 @@
             <h1>GamesList Manager</h1>
             <p>A comprehensive desktop application for managing your video game collection and tracking your gaming sessions</p>
             <div class="badges">
-                <span class="badge">Python 3.7+</span>
-                <span class="badge">Version 1.11.3</span>
+                <span class="badge">Version 2.0.0</span>
+                <span class="badge">Brand-new Flet UI</span>
                 <span class="badge">GPL-3.0 License</span>
                 <span class="badge">Discord Integration</span>
             </div>
             <div class="cta-buttons">
-                <a href="https://github.com/DrNefarius/GameTracker/releases/" class="btn btn-primary">Download Latest Release</a>
-                <a href="https://github.com/DrNefarius/GameTracker" class="btn btn-secondary">View on GitHub</a>
+                <a href="https://github.com/DrNefarius/GameTrackerV2/releases/" class="btn btn-primary">Download Latest Release</a>
+                <a href="https://github.com/DrNefarius/GameTrackerV2" class="btn btn-secondary">View on GitHub</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- What's New in 2.0 -->
+    <div class="section">
+        <div class="container">
+            <h2 class="section-title">✨ What's New in 2.0</h2>
+            <div class="feature-highlight">
+                <div class="highlight-badge">New in v2.0.0</div>
+                <h3>A Brand-New Interface</h3>
+                <p>Version 2.0 is a complete UI rewrite on Flet (Flutter) — a faster, modern, native desktop app. Everything you relied on is here and redesigned, plus quality-of-life features that make day-to-day tracking smoother.</p>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🖥️</div>
+                    <h3>Modern Flet UI</h3>
+                    <ul>
+                        <li>Responsive interface built on Flutter</li>
+                        <li>Labeled toolbar menus: File, Library, Watcher, Discord, Updates, Help</li>
+                        <li>Light / dark / system themes</li>
+                        <li>Startup splash with charts that load on demand</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">🗂️</div>
+                    <h3>Persistent Filtering</h3>
+                    <ul>
+                        <li>Optionally remember your search, page and rows-per-page between launches</li>
+                        <li>Toggle via Library → "Remember filter, page &amp; rows"</li>
+                        <li>Sort order is always preserved</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📥</div>
+                    <h3>Start Minimized to Tray</h3>
+                    <ul>
+                        <li>Launch straight to the system tray with tracking already running</li>
+                        <li>Toggle via Watcher → "Start minimized to tray"</li>
+                        <li>A toast confirms a successful start</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📐</div>
+                    <h3>Window State Remembered</h3>
+                    <ul>
+                        <li>Window size, position and maximized state are saved</li>
+                        <li>Restored automatically on the next launch</li>
+                        <li>The loaded database is shown in the title bar</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">📅</div>
+                    <h3>Native Contributions Calendar</h3>
+                    <ul>
+                        <li>GitHub-style activity calendar with a year picker</li>
+                        <li>Today is marked with a red border</li>
+                        <li>Click any day to see that day's sessions</li>
+                    </ul>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon">⏱️</div>
+                    <h3>Smarter Session Watcher</h3>
+                    <ul>
+                        <li>Configurable end-of-session grace period</li>
+                        <li>Starts tracking instantly when you confirm a match</li>
+                        <li>A same-game relaunch continues the session instead of splitting it</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
@@ -846,7 +921,7 @@
                 <div class="feature-card">
                     <div class="feature-icon">🛰️</div>
                     <h3>Process Watcher</h3>
-                    <p>Detects game launches and tracks playtime automatically. Toggle via Options → Process Watcher.</p>
+                    <p>Detects game launches and tracks playtime automatically. Toggle via the Watcher menu.</p>
                 </div>
 
                 <div class="feature-card">
@@ -971,7 +1046,7 @@
                     <div class="info-box-light">
                         <div class="info-box-title">🎛️ Update Settings</div>
                         <div class="info-box-content">
-                            <p><strong>Access via Options Menu:</strong></p>
+                            <p><strong>Access via the Updates Menu:</strong></p>
                             <ul>
                                 <li><strong>Check for Updates:</strong> Manually check for and install updates</li>
                                 <li><strong>Update Settings:</strong> Configure startup checking, manage downloads, or disable auto-updates entirely</li>
@@ -1001,7 +1076,7 @@
                     <p>For most users, the easiest way to get started:</p>
                     <div class="step-list">
                         <div class="step-item">
-                            <strong>Download:</strong> Go to the <a href="https://github.com/DrNefarius/GameTracker/releases/">Releases section</a> of the GitHub repository
+                            <strong>Download:</strong> Go to the <a href="https://github.com/DrNefarius/GameTrackerV2/releases/">Releases section</a> of the GitHub repository
                         </div>
                         <div class="step-item">
                             <strong>Extract:</strong> Download the latest release zip file and extract it to your preferred folder
@@ -1015,11 +1090,7 @@
 
                 <div class="tab-content" id="source">
                     <h3>🔧 Build from Source</h3>
-                    <div class="warning-box">
-                        <div class="warning-title">⚠️ Important: PySimpleGUI Availability</div>
-                        The required PySimpleGUI version (4.60.5) is no longer officially available. You'll need to use a community fork:
-                        <a href="https://github.com/markreading/PySimpleGUI_4_60_5">PySimpleGUI 4.60.5 Community Fork</a>
-                    </div>
+                    <p>Version 2.0 runs on <strong>Flet</strong> (Flutter) — no more PySimpleGUI. A plain <code>pip install</code> is all that's needed.</p>
 
                     <div class="step-list">
                         <div class="step-item">
@@ -1027,19 +1098,19 @@
                             <div class="code-block">git clone &lt;repository-url&gt;<br>cd GamesList</div>
                         </div>
                         <div class="step-item">
-                            <strong>Set Up Python Environment:</strong>
+                            <strong>Set Up a Python Environment (3.10+):</strong>
                             <div class="code-block">python -m venv .venv<br>.venv\Scripts\activate  # Windows<br>source .venv/bin/activate  # macOS/Linux</div>
                         </div>
                         <div class="step-item">
-                            <strong>Install PySimpleGUI from Community Fork:</strong>
-                            <p>Download the community fork and install manually, then install other dependencies:</p>
-                            <div class="code-block">pip install matplotlib>=3.5.0 openpyxl>=3.0.0 Pillow>=9.0.0</div>
+                            <strong>Install Dependencies:</strong>
+                            <div class="code-block">pip install -r requirements.txt</div>
                         </div>
                         <div class="step-item">
                             <strong>Run the Application:</strong>
-                            <div class="code-block">python main.py</div>
+                            <div class="code-block">python app_flet.py</div>
                         </div>
                     </div>
+                    <p>To produce a native, self-contained executable, use <code>flet build</code> — see <code>docs/BUILD.md</code> in the repository for the full guide.</p>
                 </div>
 
                 <div class="tab-content" id="requirements">
@@ -1051,7 +1122,7 @@
                         </div>
                         <div class="requirement-item">
                             <h4>Python</h4>
-                            <p>3.7 or higher</p>
+                            <p>3.10+ to build from source — the packaged release bundles its own runtime</p>
                         </div>
                         <div class="requirement-item">
                             <h4>Memory</h4>
@@ -1143,7 +1214,7 @@
                 </div>
             </div>
 
-            <p><strong>Privacy Note:</strong> Discord Rich Presence only shares your current activity and general stats. No personal game data, ratings, or notes are shared. You can toggle this feature on/off anytime from the Options menu.</p>
+            <p><strong>Privacy Note:</strong> Discord Rich Presence only shares your current activity and general stats. No personal game data, ratings, or notes are shared. You can toggle this feature on/off anytime from the Discord button in the toolbar.</p>
         </div>
     </div>
 
@@ -1153,10 +1224,10 @@
             <h2 class="section-title">Quick Start Guide</h2>
             <div class="step-list">
                 <div class="step-item">
-                    <strong>Add Your First Game:</strong> Click "Add Entry" and fill in game details
+                    <strong>Add Your First Game:</strong> Click "Add game" and fill in the details (use the calendar button to pick a release date)
                 </div>
                 <div class="step-item">
-                    <strong>Track Gaming Time:</strong> Click on a game → "Track Time" → Use play/pause/stop controls
+                    <strong>Track Gaming Time:</strong> Open a game and use the built-in Play/Pause/Stop timer — or let the Process Watcher track it automatically when you launch the game
                 </div>
                 <div class="step-item">
                     <strong>Rate Your Experience:</strong> Add session feedback with ratings, tags, and notes
@@ -1168,7 +1239,7 @@
                     <strong>Organize Your Collection:</strong> Use search, filters, and sorting to manage your library
                 </div>
                 <div class="step-item">
-                    <strong>Configure Updates:</strong> Visit Options → Update Settings to manage auto-updates (can be disabled if preferred)
+                    <strong>Configure Updates:</strong> Visit the Updates menu → Update Settings to manage auto-updates (can be disabled if preferred)
                 </div>
             </div>
         </div>
@@ -1197,9 +1268,9 @@
     <!-- Footer -->
     <div class="footer">
         <div class="container">
-            <p><strong>Built with ❤️ using Python, PySimpleGUI, and matplotlib</strong></p>
+            <p><strong>Built with ❤️ using Python, Flet, and matplotlib</strong></p>
             <p style="margin-top: 20px;">
-                <a href="https://github.com/DrNefarius/GameTracker" style="color: #fff; text-decoration: none;">
+                <a href="https://github.com/DrNefarius/GameTrackerV2" style="color: #fff; text-decoration: none;">
                     Open Source Project - GPL-3.0 License
                 </a>
             </p>
