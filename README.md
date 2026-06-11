@@ -83,21 +83,6 @@ GamesList Manager is a comprehensive desktop application for managing your video
 - Customizable presence messages and branding
 - Easy setup with your own Discord application
 
-## What's New in Version 1.10 🚀
-
-### **📅 Daily Activity View**
-View all your gaming activity for any specific date, sorted chronologically by time:
-
-- **🎯 Date-Based Navigation**: Click through any date to see detailed gaming sessions
-- **📊 Daily Summaries**: Total time played, session count, and games list
-- **🌐 Multiple Access Points**: View menu shortcuts for Today/Yesterday, plus date picker
-- **💬 Discord Integration**: Rich Presence shows which date you're reviewing
-- **🔄 Session Details**: Click any session for detailed notes, ratings, and feedback
-
-Perfect for reviewing your gaming history and understanding daily patterns.
-
-**Access via**: Statistics → View Date Activity, or View menu → Today's/Yesterday's Activity
-
 ## Screenshots
 
 ### Main Interface - Games List
