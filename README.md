@@ -1,6 +1,6 @@
 # GamesList Manager
 
-![Python](https://badgen.net/badge/python/3.7%2B/blue?icon=python)
+![Python](https://badgen.net/badge/python/3.10%2B/blue?icon=python)
 ![Version](https://badgen.net/badge/version/v2.0.0/orange?icon=github)
 ![License](https://badgen.net/badge/license/GPL-3.0/green?icon=github)
 
@@ -111,7 +111,7 @@ GamesList Manager is a comprehensive desktop application for managing your video
 ## System Requirements
 
 - **Operating System**: Windows, macOS, or Linux
-- **Python**: 3.7 or higher
+- **Python**: 3.10 or higher (only to build from source — the packaged release bundles its own runtime)
 - **Memory**: 512MB RAM minimum
 - **Storage**: 50MB available space
 
