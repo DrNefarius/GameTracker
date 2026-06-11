@@ -554,12 +554,11 @@ class GameHub:
             session_start = self._session_start_iso
         self._stop_timer_thread()
 
-        persisted = False
+        saved_session = None
         if session_start is not None and elapsed.total_seconds() > 0:
-            session = build_timer_session(session_start, elapsed)
-            add_manual_session_to_game(self.game_name, session, self.service.data)
+            saved_session = build_timer_session(session_start, elapsed)
+            add_manual_session_to_game(self.game_name, saved_session, self.service.data)
             self.service.save()
-            persisted = True
 
         # Reset timer for a possible next session.
         with self._timer_lock:
@@ -571,11 +570,33 @@ class GameHub:
         self.pause_btn.disabled = True
         self.stop_btn.disabled = True
 
-        if persisted:
-            self.refresh()          # re-render header totals + sessions table
-            self._notify_changed()
+        if saved_session is not None:
+            # Prompt for feedback on the session that just ended, mirroring the
+            # auto-watcher's end-of-session "rate" flow. Flet shows one dialog at
+            # a time, so pop the hub, collect feedback, then reopen the hub.
+            self._prompt_session_feedback(saved_session)
         else:
             self._update()
+
+    def _prompt_session_feedback(self, session):
+        """Open the feedback form for a just-stopped timer session.
+
+        Attaches the result to ``session['feedback']`` (the dict was stored by
+        reference in the game's session list, so saving persists it) and reopens
+        the hub afterwards. Cancelling leaves the session without feedback and
+        still reopens the hub.
+        """
+        self.page.pop_dialog()
+        self._stop_timer_thread()
+
+        def _result(feedback):
+            if feedback is not None:
+                session['feedback'] = feedback
+                self.service.save()
+            self._reopen_after_child()
+
+        open_feedback_dialog(self.page, existing=session.get('feedback'),
+                             on_result=_result)
 
     # ------------------------------------------------------------------ #
     # action buttons (delegate to existing dialogs)
