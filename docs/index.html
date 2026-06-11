@@ -711,8 +711,8 @@
                 <span class="badge">Discord Integration</span>
             </div>
             <div class="cta-buttons">
-                <a href="https://github.com/DrNefarius/GameTrackerV2/releases/" class="btn btn-primary">Download Latest Release</a>
-                <a href="https://github.com/DrNefarius/GameTrackerV2" class="btn btn-secondary">View on GitHub</a>
+                <a href="https://github.com/DrNefarius/GameTracker/releases/" class="btn btn-primary">Download Latest Release</a>
+                <a href="https://github.com/DrNefarius/GameTracker" class="btn btn-secondary">View on GitHub</a>
             </div>
         </div>
     </div>
@@ -771,11 +771,11 @@
 
                 <div class="feature-card">
                     <div class="feature-icon">📅</div>
-                    <h3>Native Contributions Calendar</h3>
+                    <h3>Interactive Activity Calendar</h3>
                     <ul>
-                        <li>GitHub-style activity calendar with a year picker</li>
-                        <li>Today is marked with a red border</li>
-                        <li>Click any day to see that day's sessions</li>
+                        <li>Click any day in the contributions calendar to see what you played</li>
+                        <li>Jump straight to that day's sessions, notes and ratings</li>
+                        <li>Quick Today / Yesterday / pick-a-date shortcuts</li>
                     </ul>
                 </div>
 
@@ -910,36 +910,43 @@
     <!-- Process Watcher & IGDB (v1.11) -->
     <div class="section">
         <div class="container">
-            <h2 class="section-title">🛰️ Auto Session Tracking & IGDB</h2>
-            <div class="feature-highlight">
-                <div class="highlight-badge">New in v1.11.0</div>
-                <h3>Play Without Pressing Start</h3>
-                <p>On Windows, the process watcher records sessions when you launch a game. IGDB brings covers, metadata, and completion averages into your library.</p>
-            </div>
-
-            <div class="features-grid">
-                <div class="feature-card">
-                    <div class="feature-icon">🛰️</div>
-                    <h3>Process Watcher</h3>
-                    <p>Detects game launches and tracks playtime automatically. Toggle via the Watcher menu.</p>
+            <div class="collapsible-section">
+                <div class="collapsible-header" onclick="toggleCollapsible('v111-section')">
+                    <div class="highlight-badge clickable">New in v1.11.0</div>
+                    <span class="collapse-arrow" id="v111-arrow">▼</span>
                 </div>
+                <div class="collapsible-content" id="v111-section">
+                    <h2 class="section-title">🛰️ Auto Session Tracking & IGDB</h2>
+                    <div class="feature-highlight">
+                        <h3>Play Without Pressing Start</h3>
+                        <p>On Windows, the process watcher records sessions when you launch a game. IGDB brings covers, metadata, and completion averages into your library.</p>
+                    </div>
 
-                <div class="feature-card">
-                    <div class="feature-icon">🎯</div>
-                    <h3>Smart Matching</h3>
-                    <p>Learned exe mappings, Steam/Epic/GOG manifests, and fuzzy match—with a toast when confirmation is needed.</p>
-                </div>
+                    <div class="features-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">🛰️</div>
+                            <h3>Process Watcher</h3>
+                            <p>Detects game launches and tracks playtime automatically. Toggle via the Watcher menu.</p>
+                        </div>
 
-                <div class="feature-card">
-                    <div class="feature-icon">🔔</div>
-                    <h3>Toasts & Tray Controls</h3>
-                    <p>Session start/end notifications with cover art, system-tray pause/stop, and in-place wrong-game remap.</p>
-                </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">🎯</div>
+                            <h3>Smart Matching</h3>
+                            <p>Learned exe mappings, Steam/Epic/GOG manifests, and fuzzy match—with a toast when confirmation is needed.</p>
+                        </div>
 
-                <div class="feature-card">
-                    <div class="feature-icon">🎨</div>
-                    <h3>IGDB Integration</h3>
-                    <p>Fetch covers, genres, summaries, and critic scores. View Details per game or enrich the whole library in one pass.</p>
+                        <div class="feature-card">
+                            <div class="feature-icon">🔔</div>
+                            <h3>Toasts & Tray Controls</h3>
+                            <p>Session start/end notifications with cover art, system-tray pause/stop, and in-place wrong-game remap.</p>
+                        </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">🎨</div>
+                            <h3>IGDB Integration</h3>
+                            <p>Fetch covers, genres, summaries, and critic scores. View Details per game or enrich the whole library in one pass.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1076,7 +1083,7 @@
                     <p>For most users, the easiest way to get started:</p>
                     <div class="step-list">
                         <div class="step-item">
-                            <strong>Download:</strong> Go to the <a href="https://github.com/DrNefarius/GameTrackerV2/releases/">Releases section</a> of the GitHub repository
+                            <strong>Download:</strong> Go to the <a href="https://github.com/DrNefarius/GameTracker/releases/">Releases section</a> of the GitHub repository
                         </div>
                         <div class="step-item">
                             <strong>Extract:</strong> Download the latest release zip file and extract it to your preferred folder
@@ -1270,7 +1277,7 @@
         <div class="container">
             <p><strong>Built with ❤️ using Python, Flet, and matplotlib</strong></p>
             <p style="margin-top: 20px;">
-                <a href="https://github.com/DrNefarius/GameTrackerV2" style="color: #fff; text-decoration: none;">
+                <a href="https://github.com/DrNefarius/GameTracker" style="color: #fff; text-decoration: none;">
                     Open Source Project - GPL-3.0 License
                 </a>
             </p>
