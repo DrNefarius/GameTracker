@@ -1093,6 +1093,14 @@
                         </div>
                     </div>
                     <p><strong>That's it!</strong> No additional setup, Python installation, or dependency management required.</p>
+                    <div class="warning-box">
+                        <div class="warning-title">⚠️ Windows may block the first launch</div>
+                        GameTracker isn't signed with a paid Microsoft certificate, so Windows can flag it as coming from an "unknown publisher." It's a false positive — the app is open source and the code is on GitHub.
+                        <ul style="margin-top: 10px;">
+                            <li><strong>SmartScreen</strong> ("Windows protected your PC"): click <strong>More info → Run anyway</strong>.</li>
+                            <li><strong>Smart App Control</strong> (Windows 11) is stricter and may block unsigned apps with no "Run anyway" option. Right-click <code>GameTracker.exe</code> → <strong>Properties → Unblock</strong>, or turn it off under <strong>Windows Security → App &amp; browser control → Smart App Control</strong>. Once turned off, Smart App Control can only be re-enabled by reinstalling Windows.</li>
+                        </ul>
+                    </div>
                 </div>
 
                 <div class="tab-content" id="source">

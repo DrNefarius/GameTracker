@@ -322,6 +322,7 @@ _TROUBLESHOOTING_MD = """\
 
 **Application won't start**
 - Make sure the whole release folder was extracted (keep GameTracker.exe together with its data/ and DLL files)
+- Windows SmartScreen / Smart App Control may block the unsigned app on first launch: choose "More info -> Run anyway", or right-click GameTracker.exe -> Properties -> Unblock. Smart App Control (Windows 11) can be turned off under Windows Security -> App & browser control
 - Ensure you have read/write permission in that folder
 - Check your antivirus isn't blocking the application
 - Only one instance runs at a time - if no window appears, look in the system tray
