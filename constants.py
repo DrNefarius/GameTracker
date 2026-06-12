@@ -16,7 +16,7 @@ GITHUB_API_BASE = "https://api.github.com"
 # SETUP REQUIRED: Replace CLIENT_ID with your actual Discord Application ID
 # See DISCORD_SETUP.md for detailed setup instructions
 DISCORD_CLIENT_ID = "1234567890123456789"  # Placeholder - needs to be replaced with actual Discord app ID
-DISCORD_GITHUB_URL = "https://yourname.github.io/GameTrackerV2/"
+DISCORD_GITHUB_URL = "https://yourname.github.io/GameTracker/"
 
 # Special key constants for different platforms
 QT_ENTER_KEY1 = 'special 16777220'
