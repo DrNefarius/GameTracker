@@ -232,7 +232,7 @@ toolchain), configuration, and a detailed troubleshooting section — lives in
 #### Windows won't let the app start (SmartScreen / Smart App Control)
 GameTracker isn't signed with a paid Microsoft certificate, so Windows may block it on first launch as coming from an "unknown publisher." This is a false positive — the app is open source.
 - **SmartScreen** ("Windows protected your PC"): click **More info → Run anyway**.
-- **Smart App Control** (Windows 11) is stricter and may block unsigned apps outright, with no "Run anyway" prompt. Either right-click `GameTracker.exe` → **Properties → Unblock**, or turn Smart App Control off under **Windows Security → App & browser control → Smart App Control settings**. Note that once turned off, Smart App Control can only be re-enabled by reinstalling Windows.
+- **Smart App Control** (Windows 11) is stricter and may block unsigned apps outright, with no "Run anyway" prompt. Either right-click `GameTracker.exe` → **Properties → Unblock**, or turn Smart App Control off under **Windows Security → App & browser control → Smart App Control settings**.
 
 #### Import Errors
 - Ensure all dependencies are installed: `pip install -r requirements.txt`

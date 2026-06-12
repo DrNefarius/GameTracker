@@ -3,20 +3,20 @@ Constants used throughout the GamesList application
 """
 
 # Application version - update this single location to change version across the entire app
-VERSION = "1.11.3"
+VERSION = "2.0.0"
 
 _DEBUG = False
 
 # GitHub repository configuration for auto-updater
-GITHUB_OWNER = "DrNefarius"
-GITHUB_REPO = "GameTrackerV2"
+GITHUB_OWNER = "YourName"
+GITHUB_REPO = "GameTracker"
 GITHUB_API_BASE = "https://api.github.com"
 
 # Discord Rich Presence configuration
 # SETUP REQUIRED: Replace CLIENT_ID with your actual Discord Application ID
 # See DISCORD_SETUP.md for detailed setup instructions
-DISCORD_CLIENT_ID = "1387760989843492947"  # Placeholder - needs to be replaced with actual Discord app ID
-DISCORD_GITHUB_URL = "https://drnefarius.github.io/GameTrackerV2/"
+DISCORD_CLIENT_ID = "1234567890123456789"  # Placeholder - needs to be replaced with actual Discord app ID
+DISCORD_GITHUB_URL = "https://yourname.github.io/GameTrackerV2/"
 
 # Special key constants for different platforms
 QT_ENTER_KEY1 = 'special 16777220'
@@ -36,11 +36,11 @@ POSITIVE_TAGS = ["Fun", "Amazing", "Immersive", "Story-rich", "Rewarding", "Addi
 RATING_TAGS = NEGATIVE_TAGS + NEUTRAL_TAGS + POSITIVE_TAGS
 
 # Table styling
-COMPLETED_STYLE = ('#000000', '#dff0d8')  # Light green background, black text
-DROPPED_STYLE = ('#000000', '#b7e1b7')  # Slightly deeper green than Completed, black text
-IN_PROGRESS_STYLE = ('#000000', '#fcf8e3')  # Light yellow background, black text
+COMPLETED_STYLE = ('#000000', '#b7e1b7')  # Slightly deeper green background than Dropped, black text
+DROPPED_STYLE = ('#000000', '#dff0d8')  #  Light green background, black text
+IN_PROGRESS_STYLE = ('#000000', '#FFFBB3')  # Light yellow background, black text, original: fcf8e3
 FUTURE_RELEASE_STYLE = ('#000000', '#b4acff')   # Light purple background, black text
-DEFAULT_STYLE = ('#000000', '#f8d7da')  # Light red background, black text
+DEFAULT_STYLE = ('#000000', '#FFBAC4')  # Light red background, black text, original: f8d7da
 
 # IGDB API configuration (Twitch OAuth client-credentials flow).
 # Users supply their own client_id / client_secret via Options -> IGDB Settings.

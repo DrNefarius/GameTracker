@@ -1,6 +1,6 @@
 # Privacy Policy - GamesList Manager
 
-**Last Updated:** June 26, 2025
+**Last Updated:** June 12, 2026
 
 ## 1. Introduction
 
