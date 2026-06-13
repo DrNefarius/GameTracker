@@ -14,6 +14,7 @@ import math
 import flet as ft
 
 from constants import STAR_FILLED, STAR_EMPTY
+from core.ratings_logic import get_effective_game_rating
 from ui_flet import theme
 from ui_flet import loading
 from ui_flet.game_dialog import open_status_dialog
@@ -354,7 +355,7 @@ class GamesView:
                 if row[5] == "✅" else ft.Text("")
             ),
             ft.DataCell(ft.Text((row[6] or "—").split(" ")[0] if row[6] else "—")),
-            ft.DataCell(ft.Text(_format_rating(row[9] if len(row) > 9 else None))),
+            ft.DataCell(ft.Text(_format_rating(get_effective_game_rating(row)))),
             ft.DataCell(
                 ft.Row(
                     [

@@ -57,6 +57,7 @@ import flet as ft
 from constants import STAR_FILLED, STAR_EMPTY
 from utilities import format_timedelta_with_seconds
 from session_data import add_manual_session_to_game
+from core.ratings_logic import get_effective_game_rating
 from ui_flet import theme
 from ui_flet.game_dialog import open_game_dialog, confirm_delete
 from ui_flet.session_dialogs import (
@@ -328,7 +329,7 @@ class GameHub:
         platform = row[2] if len(row) > 2 else ""
         total = row[3] if len(row) > 3 else None
         last_played = row[6] if len(row) > 6 else None
-        rating = row[9] if len(row) > 9 else None
+        rating = get_effective_game_rating(row)
 
         star_text = format_rating_stars(rating)
         rating_control = (
@@ -628,18 +629,30 @@ class GameHub:
 
     def _on_rate(self, _):
         existing = self.row[9] if len(self.row) > 9 else None
-        # open_feedback_dialog's existing= expects a feedback-shaped dict
-        # ({'text':..., 'rating': {...}}); a game rating is the rating dict
-        # itself, so wrap it.
-        existing_feedback = {"rating": existing} if isinstance(existing, dict) else None
+        # Only a real manual rating pre-fills the form (an auto-calculated one
+        # in row[9] is derived data, not something the user typed). The dialog's
+        # existing= expects a feedback-shaped dict ({'text':..., 'rating':...});
+        # a game rating keeps its comment INSIDE the rating dict, so surface it
+        # as the text field.
+        is_manual = isinstance(existing, dict) and not existing.get("auto_calculated")
+        existing_feedback = (
+            {"text": existing.get("comment", "") or "", "rating": existing}
+            if is_manual else None
+        )
 
         def _result(feedback):
             # Cancel -> feedback is None -> just re-open the hub unchanged.
             if feedback and feedback.get("rating"):
+                rating = dict(feedback["rating"])
+                # The game rating stores its comment inside the rating dict
+                # (unlike session feedback, where notes live in feedback.text).
+                comment = (feedback.get("text") or "").strip()
+                if comment:
+                    rating["comment"] = comment
                 row = list(self.service.get_game(self.orig_idx) or [])
                 while len(row) <= 9:
                     row.append(None)
-                row[9] = feedback["rating"]
+                row[9] = rating
                 self.service.update_game(self.orig_idx, row)
                 self.service.save()
                 self._notify_changed()
@@ -648,7 +661,9 @@ class GameHub:
 
         self.page.pop_dialog()
         self._stop_timer_thread()
-        open_feedback_dialog(self.page, existing=existing_feedback, on_result=_result)
+        open_feedback_dialog(
+            self.page, existing=existing_feedback, on_result=_result, mode="game",
+            title=f"{'Edit rating' if is_manual else 'Rate'} - {self.game_name}")
 
     def _on_delete(self, _):
         self.page.pop_dialog()

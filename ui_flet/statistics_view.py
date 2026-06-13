@@ -771,7 +771,10 @@ class StatisticsView:
         for _, row in self.service.data:
             has_sessions = len(row) > 7 and row[7]
             has_history = len(row) > 8 and row[8]
-            if has_sessions or has_history:
+            # A manually rated game belongs here too (the rating-comparison
+            # section shows its stars/tags/comment even with zero sessions).
+            has_rating = len(row) > 9 and isinstance(row[9], dict)
+            if has_sessions or has_history or has_rating:
                 names.append(row[0])
         return sorted(names, key=lambda n: (n or "").lower())
 
@@ -975,6 +978,10 @@ class StatisticsView:
         for _, row in self.service.data:
             if row[0] == self.selected_game:
                 manual = row[9] if len(row) > 9 and isinstance(row[9], dict) else None
+                # An auto-calculated rating stored in row[9] (legacy data) is
+                # derived, not the user's own - don't present it as manual.
+                if manual is not None and manual.get("auto_calculated"):
+                    manual = None
                 break
 
         # Auto (session-based)
@@ -1005,6 +1012,13 @@ class StatisticsView:
                 ft.Text("Comment: " + (comment if comment else "no comment"),
                         size=12, color=ft.Colors.ON_SURFACE_VARIANT),
             ]
+            try:
+                rated_on = datetime.fromisoformat(manual.get("timestamp"))
+                manual_body.append(
+                    ft.Text("Rated on: " + rated_on.strftime("%Y-%m-%d %H:%M"),
+                            size=12, color=ft.Colors.ON_SURFACE_VARIANT))
+            except (ValueError, TypeError):
+                pass
         else:
             manual_body = [ft.Text("No manual rating set.", size=12,
                                    color=ft.Colors.ON_SURFACE_VARIANT)]

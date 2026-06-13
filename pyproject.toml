@@ -16,7 +16,7 @@
 
 [project]
 name = "gametracker"
-version = "2.0.0"
+version = "2.0.1"
 description = "GameTracker — track your game library, playtime, sessions and ratings."
 requires-python = ">=3.10"
 

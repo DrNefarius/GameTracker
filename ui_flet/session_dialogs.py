@@ -122,7 +122,7 @@ def validate_manual_session(start_date, start_time, end_date, end_time):
 # --------------------------------------------------------------------------- #
 # Feedback content builder (testable: returns control + getter)
 # --------------------------------------------------------------------------- #
-def _build_feedback_content(existing=None):
+def _build_feedback_content(existing=None, mode="session"):
     """Build the feedback dialog body.
 
     Returns ``(control, get_feedback_fn)`` where ``control`` is a Flet Control
@@ -131,7 +131,14 @@ def _build_feedback_content(existing=None):
     were provided).
 
     ``existing`` is an optional feedback dict to pre-fill from when editing.
+
+    ``mode`` is ``"session"`` (default) or ``"game"``. In game mode the dialog
+    rates the game itself (Game Hub "Rate"): the rating section is always on
+    (no "Rate this session" checkbox) and the text field is labelled as the
+    rating comment; the caller stores the returned ``text`` as the game
+    rating's ``comment``.
     """
+    is_game = mode == "game"
     existing = existing or {}
     existing_text = existing.get("text", "") or ""
     existing_rating = existing.get("rating")
@@ -141,7 +148,7 @@ def _build_feedback_content(existing=None):
 
     # --- notes ---------------------------------------------------------- #
     notes_field = ft.TextField(
-        label="Session thoughts / notes",
+        label="Comment (optional)" if is_game else "Session thoughts / notes",
         value=existing_text,
         multiline=True,
         min_lines=4,
@@ -211,11 +218,15 @@ def _build_feedback_content(existing=None):
         ],
         tight=True,
         spacing=8,
-        visible=has_rating,
+        visible=is_game or has_rating,
     )
 
     # --- enable-rating toggle ------------------------------------------- #
-    enable_rating = ft.Checkbox(label="Rate this session", value=has_rating)
+    # Rating a game IS the rating - no opt-in checkbox; the section is always
+    # shown and the checkbox is hidden (kept checked so get_feedback includes
+    # the rating).
+    enable_rating = ft.Checkbox(label="Rate this session",
+                                value=is_game or has_rating, visible=not is_game)
 
     def _on_toggle_rating(_):
         rating_section.visible = enable_rating.value
@@ -262,14 +273,21 @@ def _build_feedback_content(existing=None):
 # --------------------------------------------------------------------------- #
 # Public: feedback dialog
 # --------------------------------------------------------------------------- #
-def open_feedback_dialog(page, existing=None, on_result=None):
-    """Open the session-feedback dialog.
+def open_feedback_dialog(page, existing=None, on_result=None, mode="session",
+                         title=None):
+    """Open the session-feedback (or, with ``mode='game'``, game-rating) dialog.
 
     On Save calls ``on_result(feedback_dict)`` (which may be ``None`` if no
     notes/rating were entered); on Cancel calls ``on_result(None)``.
+    ``title`` overrides the default dialog title.
     """
     is_edit = existing is not None
-    content, get_feedback = _build_feedback_content(existing)
+    content, get_feedback = _build_feedback_content(existing, mode=mode)
+    if title is None:
+        if mode == "game":
+            title = "Edit Game Rating" if is_edit else "Rate Game"
+        else:
+            title = f"{'Edit' if is_edit else 'Add'} Session Feedback"
 
     def _close():
         page.pop_dialog()
@@ -287,7 +305,7 @@ def open_feedback_dialog(page, existing=None, on_result=None):
 
     dialog = ft.AlertDialog(
         modal=True,
-        title=ft.Text(f"{'Edit' if is_edit else 'Add'} Session Feedback"),
+        title=ft.Text(title),
         content=ft.Container(width=520, content=content),
         actions=[
             ft.TextButton("Cancel", on_click=_on_cancel),

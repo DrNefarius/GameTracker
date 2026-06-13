@@ -61,6 +61,41 @@ def calculate_session_rating_average(sessions):
     return None
 
 
+def get_effective_game_rating(game_row):
+    """The rating to display for a game in compact views (Games list, Game Hub).
+
+    A real manual rating (``row[9]``) takes priority. Otherwise this derives an
+    auto-calculated rating from the game's session ratings - the duration-weighted
+    average from :func:`calculate_session_rating_average` - tagged
+    ``auto_calculated`` so the UI can mark it (e.g. an '~' prefix). Returns
+    ``None`` when there is neither a manual rating nor any rated session.
+
+    This is what makes the list/hub agree with the Statistics tab, which already
+    computes the session-based rating on the fly rather than reading ``row[9]``.
+    """
+    manual = game_row[9] if len(game_row) > 9 and isinstance(game_row[9], dict) else None
+
+    def _stars(r):
+        try:
+            return int(r.get("stars", 0) or 0)
+        except (TypeError, ValueError, AttributeError):
+            return 0
+
+    # A real manual rating takes priority over the session-derived one.
+    if manual and not manual.get("auto_calculated") and _stars(manual) > 0:
+        return manual
+
+    sessions = game_row[7] if len(game_row) > 7 else None
+    average = calculate_session_rating_average(sessions or [])
+    if average is not None:
+        return {
+            "stars": int(round(average)),
+            "exact_average": average,
+            "auto_calculated": True,
+        }
+    return manual
+
+
 def get_session_rating_summary(sessions):
     """Summary of session ratings: avg stars, exact avg, count, top-5 tags."""
     rated = [
