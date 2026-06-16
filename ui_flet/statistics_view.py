@@ -34,12 +34,9 @@ from session_data import (
     get_status_history,
     find_most_active_period,
 )
-from session_visualizations import (
-    create_session_timeline_chart,
-    create_session_distribution_chart,
-    create_status_timeline_chart,
-    create_session_heatmap,
-)
+# NB: the session_visualizations chart functions (and thus matplotlib) are
+# imported lazily inside _render_chart_kind so constructing this view at startup
+# doesn't pull matplotlib; it loads on first navigation to the Statistics tab.
 from utilities import format_timedelta_with_seconds
 from pause_utils import total_session_pause_timedelta
 from core.ratings_logic import format_rating, get_session_rating_summary
@@ -1103,6 +1100,13 @@ class StatisticsView:
                 "Select a game to view its status timeline.")
             return
         try:
+            # Lazy: importing these pulls matplotlib, deferred to first chart render.
+            from session_visualizations import (
+                create_session_timeline_chart,
+                create_session_distribution_chart,
+                create_status_timeline_chart,
+                create_session_heatmap,
+            )
             game = self.selected_game
             scope = self._scope_sessions()
             if kind == "timeline":

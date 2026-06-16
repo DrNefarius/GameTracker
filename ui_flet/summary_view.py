@@ -15,8 +15,10 @@ from datetime import timedelta
 
 import flet as ft
 
-from visualizations import update_summary_charts
 from utilities import format_timedelta_with_seconds
+# NB: ``update_summary_charts`` (and thus matplotlib) is imported lazily inside
+# refresh() so merely constructing this view at startup doesn't pull matplotlib;
+# it loads on first navigation to the Summary tab.
 
 # (dict key returned by update_summary_charts, section title) in display order.
 _CHARTS = [
@@ -173,6 +175,7 @@ class SummaryView:
         """Regenerate the PNGs and rebuild the image grid in place."""
         self.total_time_text.value = f"Total play time: {self._total_play_time()}"
         try:
+            from visualizations import update_summary_charts  # lazy: pulls matplotlib
             charts = update_summary_charts(self.service.data)
         except Exception as exc:  # pragma: no cover - defensive
             charts = None

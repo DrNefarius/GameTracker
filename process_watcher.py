@@ -1034,26 +1034,52 @@ class ProcessWatcher:
         with self._lock:
             if self._active is not None:
                 return
-            ready: Optional[_Candidate] = None
+            ready: List[_Candidate] = []
             for pid, cand in self._candidates.items():
                 if pid not in alive_pids:
                     continue
                 age = now_mono - cand.first_seen
                 if age >= WATCHER_START_DEBOUNCE_SEC:
-                    ready = cand
-                    break
-                _state_log.debug("candidate pid=%s game=%r age=%.1fs (debounce %ds)",
-                                 cand.pid, cand.game_name, age,
-                                 WATCHER_START_DEBOUNCE_SEC)
-            if ready is None:
+                    ready.append(cand)
+                else:
+                    _state_log.debug("candidate pid=%s game=%r age=%.1fs (debounce %ds)",
+                                     cand.pid, cand.game_name, age,
+                                     WATCHER_START_DEBOUNCE_SEC)
+            if not ready:
                 return
-            self._candidates.pop(ready.pid, None)
-            dropped = len(self._candidates)
-            if dropped:
+            chosen = self._choose_candidate(ready)
+            dropped = len(self._candidates) - 1
+            if dropped > 0:
                 _state_log.debug("dropping %d sibling candidate(s) on promotion",
                                  dropped)
             self._candidates.clear()
-            self._start_session(ready)
+            self._start_session(chosen)
+
+    def _choose_candidate(self, ready: List["_Candidate"]) -> "_Candidate":
+        """Pick which ready candidate to promote.
+
+        A game often spawns several processes under the same install dir - e.g. a
+        launcher/stub plus the actual windowed game (Arx Fatalis: arx.exe spawns
+        bin\\x64\\arx.exe). Tracking the windowless launcher trips foreground-only
+        auto-pause, because the foreground window belongs to the game and not the
+        launcher. So when more than one candidate is ready, prefer the one that
+        currently owns the foreground window; otherwise fall back to the
+        first-seen candidate.
+        """
+        if len(ready) > 1 and self.foreground_pid_provider is not None:
+            try:
+                fg_pid = self.foreground_pid_provider()
+            except Exception:  # noqa: BLE001
+                fg_pid = None
+            if fg_pid:
+                for cand in ready:
+                    if cand.pid == fg_pid:
+                        _state_log.info(
+                            "multiple ready candidates for %r; promoting the "
+                            "foreground process pid=%s (exe=%s)",
+                            cand.game_name, cand.pid, cand.exe_path)
+                        return cand
+        return ready[0]
 
     def _sweep_dead_candidates(self, alive_pids: Set[int]) -> None:
         with self._lock:

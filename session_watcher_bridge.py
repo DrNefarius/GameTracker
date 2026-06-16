@@ -429,6 +429,7 @@ class SessionWatcherBridge:
                 payload.get('exe_basename') or '',
                 payload.get('install_dir') or '',
                 payload.get('best_guess'),
+                exe_path=payload.get('exe_path'),
             )
             self._last_refire[detection_id] = time.monotonic()
         except Exception as exc:  # noqa: BLE001
@@ -535,8 +536,16 @@ class SessionWatcherBridge:
                 if exe_path:
                     watcher.force_track_exe(exe_path, best)
         elif action == 'ignore':
-            if watcher is not None and exe_path:
-                watcher.add_ignore(os.path.basename(exe_path))
+            # The exe to ignore is a basename. Prefer the full path from the
+            # queued entry, but fall back to the basename the toast itself
+            # carries ('exe' from the toast payload, or 'exe_basename' from the
+            # queued entry) so "Never for this exe" still persists when the
+            # in-memory entry is gone - e.g. the toast was clicked from the
+            # Action Center after the detection cleared, or after an app restart.
+            basename = (os.path.basename(exe_path) if exe_path
+                        else (info.get('exe') or info.get('exe_basename') or '').strip())
+            if watcher is not None and basename:
+                watcher.add_ignore(basename)
         return None
 
     def begin_match_pick(self, detection_id: str) -> None:
@@ -581,6 +590,7 @@ class SessionWatcherBridge:
                     info.get('exe_basename') or '',
                     info.get('install_dir') or '',
                     info.get('best_guess'),
+                    exe_path=info.get('exe_path'),
                 )
                 self._last_refire[det_id] = now
             except Exception as exc:  # noqa: BLE001

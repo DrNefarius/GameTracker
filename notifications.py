@@ -373,8 +373,14 @@ def notify_match_confirmation(
     exe_basename: str,
     install_dir: str,
     best_guess: Optional[str],
+    exe_path: Optional[str] = None,
 ) -> None:
-    """Toast asking the user to confirm an ambiguous detection."""
+    """Toast asking the user to confirm an ambiguous detection.
+
+    ``exe_path`` (the full normalized path) is embedded in the activation payload
+    so the confirm / ignore actions still work when the in-memory pending entry
+    is gone by click time (e.g. the toast is clicked from the Action Center after
+    the detection cleared, or after an app restart)."""
     config = load_config()
     if not config.get('notifications_on_match_needed', True):
         return
@@ -405,6 +411,7 @@ def notify_match_confirmation(
             'kind': 'match_confirmation',
             'detection_id': detection_id,
             'exe': exe_basename,
+            'exe_path': exe_path or '',
             'install_dir': install_dir,
             'best_guess': best_guess,
         })

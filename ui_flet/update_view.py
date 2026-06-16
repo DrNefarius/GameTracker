@@ -29,6 +29,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 
 import flet as ft
@@ -360,14 +361,29 @@ def run_update_process(page, update_info):
         actions_alignment=ft.MainAxisAlignment.END,
     ))
 
+    # The backend fires the download callback once per 8KB chunk (thousands of
+    # times for a large release). Throttle to at most one UI push per integer
+    # percent change / status change / 150ms, and patch only the affected
+    # controls (not a whole-page diff) so the download thread isn't starved.
+    _last_push = {"pct": -1, "t": 0.0, "msg": None}
+
     def _progress(p, msg=None):
+        pct_int = int(p or 0)
+        now = time.monotonic()
+        if (msg == _last_push["msg"] and pct_int == _last_push["pct"]
+                and (now - _last_push["t"]) < 0.15):
+            return
+        _last_push.update(pct=pct_int, t=now, msg=msg)
+
         async def _u():
             try:
                 bar.value = max(0.0, min(1.0, float(p or 0) / 100.0))
-                pct.value = f"{int(p or 0)}%"
+                pct.value = f"{pct_int}%"
+                bar.update()
+                pct.update()
                 if msg is not None:
                     status.value = msg
-                page.update()
+                    status.update()
             except Exception:
                 pass
         _run_on(page, _u)
@@ -458,13 +474,17 @@ def _stage_and_restart(page, download_path, update_info):
     ))
 
     def _progress(p, s=None):
+        # Staging reports ~7 coarse milestones (not per-chunk), so no throttle is
+        # needed; still patch only the affected controls instead of the whole page.
         async def _u():
             try:
                 bar.value = max(0.0, min(1.0, float(p or 0) / 100.0))
                 pct.value = f"{int(p or 0)}%"
+                bar.update()
+                pct.update()
                 if s is not None:
                     status.value = s
-                page.update()
+                    status.update()
             except Exception:
                 pass
         _run_on(page, _u)

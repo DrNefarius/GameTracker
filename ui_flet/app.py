@@ -10,21 +10,11 @@ import threading
 import flet as ft
 
 from config import load_config, save_config
-from core.services import GameLibraryService
 from ui_flet import theme
-from ui_flet import help_view
 from ui_flet import loading
-from ui_flet.games_view import GamesView
-from ui_flet.game_dialog import open_game_dialog, confirm_delete
-from ui_flet.game_hub import open_game_hub
-from ui_flet.summary_view import SummaryView
-from ui_flet.statistics_view import StatisticsView
-from ui_flet.igdb_view import open_igdb_settings_dialog
-from ui_flet import igdb_match
-from ui_flet.watcher_view import open_watcher_settings_dialog
-from ui_flet.watcher_runtime import start_watcher
-from ui_flet import discord_runtime
-from ui_flet import update_view
+
+# NB: the heavy feature/view imports live inside _build_main (not here) so that
+# importing this module - and thus main() - stays light. See _build_main.
 
 
 def _placeholder(icon, title):
@@ -128,6 +118,22 @@ def main(page: ft.Page):
 
 
 def _build_main(page: ft.Page):
+    # Heavy imports are deferred to here (not module level) so main() can paint
+    # the restored window geometry + loading splash immediately. These modules
+    # pull in matplotlib/numpy and the feature backends (several seconds in a
+    # packaged build) and now load *behind* the splash instead of in front of an
+    # empty window.
+    from core.services import GameLibraryService
+    from ui_flet import help_view, igdb_match, discord_runtime, update_view
+    from ui_flet.games_view import GamesView
+    from ui_flet.game_dialog import open_game_dialog, confirm_delete
+    from ui_flet.game_hub import open_game_hub
+    from ui_flet.summary_view import SummaryView
+    from ui_flet.statistics_view import StatisticsView
+    from ui_flet.igdb_view import open_igdb_settings_dialog
+    from ui_flet.watcher_view import open_watcher_settings_dialog
+    from ui_flet.watcher_runtime import start_watcher
+
     service = GameLibraryService()
     service.bootstrap()
 
