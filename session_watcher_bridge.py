@@ -109,20 +109,8 @@ class SessionWatcherBridge:
             if not name:
                 continue
             platform = row[2] if len(row) > 2 else None
-            aliases: List[str] = []
-            if len(row) > 10 and isinstance(row[10], dict):
-                igdb = row[10]
-                igdb_name = igdb.get('name')
-                if igdb_name and igdb_name != name:
-                    aliases.append(igdb_name)
-                for a in (igdb.get('alternative_names') or []):
-                    if isinstance(a, dict):
-                        v = a.get('name')
-                        if v:
-                            aliases.append(v)
-                    elif isinstance(a, str):
-                        aliases.append(a)
-            snap.append({'name': name, 'platform': platform, 'igdb_aliases': aliases})
+            snap.append({'name': name, 'platform': platform,
+                         'igdb_aliases': self._row_aliases(row)})
         return snap
 
     def build_state_snapshot(self) -> Dict:
@@ -305,10 +293,15 @@ class SessionWatcherBridge:
                 _log.warning("ghost-session cleanup failed: %s", exc)
             return None
 
+        # Use the library's canonical name (the detected name may differ in case
+        # or be an IGDB alias - e.g. 'FINAL FANTASY VIII' vs 'Final Fantasy VIII')
+        # so the session is attributed to, and displayed as, the library entry.
+        canonical = self._data()[row_index][1][0] or game_name
+
         self._active_sessions[session_id] = row_index
         self._session_pauses[session_id] = {'start_iso': payload.get('start_time_iso')}
         _log.info("session start session=%s game=%r row=%d",
-                  session_id, game_name, row_index)
+                  session_id, canonical, row_index)
 
         # Update Discord presence so external Discord users see the game.
         try:
@@ -317,7 +310,7 @@ class SessionWatcherBridge:
                 start_dt = datetime.fromisoformat(payload['start_time_iso'])
                 row = self._data()[row_index][1]
                 platform = row[2] if len(row) > 2 else None
-                discord.update_presence_playing(game_name, session_start_time=start_dt, platform=platform)
+                discord.update_presence_playing(canonical, session_start_time=start_dt, platform=platform)
         except Exception as exc:  # noqa: BLE001
             _log.warning("Discord presence update failed on detect: %s", exc)
 
@@ -325,11 +318,11 @@ class SessionWatcherBridge:
         cover_path = self._cover_path_for(row_index)
         try:
             from notifications import notify_session_started
-            notify_session_started(session_id, game_name, cover_path)
+            notify_session_started(session_id, canonical, cover_path)
         except Exception as exc:  # noqa: BLE001
             _log.warning("notify_session_started failed: %s", exc)
 
-        return {'action': 'watcher_session_started', 'game_name': game_name}
+        return {'action': 'watcher_session_started', 'game_name': canonical}
 
     def _on_process_ended(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         session_id = payload.get('session_id')
@@ -347,6 +340,11 @@ class SessionWatcherBridge:
                          session_id, game_name)
             return None
 
+        # The detected name may differ from the library row (case / IGDB alias);
+        # attribute the session to the row's canonical name so the exact-match
+        # storage pipeline finds it.
+        canonical = self._data()[row_index][1][0] or game_name
+
         # Build the canonical session dict and persist via the existing
         # add_manual_session_to_game pipeline, which also bumps total time
         # and last-played in the same shape the manual timer uses.
@@ -360,7 +358,7 @@ class SessionWatcherBridge:
         try:
             data = self._data()
             ok = add_manual_session_to_game(
-                game_name,
+                canonical,
                 session,
                 data,
                 self._data_storage(),
@@ -383,7 +381,7 @@ class SessionWatcherBridge:
 
         try:
             from notifications import notify_session_ended
-            notify_session_ended(session_id, game_name, _humanize_duration(duration_str))
+            notify_session_ended(session_id, canonical, _humanize_duration(duration_str))
         except Exception as exc:  # noqa: BLE001
             _log.warning("notify_session_ended failed: %s", exc)
 
@@ -394,7 +392,7 @@ class SessionWatcherBridge:
                 row = self._data()[row_index][1]
                 platform = row[2] if len(row) > 2 else None
                 discord.update_presence_session_complete(
-                    game_name, duration_str, platform=platform)
+                    canonical, duration_str, platform=platform)
         except Exception as exc:  # noqa: BLE001
             _log.warning("Discord session-complete update failed: %s", exc)
 
@@ -670,9 +668,51 @@ class SessionWatcherBridge:
     # Internals
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _row_aliases(row) -> List[str]:
+        """IGDB name + alternative names for a library row - its extra match
+        aliases. Single source so the resolver's library gate
+        (build_library_snapshot -> _name_in_library) and the bridge's row lookup
+        (_find_row_index) accept exactly the same names; otherwise a game the
+        resolver matched can fail the bridge lookup ('detected but no row')."""
+        aliases: List[str] = []
+        if len(row) > 10 and isinstance(row[10], dict):
+            igdb = row[10]
+            igdb_name = igdb.get('name')
+            if igdb_name:
+                aliases.append(igdb_name)
+            for a in (igdb.get('alternative_names') or []):
+                if isinstance(a, dict):
+                    v = a.get('name')
+                    if v:
+                        aliases.append(v)
+                elif isinstance(a, str):
+                    aliases.append(a)
+        return aliases
+
     def _find_row_index(self, game_name: str) -> Optional[int]:
-        for i, (_idx, row) in enumerate(self._data() or []):
+        """Find the library row for a (possibly non-canonical) detected name.
+
+        Mirrors the resolver's gate (_name_in_library): exact match first, then
+        case-insensitive on the primary name, then IGDB aliases. Keeping the two
+        in lockstep means any game the watcher accepted can be attributed to its
+        row - fixing 'FINAL FANTASY VIII' vs 'Final Fantasy VIII' and IGDB-aliased
+        titles like 'Trails of Cold Steel 3'."""
+        if not game_name:
+            return None
+        rows = self._data() or []
+        # 1) exact (fast, unambiguous)
+        for i, (_idx, row) in enumerate(rows):
             if row and row[0] == game_name:
+                return i
+        # 2) case-insensitive primary name, then IGDB aliases
+        target = game_name.casefold()
+        for i, (_idx, row) in enumerate(rows):
+            if not row or not row[0]:
+                continue
+            if row[0].casefold() == target:
+                return i
+            if any(a.casefold() == target for a in self._row_aliases(row)):
                 return i
         return None
 

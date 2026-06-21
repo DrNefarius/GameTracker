@@ -19,6 +19,7 @@ Backend reuse (all PySimpleGUI-free): ``session_data`` data helpers,
 ``core.ratings_logic`` (pure rating math), ``utilities``.
 """
 
+import calendar
 import os
 import tempfile
 import uuid
@@ -844,21 +845,88 @@ class StatisticsView:
             period = str(self.heatmap_year)
 
         grid_start = window_start - timedelta(days=window_start.weekday())  # align Monday
-        week_cols = []
+
+        CELL, GAP = 13, 3
+        COL_W = CELL + GAP          # week-column footprint (cell + inter-column gap)
+        WDAY_W = 30                 # weekday-label gutter width
+        AXIS_GAP = 4                # gap between the gutter and the grid
+        tint = ft.Colors.with_opacity(0.05, ft.Colors.ON_SURFACE)
+
+        # Alternate-month shading parity, assigned chronologically across every
+        # month in the window so adjacent months always differ.
+        months_seq = []
+        y, m = window_start.year, window_start.month
+        while (y, m) <= (window_end.year, window_end.month):
+            months_seq.append((y, m))
+            m = m + 1 if m < 12 else 1
+            y = y if m != 1 else y + 1
+        shaded = {ym: (k % 2 == 1) for k, ym in enumerate(months_seq)}
+
+        # Build each week column. Shading is applied PER DAY (each cell sits in a
+        # slot tinted by its own month) so a week straddling a month boundary
+        # shades correctly - the tint switches mid-column on the real 1st, rather
+        # than lumping the whole week into one month. Each column's label month is
+        # the month that owns the majority of its in-range days, so the month
+        # header lines up with where the shading actually changes.
+        day_columns = []
+        col_months = []
         cur = grid_start
         while cur <= window_end:
-            cells = []
+            slots = []
+            counts = {}
             for wd in range(7):
                 day = cur + timedelta(days=wd)
                 if day < window_start or day > window_end:
-                    cells.append(ft.Container(width=13, height=13))  # padding
+                    cell = ft.Container(width=CELL, height=CELL)  # padding
+                    bg = None
                 else:
                     cnt, secs = by_day.get(day, [0, 0.0])
-                    cells.append(self._day_cell(day, cnt, secs))
-            week_cols.append(ft.Column(cells, spacing=3, tight=True))
+                    cell = self._day_cell(day, cnt, secs)
+                    ym = (day.year, day.month)
+                    counts[ym] = counts.get(ym, 0) + 1
+                    bg = tint if shaded.get(ym) else None
+                slots.append(ft.Container(width=COL_W, height=CELL + GAP,
+                                          alignment=ft.Alignment(-1, -1),
+                                          content=cell, bgcolor=bg))
+            col_months.append(max(counts, key=counts.get) if counts else None)
+            day_columns.append(ft.Column(slots, spacing=0, tight=True))
             cur += timedelta(days=7)
 
-        self.heatmap_host.content = ft.Row(week_cols, spacing=3, tight=True)
+        grid_row = ft.Row(day_columns, spacing=0, tight=True)
+
+        # Month labels across the top, each spanning its run of week-columns
+        # (skipped for a sliver of < 2 weeks where the label wouldn't fit).
+        month_labels = []
+        i = 0
+        while i < len(col_months):
+            ym = col_months[i]
+            j = i
+            while j < len(col_months) and col_months[j] == ym:
+                j += 1
+            run = j - i
+            text = calendar.month_abbr[ym[1]] if (ym and run >= 2) else ""
+            month_labels.append(ft.Container(
+                width=run * COL_W,
+                content=ft.Text(text, size=10, color=ft.Colors.ON_SURFACE_VARIANT)))
+            i = j
+        month_header = ft.Row(
+            [ft.Container(width=WDAY_W), ft.Row(month_labels, spacing=0, tight=True)],
+            spacing=AXIS_GAP, tight=True)
+
+        # Weekday gutter (Mon/Wed/Fri), aligned row-for-row with the cells.
+        wday_names = {0: "Mon", 2: "Wed", 4: "Fri"}
+        wday_col = ft.Column(
+            [ft.Container(width=WDAY_W, height=CELL, alignment=ft.Alignment(-1, 0),
+                          content=ft.Text(wday_names.get(r, ""), size=10,
+                                          color=ft.Colors.ON_SURFACE_VARIANT))
+             for r in range(7)],
+            spacing=GAP, tight=True)
+
+        self.heatmap_host.content = ft.Column(
+            [month_header,
+             ft.Row([wday_col, grid_row], spacing=AXIS_GAP,
+                    vertical_alignment=ft.CrossAxisAlignment.START, tight=True)],
+            spacing=4, tight=True)
         scope = self.selected_game or "All games"
         active_days = sum(1 for d, v in by_day.items()
                           if v[0] > 0 and window_start <= d <= window_end)
@@ -1038,13 +1106,21 @@ class StatisticsView:
         sessions = get_game_sessions(self.service.data, name) or []
         history = get_status_history(self.service.data, name) or []
 
-        total = timedelta()
+        # ``duration`` is play time (pauses already excluded - see the Daily
+        # Activity view, where Total = duration + paused). Show the wall-clock
+        # total (with pauses) and, when any session was paused, the pure play
+        # time beside it.
+        play = timedelta()
+        paused = timedelta()
         for s in sessions:
-            total += _duration_to_timedelta(s.get("duration"))
-        self.game_totals.value = (
-            f"{len(sessions)} session{'s' if len(sessions) != 1 else ''}  ·  "
-            f"total {format_timedelta_with_seconds(total)}"
-        )
+            play += _duration_to_timedelta(s.get("duration"))
+            paused += total_session_pause_timedelta(s)
+        total = play + paused
+        label = (f"{len(sessions)} session{'s' if len(sessions) != 1 else ''}  ·  "
+                 f"total {format_timedelta_with_seconds(total)}")
+        if paused.total_seconds() > 0:
+            label += f"  ·  without pauses {format_timedelta_with_seconds(play)}"
+        self.game_totals.value = label
 
         def _sort_key(s):
             try:

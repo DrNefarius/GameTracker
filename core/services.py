@@ -137,12 +137,58 @@ class GameLibraryService:
         return idx
 
     def update_game(self, orig_idx, new_row):
-        for i, (idx, _) in enumerate(self.data):
+        for i, (idx, old_row) in enumerate(self.data):
             if idx == orig_idx:
+                old_name = old_row[0] if old_row else None
                 self.data[i] = (idx, new_row)
                 self.data = sorted(self.data, key=_sort_key)
+                new_name = new_row[0] if new_row else None
+                if old_name and new_name and old_name != new_name:
+                    self._migrate_watcher_mappings_on_rename(old_name, new_name)
                 return True
         return False
+
+    def _migrate_watcher_mappings_on_rename(self, old_name, new_name):
+        """Repoint watcher config that references a game by name when it's renamed.
+
+        Learned mappings (exe / install-dir -> game name) and the per-game
+        exclude list key games by their library name, so a rename would orphan
+        them: the mapping keeps resolving to a name that's no longer in the
+        library, the watcher reports 'not in library', and the manual link
+        appears to break. Rewrite those references to the new name.
+
+        Works off a fresh on-disk config (the watcher writes mappings straight to
+        disk, bypassing the in-memory copy), then mirrors the migrated keys back
+        into ``self.config``.
+        """
+        try:
+            cfg = load_config()
+        except Exception:  # pragma: no cover - defensive
+            return
+        changed = False
+        for key in ('watcher_process_map', 'watcher_installdir_map'):
+            mapping = cfg.get(key)
+            if isinstance(mapping, dict):
+                for path, game in list(mapping.items()):
+                    if game == old_name:
+                        mapping[path] = new_name
+                        changed = True
+        excluded = cfg.get('watcher_per_game_excluded')
+        if isinstance(excluded, list) and old_name in excluded:
+            cfg['watcher_per_game_excluded'] = [
+                new_name if g == old_name else g for g in excluded]
+            changed = True
+        if not changed:
+            return
+        try:
+            save_config(cfg)
+        except Exception:  # pragma: no cover - defensive
+            return
+        # Keep the in-memory copy consistent for anything reading service.config.
+        for key in ('watcher_process_map', 'watcher_installdir_map',
+                    'watcher_per_game_excluded'):
+            if key in cfg:
+                self.config[key] = cfg[key]
 
     def delete_game(self, orig_idx):
         before = len(self.data)

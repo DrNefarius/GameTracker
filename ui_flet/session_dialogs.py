@@ -38,6 +38,7 @@ from constants import (
     POSITIVE_TAGS,
 )
 from utilities import format_timedelta_with_seconds
+from pause_utils import total_session_pause_timedelta
 from session_data import (
     add_manual_session_to_game,
     get_game_sessions,
@@ -609,8 +610,11 @@ def open_activity_log_dialog(page, service, game_name):
         rating = fb.get("rating") or {}
         stars = rating.get("stars")
         star_str = ("★" * int(stars) + "☆" * (5 - int(stars))) if stars else ""
-        lines = [ft.Text(f"{when}  ·  played {s.get('duration', '00:00:00')}",
-                         weight=ft.FontWeight.W_600, size=13, selectable=True)]
+        header = f"{when}  ·  played {s.get('duration', '00:00:00')}"
+        pause_td = total_session_pause_timedelta(s)
+        if pause_td.total_seconds() > 0:
+            header += f"  ·  paused {format_timedelta_with_seconds(pause_td)}"
+        lines = [ft.Text(header, weight=ft.FontWeight.W_600, size=13, selectable=True)]
         meta = []
         if star_str:
             meta.append(star_str)

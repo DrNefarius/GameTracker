@@ -1,7 +1,7 @@
 # GamesList Manager
 
 ![Python](https://badgen.net/badge/python/3.10%2B/blue?icon=python)
-![Version](https://badgen.net/badge/version/v2.0.2/orange?icon=github)
+![Version](https://badgen.net/badge/version/v2.0.3s/orange?icon=github)
 ![License](https://badgen.net/badge/license/GPL-3.0/green?icon=github)
 
 ## Table of Contents
