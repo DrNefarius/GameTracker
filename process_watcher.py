@@ -480,14 +480,27 @@ class ProcessWatcher:
         cfg['watcher_process_map'] = m
         save_config(cfg)
 
-    def add_ignore(self, basename: str) -> None:
+    def add_ignore(self, basename: str) -> bool:
+        """Add an executable basename to the never-track list.
+
+        Returns True once the entry is on disk (already-present counts as
+        success) so callers can tell the user it stuck instead of claiming so
+        blindly.
+        """
+        bn = (basename or '').strip().lower()
+        if not bn:
+            return False
         cfg = load_config()
         ig = list(cfg.get('watcher_ignore_list', []) or [])
-        bn = basename.lower()
-        if bn not in ig:
-            ig.append(bn)
+        if bn in {str(b).lower() for b in ig}:
+            return True
+        ig.append(bn)
         cfg['watcher_ignore_list'] = ig
-        save_config(cfg)
+        if not save_config(cfg):
+            _log.error("failed to persist never-track entry %s", bn)
+            return False
+        _log.info("added %s to the never-track list", bn)
+        return True
 
     def remember_installdir_mapping(self, install_dir: str, game_name: str) -> None:
         """Record an install-directory -> game mapping (Layer 1b).

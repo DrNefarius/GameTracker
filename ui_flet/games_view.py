@@ -236,10 +236,10 @@ class GamesView:
 
     def _persist_sort(self):
         try:
-            from config import save_config
-            self.service.config["games_sort_col"] = self.sort_col
-            self.service.config["games_sort_asc"] = self.sort_asc
-            save_config(self.service.config)
+            self.service.update_config({
+                "games_sort_col": self.sort_col,
+                "games_sort_asc": self.sort_asc,
+            })
         except Exception:
             pass
 
@@ -263,12 +263,12 @@ class GamesView:
         if not self.remember_view:
             return
         try:
-            from config import save_config
-            self.service.config["library_query"] = self.search_field.value or ""
-            self.service.config["library_page_size"] = (
-                "All" if self.page_size is None else str(self.page_size))
-            self.service.config["library_page_index"] = self.page_index
-            save_config(self.service.config)
+            self.service.update_config({
+                "library_query": self.search_field.value or "",
+                "library_page_size": (
+                    "All" if self.page_size is None else str(self.page_size)),
+                "library_page_index": self.page_index,
+            })
         except Exception:
             pass
 
@@ -280,9 +280,8 @@ class GamesView:
         changes."""
         self.remember_view = bool(enabled)
         try:
-            from config import save_config
-            self.service.config["remember_library_view"] = self.remember_view
-            save_config(self.service.config)
+            self.service.update_config(
+                {"remember_library_view": self.remember_view})
         except Exception:
             pass
         if self.remember_view:

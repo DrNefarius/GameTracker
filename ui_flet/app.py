@@ -9,7 +9,7 @@ import threading
 
 import flet as ft
 
-from config import load_config, save_config
+from config import load_config
 from ui_flet import theme
 from ui_flet import loading
 
@@ -314,8 +314,7 @@ def _build_main(page: ft.Page):
         page.theme_mode = theme.next_mode(page.theme_mode)
         theme_btn.icon = theme.mode_icon(page.theme_mode)
         theme_btn.tooltip = f"Theme: {theme.mode_to_str(page.theme_mode)}"
-        service.config["theme_mode"] = theme.mode_to_str(page.theme_mode)
-        save_config(service.config)
+        service.update_config({"theme_mode": theme.mode_to_str(page.theme_mode)})
         page.update()
 
     theme_btn = ft.IconButton(
@@ -341,8 +340,7 @@ def _build_main(page: ft.Page):
     def toggle_watcher(_):
         from process_watcher import get_watcher
         new_enabled = not bool(service.config.get("watcher_enabled", False))
-        service.config["watcher_enabled"] = new_enabled
-        save_config(service.config)
+        service.update_config({"watcher_enabled": new_enabled})
         w = get_watcher()
         if w is not None:
             try:
@@ -360,8 +358,7 @@ def _build_main(page: ft.Page):
     # window. Persisted to config; applied on the next launch (see main()).
     def toggle_start_in_tray(e):
         new_val = not bool(service.config.get("start_in_tray", False))
-        service.config["start_in_tray"] = new_val
-        save_config(service.config)
+        service.update_config({"start_in_tray": new_val})
         start_in_tray_item.checked = new_val
         try:
             page.update()
@@ -656,33 +653,35 @@ def _build_main(page: ft.Page):
     _geom = {"timer": None}
 
     def _capture_geometry():
-        """Read the current window geometry into config (call on the UI thread)."""
+        """Current window geometry as a config patch (call on the UI thread)."""
+        patch = {}
         try:
             w = page.window
             maximized = bool(getattr(w, "maximized", False))
-            service.config["window_maximized"] = maximized
+            patch["window_maximized"] = maximized
             # Only record size/position while NOT maximized, so restoring an
             # un-maximized window returns to the user's chosen size.
             if not maximized:
                 if w.width:
-                    service.config["window_width"] = int(w.width)
+                    patch["window_width"] = int(w.width)
                 if w.height:
-                    service.config["window_height"] = int(w.height)
+                    patch["window_height"] = int(w.height)
                 if w.left is not None:
-                    service.config["window_left"] = int(w.left)
+                    patch["window_left"] = int(w.left)
                 if w.top is not None:
-                    service.config["window_top"] = int(w.top)
+                    patch["window_top"] = int(w.top)
         except Exception:
             pass
+        return patch
 
     def _schedule_geom_save():
         # Capture now (on the loop thread), debounce the disk write so a drag
         # doesn't write config.json on every pixel.
-        _capture_geometry()
+        patch = _capture_geometry()
         t = _geom.get("timer")
         if t is not None:
             t.cancel()
-        nt = threading.Timer(0.8, lambda: save_config(service.config))
+        nt = threading.Timer(0.8, lambda: service.update_config(patch))
         nt.daemon = True
         _geom["timer"] = nt
         nt.start()
@@ -703,8 +702,7 @@ def _build_main(page: ft.Page):
         # tray (use tray -> Quit to actually exit) so the watcher keeps running.
         if _has_tray and etype in (ft.WindowEventType.CLOSE, "close"):
             # Save the final geometry synchronously before the window hides.
-            _capture_geometry()
-            save_config(service.config)
+            service.update_config(_capture_geometry())
             page.window.visible = False
             page.update()
             # One-time hint so the user knows the app didn't actually quit.
@@ -717,8 +715,7 @@ def _build_main(page: ft.Page):
                         "continues. Use the tray icon to reopen or quit.")
                 except Exception:
                     pass
-                service.config["tray_close_hint_shown"] = True
-                save_config(service.config)
+                service.update_config({"tray_close_hint_shown": True})
             return
         # On regaining focus, re-surface any unresolved ambiguous-match toasts
         # the user hasn't acted on (clicking "Pick another" opens the Flet

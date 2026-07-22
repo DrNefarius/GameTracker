@@ -18,6 +18,7 @@ import os
 from datetime import datetime
 
 from config import load_config, save_config
+from config import update_config as _update_config_on_disk
 from constants import _DEBUG, STATUS_PENDING, VALID_STATUSES
 from data_management import (
     load_from_gmd,
@@ -40,6 +41,27 @@ class GameLibraryService:
         self.data = []          # list of (orig_idx, row)
         self.filename = None
         self._next_idx = 0
+
+    # ------------------------------------------------------------------ #
+    # config
+    # ------------------------------------------------------------------ #
+    def update_config(self, patch):
+        """Persist just the keys in `patch`, then refresh the in-memory copy.
+
+        Always prefer this over ``save_config(self.config)``: the watcher thread
+        writes its own keys (learned mappings, the never-track ignore list,
+        crash-recovery state) straight to disk without going through this
+        snapshot, so writing the snapshot wholesale reverts them. Returns True
+        on success.
+        """
+        merged = _update_config_on_disk(patch)
+        if merged is None:
+            # Keep the requested values in memory so the UI still reflects the
+            # user's change even though the disk write failed.
+            self.config.update(patch or {})
+            return False
+        self.config.update(merged)
+        return True
 
     # ------------------------------------------------------------------ #
     # internal helpers
@@ -82,8 +104,7 @@ class GameLibraryService:
         except FileNotFoundError:
             data, needs_migration = [], False
             save_to_gmd(data, fn)
-            self.config["last_file"] = fn
-            save_config(self.config)
+            self.update_config({"last_file": fn})
         except Exception as exc:  # pragma: no cover - defensive
             print(f"GameLibraryService.bootstrap: load failed ({exc}); starting empty")
             data, needs_migration = [], False
@@ -95,8 +116,7 @@ class GameLibraryService:
         """Load a user-chosen .gmd file and make it the current file."""
         data, needs_migration = load_from_gmd(path)
         self._apply_loaded(data, needs_migration, path)
-        self.config["last_file"] = path
-        save_config(self.config)
+        self.update_config({"last_file": path})
         return self.data
 
     def import_excel(self, excel_path):

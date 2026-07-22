@@ -6,7 +6,12 @@ Handles loading, saving, and accessing application settings.
 import os
 import json
 import platform
+import threading
 from datetime import datetime
+
+# Serializes read-modify-write cycles so two threads (the UI and the watcher
+# worker) can't interleave a load/save pair and lose one of the writes.
+_write_lock = threading.RLock()
 
 def get_config_dir():
     """Get the configuration directory for the application."""
@@ -96,18 +101,24 @@ def load_config():
         return default_config
 
 def save_config(config):
-    """Save configuration to config file atomically (write to tmp, then os.replace)."""
+    """Save configuration to config file atomically (write to tmp, then os.replace).
+
+    Writes `config` wholesale, so only pass a dict that was just read from disk.
+    Long-lived copies (e.g. ``GameLibraryService.config``) go stale as soon as
+    another thread writes - use :func:`update_config` for those.
+    """
     config_file = get_config_file()
     tmp_file = f"{config_file}.tmp"
     try:
-        with open(tmp_file, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2)
-            f.flush()
-            try:
-                os.fsync(f.fileno())
-            except (OSError, AttributeError):
-                pass
-        os.replace(tmp_file, config_file)
+        with _write_lock:
+            with open(tmp_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except (OSError, AttributeError):
+                    pass
+            os.replace(tmp_file, config_file)
         return True
     except Exception as e:
         print(f"Error saving config: {str(e)}")
@@ -116,4 +127,23 @@ def save_config(config):
                 os.remove(tmp_file)
         except OSError:
             pass
-        return False 
+        return False
+
+
+def update_config(patch):
+    """Merge `patch` into the on-disk config and save. Returns the merged config
+    (or None if the write failed).
+
+    Use this instead of ``save_config(some_long_lived_dict)`` whenever only a few
+    keys changed. The watcher thread persists its own keys straight to disk
+    (learned exe->game mappings, the never-track ignore list, crash-recovery
+    state), so any config dict held across time is stale the moment it does -
+    writing that whole dict back silently reverts those keys. That's how a
+    "never track this .exe" decision used to disappear on the next window move.
+    """
+    with _write_lock:
+        config = load_config()
+        config.update(patch or {})
+        if not save_config(config):
+            return None
+        return config

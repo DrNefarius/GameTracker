@@ -138,12 +138,10 @@ def start_discord(service):
 def set_enabled(service, enabled):
     """Toggle Discord on/off, persist ``discord_enabled``, apply on the worker."""
     enabled = bool(enabled)
-    service.config["discord_enabled"] = enabled
     try:
-        from config import save_config
-        save_config(service.config)
+        service.update_config({"discord_enabled": enabled})
     except Exception:  # noqa: BLE001
-        pass
+        service.config["discord_enabled"] = enabled
 
     def _work():
         from discord_integration import get_discord_integration, initialize_discord

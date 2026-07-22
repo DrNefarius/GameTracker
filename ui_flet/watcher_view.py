@@ -3,7 +3,7 @@
 A dependency-free (no PySimpleGUI) port of the watcher settings dialog from
 ``process_watcher_settings.show_process_watcher_settings_dialog``. It edits the
 ``watcher_*`` / ``notifications_*`` / ``tray_icon_enabled`` config keys through
-``service.config`` and persists them with ``config.save_config(service.config)``.
+``service.config`` and persists them with ``service.update_config(...)``.
 
 UX mirrors the legacy PySimpleGUI dialog's grouping:
   - General: enable watcher, strict mode, foreground-only + grace seconds,
@@ -43,7 +43,6 @@ import sys
 
 import flet as ft
 
-import config as config_module
 from constants import WATCHER_END_GRACE_SEC
 from watcher_log import get_log_dir, get_log_path, set_level as set_watcher_log_level
 from ui_flet.watcher_dialogs import _build_game_picker
@@ -665,9 +664,10 @@ def open_watcher_settings_dialog(page, service, on_saved=None):
 
     Lets the user edit the watcher / notification / tray / logging settings, the
     editable folder and ignored-name lists, and the learned exe->game mappings,
-    then save. On save the config keys returned by ``get_values`` are written
-    into ``service.config``, persisted via ``config.save_config``, the new log
-    level is applied immediately, the dialog is closed, a SnackBar is shown, and
+    then save. On save the config keys returned by ``get_values`` are persisted
+    via ``service.update_config`` (which merges them into the on-disk config
+    rather than overwriting it), the new log level is applied immediately, the
+    dialog is closed, a SnackBar is shown, and
     ``on_saved()`` is invoked when provided. Cancel closes without saving.
 
     The "Add mapping..." button pops this dialog, opens a browse-for-exe + pick
@@ -710,9 +710,9 @@ def open_watcher_settings_dialog(page, service, on_saved=None):
             _snack("Quiet hours must be HH:MM-HH:MM (e.g. 23:00-08:00).")
             return
 
-        service.config.update(values)
-
-        if not config_module.save_config(service.config):
+        # Patch only the keys this dialog owns - the watcher may have written
+        # others (a never-track decision, a learned mapping) since it opened.
+        if not service.update_config(values):
             _snack("Failed to save watcher settings.")
             return
 

@@ -58,7 +58,7 @@ if (-not (Get-Command flutter -ErrorAction SilentlyContinue)) {
 & $Flet build windows `
     --project "GameTracker" `
     --product "GameTracker" `
-    --copyright "Copyright (C) 2025 DrNefarius" `
+    --copyright "Copyright (C) 2026 DrNefarius" `
     --yes `
     --verbose
 

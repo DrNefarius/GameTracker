@@ -56,6 +56,17 @@ FilenameProvider = Callable[[], str]
 DiscordProvider = Callable[[], Any]
 
 
+def _ignorable_basename(exe_basename: str) -> str:
+    """The name to write to the never-track list, or '' if there isn't one.
+
+    The dialog contexts fall back to the literal ``'(unknown)'`` for display
+    when no exe path is known; that placeholder must never reach the ignore
+    list (it would match nothing and just accumulate junk entries).
+    """
+    name = (exe_basename or '').strip()
+    return '' if name in ('', '(unknown)') else name
+
+
 class SessionWatcherBridge:
     """Transforms watcher events into mutations on the games-data structure."""
 
@@ -952,8 +963,14 @@ class SessionWatcherBridge:
 
             if ignore:
                 watcher.discard_current_session()
-                if exe_path and exe_basename:
-                    watcher.add_ignore(exe_basename)
+                # Only the basename is needed - the resolver matches on it - so
+                # don't gate this on exe_path, and report what actually landed
+                # on disk rather than assuming the write succeeded.
+                if not watcher.add_ignore(_ignorable_basename(exe_basename)):
+                    _log.warning("remap: could not mark %s as never-track; "
+                                 "session discarded only", exe_basename)
+                    return (f"Session discarded, but {exe_basename} couldn't be "
+                            f"saved to the ignore list.")
                 _log.info("remap: user marked %s as never-track", exe_basename)
                 return f"Got it. {exe_basename} will no longer be auto-tracked."
 
@@ -1063,8 +1080,11 @@ class SessionWatcherBridge:
         self._active_pickers.discard(detection_id)
 
         try:
-            if ignore and exe_basename:
-                watcher.add_ignore(exe_basename)
+            if ignore:
+                if not watcher.add_ignore(_ignorable_basename(exe_basename)):
+                    _log.warning("pick: could not add %s to ignore list",
+                                 exe_basename)
+                    return f"Couldn't save {exe_basename} to the ignore list."
                 _log.info("pick: %s added to ignore list", exe_basename)
                 return f"Got it. {exe_basename} will no longer be auto-tracked."
             if chosen:

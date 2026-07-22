@@ -209,12 +209,10 @@ class FletWatcherSink:
         elif action == "start_watcher":
             if w is not None:
                 w.start()
-            self.service.config["watcher_enabled"] = True
             try:
-                from config import save_config
-                save_config(self.service.config)
+                self.service.update_config({"watcher_enabled": True})
             except Exception:
-                pass
+                self.service.config["watcher_enabled"] = True
             if self.on_watcher_state_changed:
                 try:
                     self.on_watcher_state_changed(True)

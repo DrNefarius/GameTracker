@@ -4,7 +4,7 @@ A dependency-free (no PySimpleGUI) port of the IGDB settings dialog from
 ``igdb_ui.show_igdb_settings_dialog``. It edits the four IGDB-related config
 keys (``igdb_client_id``, ``igdb_client_secret``, ``igdb_enabled``,
 ``igdb_auto_match_on_add``) through ``service.config`` and persists them with
-``config.save_config(service.config)``.
+``service.update_config(...)``.
 
 The network "Test connection" button reuses the sg-free backend in
 ``igdb_integration`` (``IGDBClient(...).test_connection()``), which performs a
@@ -18,7 +18,6 @@ inspected without a live Flet page (used by the smoke test).
 
 import flet as ft
 
-import config as config_module
 from igdb_integration import (
     IGDBAuthError,
     IGDBClient,
@@ -111,8 +110,8 @@ def open_igdb_settings_dialog(page, service, on_saved=None):
     """Open the IGDB settings dialog.
 
     Lets the user edit the IGDB credentials / flags, test the connection, and
-    save. On save the four config keys are written into ``service.config``,
-    persisted via ``config.save_config``, the cached IGDB client is reset, the
+    save. On save the four config keys are persisted via
+    ``service.update_config``, the cached IGDB client is reset, the
     dialog is closed, and ``on_saved()`` is invoked when provided. Cancel closes
     without saving.
     """
@@ -160,12 +159,12 @@ def open_igdb_settings_dialog(page, service, on_saved=None):
 
     def on_save(_):
         client_id, client_secret, enabled_val, auto_val = get_values()
-        service.config["igdb_client_id"] = client_id
-        service.config["igdb_client_secret"] = client_secret
-        service.config["igdb_enabled"] = enabled_val
-        service.config["igdb_auto_match_on_add"] = auto_val
-
-        if not config_module.save_config(service.config):
+        if not service.update_config({
+            "igdb_client_id": client_id,
+            "igdb_client_secret": client_secret,
+            "igdb_enabled": enabled_val,
+            "igdb_auto_match_on_add": auto_val,
+        }):
             status.value = "Failed to save settings."
             status.color = ft.Colors.RED
             page.update()
